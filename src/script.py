@@ -368,82 +368,138 @@ def Factory():
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
             logger.info("ADB服务成功启动，设备已连接.")
+
     def DeviceShell(cmdStr):
-        while True:
-            # 使用共享变量存储结果
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
+            # 使用共享變量存儲結果
             exception = None
             result = None
             completed = Event()
-            
+
             def adb_command_thread():
-                nonlocal exception,result
+                nonlocal exception, result
                 try:
                     result = setting._ADBDEVICE.shell(cmdStr, timeout=5)
                 except Exception as e:
                     exception = e
                 finally:
                     completed.set()
-            
-            # 创建并启动线程
+
+            # 創建並啟動線程
             thread = Thread(target=adb_command_thread)
             thread.daemon = True
             thread.start()
-            
-            # 等待线程完成，设置总超时时间
-            completed.wait(timeout=7)  # 比ADB命令超时稍长
-            
+
+            # 等待線程完成,設置總超時時間
+            completed.wait(timeout=7)
+
             if not completed.is_set():
-                # 线程超时未完成
-                logger.debug("外部检测: ADB命令执行超时")
-                exception = TimeoutError("外部检测: ADB命令执行超时")
-            
+                # 線程超時未完成
+                logger.warning(f"ADB命令執行超時 (重試 {retry_count + 1}/{max_retries}): {cmdStr}")
+                exception = TimeoutError("ADB命令執行超時")
+                retry_count += 1
+
+                # 強制重置 ADB
+                ResetADBDevice()
+                Sleep(2)
+                continue
+
             if exception is None:
                 return result
-            
-            # 处理异常情况
-            logger.debug(f"{exception}")
+
+            # 處理異常情況
+            logger.debug(f"ADB異常: {exception}")
             if isinstance(exception, (RuntimeError, ConnectionResetError, TimeoutError, cv2.error)):
-                logger.debug(f"ADB操作失败. {exception}")
-                logger.info(f"ADB异常({type(exception).__name__})，尝试重启服务...")
+                retry_count += 1
+                logger.info(f"ADB異常({type(exception).__name__}),嘗試重啟服務 (重試 {retry_count}/{max_retries})...")
                 ResetADBDevice()
+                Sleep(2)
             else:
-                raise exception  # 非预期异常直接抛出
+                raise exception
+
+        # 超過最大重試次數,重啟遊戲
+        logger.error(f"ADB命令多次失敗: {cmdStr}")
+        restartGame()
+        return None
     
     def Sleep(t=1):
         time.sleep(t)
+
     def ScreenShot():
-        while True:
+        max_retries = 3
+        retry_count = 0
+
+        while retry_count < max_retries:
             try:
-                # logger.debug('ScreenShot')
-                screenshot = setting._ADBDEVICE.screencap()
+                # 添加超時控制
+                screenshot_event = Event()
+                screenshot_result = [None]
+                screenshot_error = [None]
+
+                def capture_thread():
+                    try:
+                        screenshot_result[0] = setting._ADBDEVICE.screencap()
+                    except Exception as e:
+                        screenshot_error[0] = e
+                    finally:
+                        screenshot_event.set()
+
+                thread = Thread(target=capture_thread)
+                thread.daemon = True
+                thread.start()
+
+                # 等待截圖完成,超時10秒
+                if not screenshot_event.wait(timeout=10):
+                    logger.warning(f"截圖超時 (重試 {retry_count + 1}/{max_retries})")
+                    retry_count += 1
+                    ResetADBDevice()
+                    Sleep(2)
+                    continue
+
+                if screenshot_error[0]:
+                    raise screenshot_error[0]
+
+                screenshot = screenshot_result[0]
                 screenshot_np = np.frombuffer(screenshot, dtype=np.uint8)
 
                 if screenshot_np.size == 0:
-                    logger.error("截图数据为空！")
-                    raise RuntimeError("截图数据为空")
+                    logger.error("截圖數據為空!")
+                    raise RuntimeError("截圖數據為空")
 
                 image = cv2.imdecode(screenshot_np, cv2.IMREAD_COLOR)
 
                 if image is None:
-                    logger.error("OpenCV解码失败：图像数据损坏")
-                    raise RuntimeError("图像解码失败")
+                    logger.error("OpenCV解碼失敗:圖像數據損壞")
+                    raise RuntimeError("圖像解碼失敗")
 
-                if image.shape != (1600, 900, 3):  # OpenCV格式为(高, 宽, 通道)
+                if image.shape != (1600, 900, 3):
                     if image.shape == (900, 1600, 3):
-                        logger.error(f"截图尺寸错误: 当前{image.shape}, 为横屏.")
+                        logger.error(f"截圖尺寸錯誤: 當前{image.shape}, 為橫屏.")
                         image = cv2.transpose(image)
-                        restartGame(skipScreenShot = True) # 这里直接重启, 会被外部接收到重启的exception
+                        restartGame(skipScreenShot=True)
                     else:
-                        logger.error(f"截图尺寸错误: 期望(1600,900,3), 实际{image.shape}.")
-                        raise RuntimeError("截图尺寸异常")
+                        logger.error(f"截圖尺寸錯誤: 期望(1600,900,3), 實際{image.shape}.")
+                        raise RuntimeError("截圖尺寸異常")
 
-                #cv2.imwrite('screen.png', image)
                 return image
+
             except Exception as e:
-                logger.debug(f"{e}")
-                if isinstance(e, (AttributeError,RuntimeError, ConnectionResetError, cv2.error)):
-                    logger.info("adb重启中...")
+                logger.debug(f"截圖異常: {e}")
+                if isinstance(e, (AttributeError, RuntimeError, ConnectionResetError, cv2.error)):
+                    retry_count += 1
+                    logger.info(f"截圖失敗,重啟adb (重試 {retry_count}/{max_retries})...")
                     ResetADBDevice()
+                    Sleep(2)
+                else:
+                    raise e
+
+        # 超過最大重試次數
+        logger.error("截圖多次失敗,重啟遊戲")
+        restartGame()
+        return None
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False):
         def cutRoI(screenshot,roi):
             if roi is None:
@@ -1130,6 +1186,7 @@ def Factory():
                 return queue, True
         return queue, False
     def StateInn():
+        FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
         FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','Economy',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
         PressReturn()
