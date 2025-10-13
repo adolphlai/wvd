@@ -981,35 +981,45 @@ def Factory():
         # logger.info("REZ.")
         Press([450,750])
         Sleep(10)
+
     def IdentifyState():
-        nonlocal setting # 修改因果
+        nonlocal setting  # 修改因果
         counter = 0
+
+        # ====== 使用 runtimeContext 來持久化記錄上次狀態 ======
+        if not hasattr(runtimeContext, '_LAST_KNOWN_STATE'):
+            runtimeContext._LAST_KNOWN_STATE = None
+
         while 1:
             screen = ScreenShot()
-            logger.info(f'状态机检查中...(第{counter+1}次)')
+            logger.info(f'狀態機檢查中...(第{counter + 1}次)')
 
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
 
-            if Press(CheckIf(screen,'retry')) or Press(CheckIf(screen,'retry_blank')):
-                    logger.info("发现并点击了\"重试\". 你遇到了网络波动.")
-                    # logger.info("ka le.")
-                    Sleep(2)
+            if Press(CheckIf(screen, 'retry')) or Press(CheckIf(screen, 'retry_blank')):
+                logger.info("發現並點擊了\"重試\". 你遇到了網絡波動.")
+                Sleep(2)
 
             identifyConfig = [
-                ('combatActive',  DungeonState.Combat),
-                ('combatActive_2',DungeonState.Combat),
-                ('dungFlag',      DungeonState.Dungeon),
-                ('chestFlag',     DungeonState.Chest),
+                ('combatActive', DungeonState.Combat),
+                ('combatActive_2', DungeonState.Combat),
+                ('dungFlag', DungeonState.Dungeon),
+                ('chestFlag', DungeonState.Chest),
                 ('whowillopenit', DungeonState.Chest),
-                ('mapFlag',       DungeonState.Map),
-                ]
+                ('mapFlag', DungeonState.Map),
+            ]
+
+            # ====== 優先檢測已知狀態 ======
             for pattern, state in identifyConfig:
                 if CheckIf(screen, pattern):
+                    if state != runtimeContext._LAST_KNOWN_STATE:
+                        logger.info(f"狀態變化: {runtimeContext._LAST_KNOWN_STATE} -> {state}")
+                        runtimeContext._LAST_KNOWN_STATE = state
                     return State.Dungeon, state, screen
 
-            while CheckIf(screen,'someonedead'):
-                Press([400,800])
+            while CheckIf(screen, 'someonedead'):
+                Press([400, 800])
                 Sleep(1)
                 screen = ScreenShot()
 
@@ -1017,56 +1027,55 @@ def Factory():
                 Sleep(2)
                 return IdentifyState()
 
-            if CheckIf(screen,"returntoTown"):
-                FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
-                return State.Inn,DungeonState.Quit, screen
+            if CheckIf(screen, "returntoTown"):
+                FindCoordsOrElseExecuteFallbackAndWait('Inn', ['return', [1, 1]], 1)
+                return State.Inn, DungeonState.Quit, screen
 
-            if Press(CheckIf(screen,"openworldmap")):
+            if Press(CheckIf(screen, "openworldmap")):
                 return IdentifyState()
 
-            if CheckIf(screen,"RoyalCityLuknalia"):
-                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
-                if CheckIf(scn:=ScreenShot(),'Inn'):
-                    return State.Inn,DungeonState.Quit, screen
-                elif CheckIf(scn,'dungFlag'):
-                    return State.Dungeon,None, screen
+            if CheckIf(screen, "RoyalCityLuknalia"):
+                FindCoordsOrElseExecuteFallbackAndWait(['Inn', 'dungFlag'], ['RoyalCityLuknalia', [1, 1]], 1)
+                if CheckIf(scn := ScreenShot(), 'Inn'):
+                    return State.Inn, DungeonState.Quit, screen
+                elif CheckIf(scn, 'dungFlag'):
+                    return State.Dungeon, None, screen
 
-            if CheckIf(screen,"fortressworldmap"):
-                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['fortressworldmap',[1,1]],1)
-                if CheckIf(scn:=ScreenShot(),'Inn'):
-                    return State.Inn,DungeonState.Quit, screen
-                elif CheckIf(scn,'dungFlag'):
-                    return State.Dungeon,None, screen
+            if CheckIf(screen, "fortressworldmap"):
+                FindCoordsOrElseExecuteFallbackAndWait(['Inn', 'dungFlag'], ['fortressworldmap', [1, 1]], 1)
+                if CheckIf(scn := ScreenShot(), 'Inn'):
+                    return State.Inn, DungeonState.Quit, screen
+                elif CheckIf(scn, 'dungFlag'):
+                    return State.Dungeon, None, screen
 
-            if (CheckIf(screen,'Inn')):
+            if (CheckIf(screen, 'Inn')):
                 return State.Inn, None, screen
 
             if quest._SPECIALFORCESTOPINGSYMBOL != None:
                 for symbol in quest._SPECIALFORCESTOPINGSYMBOL:
-                        if CheckIf(screen,symbol):
-                            return State.Quit,DungeonState.Quit,screen
+                    if CheckIf(screen, symbol):
+                        return State.Quit, DungeonState.Quit, screen
 
-            if counter>=4:
-                logger.info("看起来遇到了一些不太寻常的情况...")
+            if counter >= 4:
+                logger.info("看起來遇到了一些不太尋常的情況...")
                 if quest._SPECIALDIALOGOPTION != None:
                     for option in quest._SPECIALDIALOGOPTION:
-                        if Press(CheckIf(screen,option)):
+                        if Press(CheckIf(screen, option)):
                             return IdentifyState()
-                if (CheckIf(screen,'RiseAgain')):
-                    RiseAgainReset(reason = 'combat')
+                if (CheckIf(screen, 'RiseAgain')):
+                    RiseAgainReset(reason='combat')
                     return IdentifyState()
                 if CheckIf(screen, 'worldmapflag'):
                     for _ in range(3):
-                        Press([100,1500])
+                        Press([100, 1500])
                         Sleep(0.5)
-                    Press([250,1500])
-                    # 这里不需要continue或者递归 直接继续进行就行
+                    Press([250, 1500])
                 if Press(CheckIf(screen, 'sandman_recover')):
                     return IdentifyState()
-                if (CheckIf(screen,'cursedWheel_timeLeap')):
-                    setting._MSGQUEUE.put(('turn_to_7000G',""))
+                if (CheckIf(screen, 'cursedWheel_timeLeap')):
+                    setting._MSGQUEUE.put(('turn_to_7000G', ""))
                     raise SystemExit
-                if (pos:=CheckIf(screen,'ambush')) and setting._KARMAADJUST.startswith('-'):
+                if (pos := CheckIf(screen, 'ambush')) and setting._KARMAADJUST.startswith('-'):
                     new_str = None
                     num_str = setting._KARMAADJUST[1:]
                     if num_str.isdigit():
@@ -1076,14 +1085,13 @@ def Factory():
                         else:
                             new_str = f"+0"
                     if new_str is not None:
-                        logger.info(f"即将进行善恶值调整. 剩余次数:{new_str}")
+                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
                         setting._KARMAADJUST = new_str
-                        SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
+                        SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
                         Press(pos)
-                        logger.info("伏击起手!")
-                        # logger.info("Ambush! Always starts with Ambush.")
+                        logger.info("伏擊起手!")
                         Sleep(2)
-                if (pos:=CheckIf(screen,'ignore')) and setting._KARMAADJUST.startswith('+'):
+                if (pos := CheckIf(screen, 'ignore')) and setting._KARMAADJUST.startswith('+'):
                     new_str = None
                     num_str = setting._KARMAADJUST[1:]
                     if num_str.isdigit():
@@ -1093,75 +1101,111 @@ def Factory():
                         else:
                             new_str = f"-0"
                     if new_str is not None:
-                        logger.info(f"即将进行善恶值调整. 剩余次数:{new_str}")
+                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
                         setting._KARMAADJUST = new_str
-                        SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
+                        SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
                         Press(pos)
-                        logger.info("积善行德!")
-                        # logger.info("")
+                        logger.info("積善行德!")
                         Sleep(2)
-                if Press(CheckIf(screen,'strange_things')):
+                if Press(CheckIf(screen, 'strange_things')):
                     Sleep(2)
-                if Press(CheckIf(screen,'blessing')):
-                    logger.info("我要选安戈拉的祝福!...好吧随便选一个吧.")
-                    # logger.info("Blessing of... of course Angora! Fine, anything.")
+                if Press(CheckIf(screen, 'blessing')):
+                    logger.info("我要選安戈拉的祝福!...好吧隨便選一個吧.")
                     Sleep(2)
-                if Press(CheckIf(screen,'DontBuyIt')):
-                    logger.info("等我买? 你白等了, 我不买.")
-                    # logger.info("wait for paurch? Wait for someone else.")
+                if Press(CheckIf(screen, 'DontBuyIt')):
+                    logger.info("等我買? 你白等了, 我不買.")
                     Sleep(2)
-                if Press(CheckIf(screen,'donthelp')):
-                    logger.info("不帮你了.")
-                    # logger.info("")
+                if Press(CheckIf(screen, 'donthelp')):
+                    logger.info("不幫你了.")
                     Sleep(2)
-                if Press(CheckIf(screen,'adventurersbones')):
-                    logger.info("是骨头!")
-                    # logger.info("")
+                if Press(CheckIf(screen, 'adventurersbones')):
+                    logger.info("是骨頭!")
                     Sleep(2)
-                if Press(CheckIf(screen,'buyNothing')):
-                    logger.info("有骨头的话我会买的.")
-                    # logger.info("No Bones No Buy.")
+                if Press(CheckIf(screen, 'buyNothing')):
+                    logger.info("有骨頭的話我會買的.")
                     Sleep(2)
-                if Press(CheckIf(screen,'Nope')):
-                    logger.info("但是, 我拒绝.")
-                    # logger.info("And what, must we give in return?")
+                if Press(CheckIf(screen, 'Nope')):
+                    logger.info("但是, 我拒絕.")
                     Sleep(2)
-                if Press(CheckIf(screen,'dontGiveAntitoxin')):
-                    logger.info("但是, 我拒绝.")
-                    # logger.info("")
+                if Press(CheckIf(screen, 'dontGiveAntitoxin')):
+                    logger.info("但是, 我拒絕.")
                     Sleep(2)
-                if (CheckIf(screen,'multipeopledead')):
-                    runtimeContext._SUICIDE = True # 准备尝试自杀
-                    logger.info("死了好几个, 惨哦")
-                    # logger.info("Corpses strew the screen")
-                    Press(CheckIf(screen,'skull'))
+                if (CheckIf(screen, 'multipeopledead')):
+                    runtimeContext._SUICIDE = True
+                    logger.info("死了好幾個, 慘哦")
+                    Press(CheckIf(screen, 'skull'))
                     Sleep(2)
-                if Press(CheckIf(screen,'startdownload')):
-                    logger.info("确认, 下载, 确认.")
-                    # logger.info("")
+                if Press(CheckIf(screen, 'startdownload')):
+                    logger.info("確認, 下載, 確認.")
                     Sleep(2)
-                if Press(CheckIf(screen,'totitle')):
-                    logger.info("网络故障警报! 网络故障警报! 返回标题, 重复, 返回标题!")
+                if Press(CheckIf(screen, 'totitle')):
+                    logger.info("網絡故障警報! 網絡故障警報! 返回標題, 重複, 返回標題!")
                     return IdentifyState()
                 PressReturn()
                 Sleep(0.5)
-                PressReturn()
-            if counter>15:
-                black = LoadTemplateImage("blackScreen")
-                mean_diff = cv2.absdiff(black, screen).mean()/255
-                if mean_diff<0.02:
-                    logger.info(f"警告: 游戏画面长时间处于黑屏中, 即将重启({25-counter})")
-            if counter>= 25:
-                logger.info("看起来遇到了一些非同寻常的情况...重启游戏.")
+
+            # ====== 新增：檢測是否應該點擊畫面 ======
+            should_click_screen = True  # 默認應該點擊（處理對話）
+            click_skip_reason = ""  # 記錄跳過原因
+
+            # 1. 檢查是否在戰鬥中或戰鬥加載中
+            if CheckIf(screen, 'combatActive') or CheckIf(screen, 'combatActive_2'):
+                should_click_screen = False
+                click_skip_reason = "檢測到戰鬥標識(combatActive)"
+
+            # 2. 檢查是否在戰鬥加載畫面（通常是黑屏或特定加載圖案）
+            if should_click_screen:  # 只有在還沒決定跳過時才檢查
+                gray_screen = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                mean_brightness = gray_screen.mean()
+                if mean_brightness < 30:  # 畫面很暗，可能在加載
+                    should_click_screen = False
+                    click_skip_reason = f"檢測到暗畫面(亮度:{mean_brightness:.2f})，可能在戰鬥加載中"
+
+            # 3. 檢查上一次是否在地城/地圖中（可能正在進入戰鬥）
+            if should_click_screen:
+                if runtimeContext._LAST_KNOWN_STATE in [DungeonState.Dungeon, DungeonState.Map]:
+                    # 如果上次在地城/地圖中，且當前無法識別狀態
+                    # 可能正在進入戰鬥的過渡畫面，等待幾次
+                    if counter < 6:  # 前6次等待（約6秒），不點擊
+                        should_click_screen = False
+                        click_skip_reason = f"上次狀態為{runtimeContext._LAST_KNOWN_STATE}，等待狀態穩定(第{counter}次)"
+
+            # 4. 檢測是否有戰鬥相關UI元素（即使主要戰鬥標識沒檢測到）
+            if should_click_screen:
+                combat_ui_elements = ['flee', 'combatClose', 'combatAuto', 'combatSpd']
+                for element in combat_ui_elements:
+                    if CheckIf(screen, element):
+                        should_click_screen = False
+                        click_skip_reason = f"檢測到戰鬥UI元素: {element}"
+                        break
+
+            # 5. 執行黑屏檢測（改進版）
+            if counter > 15:
+                # 只有在非戰鬥狀態下才進行黑屏重啟判斷
+                if should_click_screen and not any(CheckIf(screen, pattern) for pattern, _ in identifyConfig):
+                    black = LoadTemplateImage("blackScreen")
+                    mean_diff = cv2.absdiff(black, screen).mean() / 255
+                    if mean_diff < 0.02:
+                        logger.info(f"警告: 遊戲畫面長時間處於黑屏中, 即將重啟({25 - counter})")
+
+            if counter >= 25:
+                logger.info("看起來遇到了一些非同尋常的情況...重啟遊戲.")
                 restartGame()
                 counter = 0
 
-            Press([1,1])
-            Sleep(0.25)
-            Press([1,1])
-            Sleep(0.25)
-            Press([1,1])
-            Sleep(1)
+            # ====== 根據判斷決定是否點擊畫面 ======
+            if should_click_screen:
+                logger.info(">>> 執行畫面點擊以推進可能的對話")
+                Press([1, 1])
+                Sleep(0.25)
+                Press([1, 1])
+                Sleep(0.25)
+                Press([1, 1])
+                Sleep(1)
+            else:
+                logger.info(f"跳過畫面點擊: {click_skip_reason}")
+                Sleep(1.5)
+
             counter += 1
         return None, None, screen
     def GameFrozenCheck(queue, scn):
