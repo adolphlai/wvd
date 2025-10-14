@@ -1161,7 +1161,16 @@ def Factory():
                     should_click_screen = False
                     click_skip_reason = f"檢測到暗畫面(亮度:{mean_brightness:.2f})，可能在戰鬥加載中"
 
-            # 3. 檢查上一次是否在地城/地圖中（可能正在進入戰鬥）
+            # 3. 【關鍵修正】檢查是否剛從戰鬥/寶箱結束
+            if should_click_screen:
+                if runtimeContext._LAST_KNOWN_STATE in [DungeonState.Combat, DungeonState.Chest]:
+                    # 如果上一個狀態是戰鬥或寶箱，給予更長的等待時間
+                    # 因為戰鬥/寶箱結束後需要時間才能顯示地城UI
+                    if counter < 8:  # 前8次等待（約8秒），不點擊
+                        should_click_screen = False
+                        click_skip_reason = f"上次狀態為{runtimeContext._LAST_KNOWN_STATE}，等待結算畫面(第{counter}次)"
+
+            # 4. 檢查上一次是否在地城/地圖中（可能正在進入戰鬥）
             if should_click_screen:
                 if runtimeContext._LAST_KNOWN_STATE in [DungeonState.Dungeon, DungeonState.Map]:
                     # 如果上次在地城/地圖中，且當前無法識別狀態
@@ -1170,7 +1179,7 @@ def Factory():
                         should_click_screen = False
                         click_skip_reason = f"上次狀態為{runtimeContext._LAST_KNOWN_STATE}，等待狀態穩定(第{counter}次)"
 
-            # 4. 檢測是否有戰鬥相關UI元素（即使主要戰鬥標識沒檢測到）
+            # 5. 檢測是否有戰鬥相關UI元素（即使主要戰鬥標識沒檢測到）
             if should_click_screen:
                 combat_ui_elements = ['flee', 'combatClose', 'combatAuto', 'combatSpd']
                 for element in combat_ui_elements:
@@ -1179,7 +1188,7 @@ def Factory():
                         click_skip_reason = f"檢測到戰鬥UI元素: {element}"
                         break
 
-            # 5. 執行黑屏檢測（改進版）
+            # 6. 執行黑屏檢測（改進版）
             if counter > 15:
                 # 只有在非戰鬥狀態下才進行黑屏重啟判斷
                 if should_click_screen and not any(CheckIf(screen, pattern) for pattern, _ in identifyConfig):
