@@ -1256,108 +1256,128 @@ def Factory():
                     Press(pos)
         Sleep(1)
         Press(CheckIf(ScreenShot(), 'GotoDung'))
+
     def StateCombat():
         def doubleConfirmCastSpell():
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
-            if Press(CheckIf(scn,'OK')):
+            if Press(CheckIf(scn, 'OK')):
                 is_success_aoe = True
                 Sleep(2)
                 scn = ScreenShot()
-                if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    Press(CheckIf(scn,'notenough_close'))
-                    Press(CheckIf(ScreenShot(),'spellskill/lv1'))
-                    Press(CheckIf(scn,'OK'))
+                if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                    Press(CheckIf(scn, 'notenough_close'))
+                    Press(CheckIf(ScreenShot(), 'spellskill/lv1'))
+                    Press(CheckIf(scn, 'OK'))
                     Sleep(1)
-            elif pos:=(CheckIf(scn,'next')):
-                Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
+            elif pos := (CheckIf(scn, 'next')):
+                Press([pos[0] - 15 + random.randint(0, 30), pos[1] + 150 + random.randint(0, 30)])
                 Sleep(1)
                 scn = ScreenShot()
-                if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    Press(CheckIf(scn,'notenough_close'))
-                    Press(CheckIf(ScreenShot(),'spellskill/lv1'))
-                    Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
+                if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                    Press(CheckIf(scn, 'notenough_close'))
+                    Press(CheckIf(ScreenShot(), 'spellskill/lv1'))
+                    Press([pos[0] - 15 + random.randint(0, 30), pos[1] + 150 + random.randint(0, 30)])
                     Sleep(1)
             else:
-                Press([150,750])
+                Press([150, 750])
                 Sleep(0.1)
-                Press([300,750])
+                Press([300, 750])
                 Sleep(0.1)
-                Press([450,750])
+                Press([450, 750])
                 Sleep(0.1)
-                Press([550,750])
+                Press([550, 750])
                 Sleep(0.1)
-                Press([650,750])
+                Press([650, 750])
                 Sleep(0.1)
-                Press([750,750])
+                Press([750, 750])
                 Sleep(0.1)
                 Sleep(2)
             Sleep(1)
             return (is_success_aoe)
 
         nonlocal runtimeContext
-        if runtimeContext._TIME_COMBAT==0:
+        if runtimeContext._TIME_COMBAT == 0:
             runtimeContext._TIME_COMBAT = time.time()
 
         screen = ScreenShot()
+
+        # ====== 新增：檢查並關閉遊戲內自動戰鬥 ======
+        # 如果面板未啟用自動戰鬥，但遊戲內正在自動戰鬥
+        if not setting._SYSTEMAUTOCOMBAT:
+            if CheckIf(screen, 'autoBattleEnable'):
+                logger.info("檢測到遊戲內自動戰鬥進行中，但面板未啟用自動戰鬥")
+                logger.info("關閉遊戲內自動戰鬥以施放腳本技能...")
+                Press([1, 1])  # 點擊畫面關閉自動戰鬥
+                Sleep(1.5)  # 等待自動戰鬥關閉
+                screen = ScreenShot()  # 重新截圖
+                logger.info("已關閉遊戲內自動戰鬥")
+
+        # 戰鬥2倍速
         if not runtimeContext._COMBATSPD:
-            if Press(CheckIf(screen,'combatSpd')):
+            if Press(CheckIf(screen, 'combatSpd')):
                 runtimeContext._COMBATSPD = True
                 Sleep(1)
 
+        # 施法序列
         spellsequence = runtimeContext._ACTIVESPELLSEQUENCE
         if spellsequence != None:
-            logger.info(f"当前施法序列:{spellsequence}")
+            logger.info(f"當前施法序列:{spellsequence}")
             for k in spellsequence.keys():
-                if CheckIf(screen,'spellskill/'+ k):
-                    targetSpell = 'spellskill/'+ spellsequence[k][0]
+                if CheckIf(screen, 'spellskill/' + k):
+                    targetSpell = 'spellskill/' + spellsequence[k][0]
                     if not CheckIf(screen, targetSpell):
-                        logger.error("错误:施法序列包含不可用的技能")
-                        Press([850,1100])
+                        logger.error("錯誤:施法序列包含不可用的技能")
+                        Press([850, 1100])
                         Sleep(0.5)
-                        Press([850,1100])
+                        Press([850, 1100])
                         Sleep(3)
                         return
-                    
-                    logger.info(f"使用技能{targetSpell}, 施法序列特征: {k}:{spellsequence[k]}")
-                    if len(spellsequence[k])!=1:
+
+                    logger.info(f"使用技能{targetSpell}, 施法序列特徵: {k}:{spellsequence[k]}")
+                    if len(spellsequence[k]) != 1:
                         spellsequence[k].pop(0)
-                    Press(CheckIf(screen,targetSpell))
+                    Press(CheckIf(screen, targetSpell))
                     if targetSpell != 'spellskill/' + 'defend':
                         doubleConfirmCastSpell()
 
                     return
 
+        # 系統自動戰鬥或AOE後自動
         if (setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE):
-            Press(CheckIf(WrapImage(screen,0,0.5,0.7),'combatAuto'))
+            Press(CheckIf(WrapImage(screen, 0, 0.5, 0.7), 'combatAuto'))
             Sleep(5)
             return
 
-        if not CheckIf(screen,'flee'):
-            return
+        # ====== 修改：移除 flee 檢查，因為自動戰鬥時 flee 不可見 ======
+        # 原本的邏輯：if not CheckIf(screen,'flee'): return
+        # 新邏輯：直接嘗試施放技能
+
         if runtimeContext._SUICIDE:
-            Press(CheckIf(screen,'spellskill/'+'defend'))
+            Press(CheckIf(screen, 'spellskill/' + 'defend'))
         else:
             castSpellSkill = False
             castAndPressOK = False
             for skillspell in setting._SPELLSKILLCONFIG:
-                if runtimeContext._ENOUGH_AOE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                    #logger.info(f"本次战斗已经释放全体aoe, 由于面板配置, 不进行更多的技能释放.")
+                if runtimeContext._ENOUGH_AOE and (
+                        (skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
                     continue
-                elif Press((CheckIf(screen, 'spellskill/'+skillspell))):
+                elif Press((CheckIf(screen, 'spellskill/' + skillspell))):
                     logger.info(f"使用技能 {skillspell}")
                     castAndPressOK = doubleConfirmCastSpell()
                     castSpellSkill = True
-                    if castAndPressOK and setting._AOE_ONCE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
+                    if castAndPressOK and setting._AOE_ONCE and (
+                            (skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
                         runtimeContext._ENOUGH_AOE = True
-                        logger.info(f"已经释放了首次全体aoe.")
+                        logger.info(f"已經釋放了首次全體aoe.")
                     break
             if not castSpellSkill:
-                Press(CheckIf(ScreenShot(),'combatClose'))
-                Press([850,1100])
+                # 如果沒有可施放的技能，嘗試關閉戰鬥面板
+                Press(CheckIf(ScreenShot(), 'combatClose'))
+                Press([850, 1100])
                 Sleep(0.5)
-                Press([850,1100])
+                Press([850, 1100])
                 Sleep(3)
     def StateMap_FindSwipeClick(targetInfo : TargetInfo):
         ### return = None: 视为没找到, 大约等于目标点结束.
