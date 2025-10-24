@@ -2,18 +2,20 @@
 提供修改範例代碼
 ### 1. 不打斷自動戰鬥(def IdentifyState():)
 <pre>
-	            Press([1, 1])
+	        Press([1, 1])
             Sleep(0.25)
             Press([1, 1])
             Sleep(0.25)
             Press([1, 1])
             Sleep(1)
+			# 移除原始代碼 counter += 1 上面的點擊行為
             counter += 1
 </pre>
 
 <pre>
 	            if counter>=4:
-                logger.info("看起来遇到了一些不太寻常的情况...")
+				logger.info("看起来遇到了一些不太寻常的情况...")
+				# 在 if counter>=4: 將上面移除的部分複製過來，需要對齊
                 Press([1, 1])
                 Sleep(0.25)
                 Press([1, 1])
