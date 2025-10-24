@@ -27,9 +27,11 @@
 ### 2. 旅館自動補給(def StateInn():)
 <pre> 
 	        if not setting._ACTIVE_ROYALSUITE_REST:
+			# 增加下面這一段，圖片需要額外手動添加Inn，box，refill至原始碼文件下的resoure/image資料夾下
             FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','Economy',[1,1]],2)
         else:
+			# 增加下面這一段，圖片需要額外手動添加Inn，box，refill至原始碼文件下的resoure/image資料夾下
             FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
