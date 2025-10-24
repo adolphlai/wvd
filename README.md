@@ -1,3 +1,4 @@
+# 請先自行安裝python環境以及IDE(VS code或者PyCharm之類)
 # 修改自德德版本的分支
 提供修改範例代碼
 ### 1. 不打斷自動戰鬥(def IdentifyState():)
