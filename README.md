@@ -37,6 +37,7 @@
             FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
+		PressReturn()
  </pre>
 # 圖片介紹
 這是box圖連結  
