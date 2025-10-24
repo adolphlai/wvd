@@ -36,3 +36,6 @@
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
  </pre>
+![box](resources/images/box.png)
+![refill](resources/images/refill.png)
+![Inn](resources/images/Inn.png)
