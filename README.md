@@ -1,6 +1,7 @@
+要修改請下載德德的原始代碼後自己設定環境後自行編譯
 # 請先自行安裝python環境以及IDE(VS code或者PyCharm之類)
 # 修改自德德版本的分支
-提供修改範例代碼
+提供自行修改範例代碼
 ### 1. 不打斷自動戰鬥(def IdentifyState():)
 <pre>
 	        Press([1, 1])
@@ -44,3 +45,5 @@
 ![refill](resources/images/refill.png)  
 這是Inn圖連結  
 ![Inn](resources/images/Inn.png)
+# 打包bat
+德德的是簡體會有編碼問題，會跑不了，可以抓取我修改過後的localpack.bat來替換原本的德德的打包bat
