@@ -36,6 +36,7 @@
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
  </pre>
+# 圖片介紹
 這是box圖連結
 ![box](resources/images/box.png)
 這是refill圖連結
