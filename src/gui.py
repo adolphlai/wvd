@@ -250,6 +250,17 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.skip_chest_recover_check.grid(row=0, column=1)
 
+        # Resume 按钮优化
+        row_counter += 1
+        self.enable_resume_optimization_check = ttk.Checkbutton(
+            self.main_frame,
+            text="启用Resume按钮优化(减少地图操作)",
+            variable=self.enable_resume_optimization_var,
+            command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.enable_resume_optimization_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
+
         # 休息设置
         row_counter += 1
         frame_row = ttk.Frame(self.main_frame)
@@ -587,6 +598,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.auto_after_aoe_check,
             self.skip_recover_check,
             self.skip_chest_recover_check,
+            self.enable_resume_optimization_check,
             self.active_rest_check,
             self.rest_intervel_entry,
             self.button_save_rest_intervel,

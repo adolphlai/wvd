@@ -42,6 +42,7 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
+            ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
@@ -606,10 +607,9 @@ def Factory():
                 else:
                     logger.error(f"截圖遇到未預期的錯誤: {type(e).__name__}: {e}")
                     raise
-    def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False):
+    def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
         template = LoadTemplateImage(shortPathOfTarget)
         screenshot = screenImage.copy()
-        threshold = 0.80
         pos = None
         search_area = CutRoI(screenshot, roi)
         try:
@@ -1523,6 +1523,8 @@ def Factory():
     def StateMoving_CheckFrozen():
         lastscreen = None
         dungState = None
+        resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
+        MAX_RESUME_RETRIES = 5  # Resume最大连续点击次数，超过后重新打开地图
         logger.info("面具男, 移动.")
         while 1:
             Sleep(3)
@@ -1541,9 +1543,41 @@ def Factory():
                 mean_diff = cv2.absdiff(gray1, gray2).mean()/255
                 logger.debug(f"移动停止检查:{mean_diff:.2f}")
                 if mean_diff < 0.1:
-                    dungState = None
-                    logger.info("已退出移动状态.进行状态检查...")
-                    break
+                    # 画面静止，检查Resume按钮（如果启用了Resume优化）
+                    if setting._ENABLE_RESUME_OPTIMIZATION:
+                        resume_pos = CheckIf(screen, 'resume', threshold=0.95)
+                        
+                        if resume_pos:
+                            # Resume按钮存在 = 移动被打断但未到达
+                            resume_consecutive_count += 1
+                            
+                            if resume_consecutive_count <= MAX_RESUME_RETRIES:
+                                # 继续点击Resume
+                                logger.info(f"检测到Resume按钮（画面静止），点击继续移动（第 {resume_consecutive_count} 次）位置:{resume_pos}")
+                                Press(resume_pos)
+                                Sleep(1)
+                                lastscreen = None  # 重置lastscreen以重新开始检测
+                                continue  # 继续循环，不退出
+                            else:
+                                # Resume点击多次仍然静止 = 可能卡住，需要重新打开地图
+                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，可能卡住，返回重新打开地图")
+                                dungState = None
+                                break
+                        else:
+                            # Resume按钮不存在 = 已到达目标
+                            logger.info("已退出移动状态（画面静止且Resume按钮消失）.进行状态检查...")
+                            dungState = None
+                            break
+                    else:
+                        # 未启用Resume优化，使用原始逻辑
+                        dungState = None
+                        logger.info("已退出移动状态.进行状态检查...")
+                        break
+                else:
+                    # 画面在移动，重置连续计数器
+                    if resume_consecutive_count > 0:
+                        logger.debug(f"画面恢复移动，重置Resume计数器（之前: {resume_consecutive_count}）")
+                        resume_consecutive_count = 0
             lastscreen = screen
         return dungState
     def StateSearch(waitTimer, targetInfoList : list[TargetInfo]):
@@ -1583,7 +1617,14 @@ def Factory():
             if target in normalPlace or target.endswith("_quit") or target.startswith('stair'):
                 Press(searchResult)
                 Press([280,1433]) # automove
-                return StateMoving_CheckFrozen(),targetInfoList
+                result_state = StateMoving_CheckFrozen()
+                
+                # 如果启用了Resume优化且成功到达(返回None)，返回Dungeon状态避免重新打开地图
+                if setting._ENABLE_RESUME_OPTIMIZATION and result_state is None:
+                    logger.debug("Resume优化: 移动完成，跳过重新打开地图")
+                    return DungeonState.Dungeon, targetInfoList
+                else:
+                    return result_state, targetInfoList
             else:
                 if (CheckIf_FocusCursor(ScreenShot(),target)): #注意 这里通过二次确认 我们可以看到目标地点 而且是未选中的状态
                     logger.info("经过对比中心区域, 确认没有抵达.")
@@ -1793,9 +1834,39 @@ def Factory():
                                     shouldRecover = False
                                     break
                     ########### OPEN MAP
-                    Sleep(1)
-                    Press([777,150])
-                    dungState = DungeonState.Map
+                    # Resume优化: 检查Resume按钮决定下一步动作
+                    if setting._ENABLE_RESUME_OPTIMIZATION:
+                        Sleep(1)
+                        screen = ScreenShot()
+                        resume_pos = CheckIf(screen, 'resume', threshold=0.95)
+                        
+                        if resume_pos:
+                            # Resume存在，点击Resume
+                            logger.info(f"Resume优化: 检测到Resume按钮，点击继续 位置:{resume_pos}")
+                            Press(resume_pos)
+                            Sleep(1)  # 等待 routenotfound 可能出现
+                            
+                            # 检查 routenotfound 是否出现
+                            screen_after = ScreenShot()
+                            if CheckIf(screen_after, 'routenotfound'):
+                                # routenotfound 出现 = 已到达目的地
+                                logger.info("Resume优化: 检测到routenotfound，已到达目的地，打开地图")
+                                Sleep(1)  # routenotfound 会自动消失，稍等一下
+                                Press([777,150])  # 打开地图
+                                dungState = DungeonState.Map
+                            else:
+                                # 没有 routenotfound = 还在路上，继续移动
+                                logger.info("Resume优化: 未检测到routenotfound，继续移动监控")
+                                dungState = StateMoving_CheckFrozen()
+                        else:
+                            # 没有Resume，打开地图
+                            logger.info("Resume优化: 未检测到Resume按钮，打开地图")
+                            Press([777,150])
+                            dungState = DungeonState.Map
+                    else:
+                        Sleep(1)
+                        Press([777,150])
+                        dungState = DungeonState.Map
                 case DungeonState.Map:
                     if runtimeContext._SHOULDAPPLYSPELLSEQUENCE: # 默认值(第一次)和重启后应当直接应用序列
                         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = False
