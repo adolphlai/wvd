@@ -95,6 +95,7 @@ class RuntimeContext:
     _ZOOMWORLDMAP = False
     _CRASHCOUNTER = 0
     _IMPORTANTINFO = ""
+    _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -1523,15 +1524,15 @@ def Factory():
     def StateMoving_CheckFrozen():
         lastscreen = None
         dungState = None
-        resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
-        MAX_RESUME_RETRIES = 5  # Resume最大连续点击次数，超过后重新打开地图
+        frozen_count = 0  # 画面静止计数（不管有没有Resume）
+        MAX_FROZEN_COUNT = 3  # 最大静止次数，超过后触发回家逻辑
         logger.info("面具男, 移动.")
         while 1:
             Sleep(3)
-            _, dungState,screen = IdentifyState()
+            _, dungState, screen = IdentifyState()
             if dungState == DungeonState.Map:
                 logger.info(f"开始移动失败. 不要停下来啊面具男!")
-                FindCoordsOrElseExecuteFallbackAndWait("dungFlag",[[280,1433],[1,1]],1)
+                FindCoordsOrElseExecuteFallbackAndWait("dungFlag", [[280, 1433], [1, 1]], 1)
                 dungState = dungState.Dungeon
                 break
             if dungState != DungeonState.Dungeon:
@@ -1540,44 +1541,51 @@ def Factory():
             if lastscreen is not None:
                 gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
                 gray2 = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
-                mean_diff = cv2.absdiff(gray1, gray2).mean()/255
+                mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
                 logger.debug(f"移动停止检查:{mean_diff:.2f}")
                 if mean_diff < 0.1:
-                    # 画面静止，检查Resume按钮（如果启用了Resume优化）
+                    # 画面静止
+                    frozen_count += 1
+                    logger.info(f"画面静止（第 {frozen_count} 次）")
+                    
                     if setting._ENABLE_RESUME_OPTIMIZATION:
-                        resume_pos = CheckIf(screen, 'resume', threshold=0.95)
-                        
+                        # 尝试点击Resume（如果存在）
+                        resume_pos = CheckIf(screen, 'resume')
                         if resume_pos:
-                            # Resume按钮存在 = 移动被打断但未到达
-                            resume_consecutive_count += 1
-                            
-                            if resume_consecutive_count <= MAX_RESUME_RETRIES:
-                                # 继续点击Resume
-                                logger.info(f"检测到Resume按钮（画面静止），点击继续移动（第 {resume_consecutive_count} 次）位置:{resume_pos}")
-                                Press(resume_pos)
-                                Sleep(1)
-                                lastscreen = None  # 重置lastscreen以重新开始检测
-                                continue  # 继续循环，不退出
-                            else:
-                                # Resume点击多次仍然静止 = 可能卡住，需要重新打开地图
-                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，可能卡住，返回重新打开地图")
-                                dungState = None
-                                break
-                        else:
-                            # Resume按钮不存在 = 已到达目标
-                            logger.info("已退出移动状态（画面静止且Resume按钮消失）.进行状态检查...")
-                            dungState = None
+                            logger.info(f"检测到Resume按钮，点击继续移动 位置:{resume_pos}")
+                            Press(resume_pos)
+                            Sleep(1)
+                        
+                        # 检查是否达到最大静止次数
+                        if frozen_count >= MAX_FROZEN_COUNT:
+                            # 静止3次，触发回家逻辑
+                            logger.warning(f"画面静止{MAX_FROZEN_COUNT}次，开始持续点击gohome回城")
+                            while True:
+                                _, current_state, _ = IdentifyState()
+                                if current_state == DungeonState.Quit:
+                                    logger.info("已回到城内")
+                                    dungState = DungeonState.Quit
+                                    break
+                                
+                                gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                                if gohome_pos:
+                                    logger.info(f"点击gohome: {gohome_pos}")
+                                    Press(gohome_pos)
+                                Sleep(2)
                             break
+                        
+                        lastscreen = None  # 重置lastscreen以重新开始检测
+                        continue
                     else:
                         # 未启用Resume优化，使用原始逻辑
                         dungState = None
                         logger.info("已退出移动状态.进行状态检查...")
                         break
                 else:
-                    # 画面在移动，重置连续计数器
-                    if resume_consecutive_count > 0:
-                        logger.debug(f"画面恢复移动，重置Resume计数器（之前: {resume_consecutive_count}）")
-                        resume_consecutive_count = 0
+                    # 画面在移动，重置静止计数器
+                    if frozen_count > 0:
+                        logger.debug(f"画面恢复移动，重置静止计数器（之前: {frozen_count}）")
+                        frozen_count = 0
             lastscreen = screen
         return dungState
     def StateSearch(waitTimer, targetInfoList : list[TargetInfo]):
@@ -1834,11 +1842,18 @@ def Factory():
                                     shouldRecover = False
                                     break
                     ########### OPEN MAP
-                    # Resume优化: 检查Resume按钮决定下一步动作
-                    if setting._ENABLE_RESUME_OPTIMIZATION:
+                    # 第一次进入地城时，无条件打开地图（不检查能见度）
+                    if runtimeContext._FIRST_DUNGEON_ENTRY:
+                        logger.info("第一次进入地城，打开地图")
+                        Sleep(1)
+                        Press([777,150])
+                        dungState = DungeonState.Map
+                        runtimeContext._FIRST_DUNGEON_ENTRY = False  # 标记为已进入过
+                    # Resume优化: 非第一次进入，检查Resume按钮决定下一步动作
+                    elif setting._ENABLE_RESUME_OPTIMIZATION:
                         Sleep(1)
                         screen = ScreenShot()
-                        resume_pos = CheckIf(screen, 'resume', threshold=0.95)
+                        resume_pos = CheckIf(screen, 'resume')
                         
                         if resume_pos:
                             # Resume存在，点击Resume
@@ -1853,7 +1868,23 @@ def Factory():
                                 logger.info("Resume优化: 检测到routenotfound，已到达目的地，打开地图")
                                 Sleep(1)  # routenotfound 会自动消失，稍等一下
                                 Press([777,150])  # 打开地图
-                                dungState = DungeonState.Map
+                                Sleep(1)
+                                # 检查能见度
+                                if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                    logger.warning("能见度太差，开始持续点击gohome回城")
+                                    while True:
+                                        _, current_state, _ = IdentifyState()
+                                        if current_state == DungeonState.Quit:
+                                            logger.info("已回到城内")
+                                            dungState = DungeonState.Quit
+                                            break
+                                        gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                                        if gohome_pos:
+                                            logger.info(f"点击gohome: {gohome_pos}")
+                                            Press(gohome_pos)
+                                        Sleep(2)
+                                else:
+                                    dungState = DungeonState.Map
                             else:
                                 # 没有 routenotfound = 还在路上，继续移动
                                 logger.info("Resume优化: 未检测到routenotfound，继续移动监控")
@@ -1862,11 +1893,43 @@ def Factory():
                             # 没有Resume，打开地图
                             logger.info("Resume优化: 未检测到Resume按钮，打开地图")
                             Press([777,150])
-                            dungState = DungeonState.Map
+                            Sleep(1)
+                            # 检查能见度
+                            if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                logger.warning("能见度太差，开始持续点击gohome回城")
+                                while True:
+                                    _, current_state, _ = IdentifyState()
+                                    if current_state == DungeonState.Quit:
+                                        logger.info("已回到城内")
+                                        dungState = DungeonState.Quit
+                                        break
+                                    gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                                    if gohome_pos:
+                                        logger.info(f"点击gohome: {gohome_pos}")
+                                        Press(gohome_pos)
+                                    Sleep(2)
+                            else:
+                                dungState = DungeonState.Map
                     else:
                         Sleep(1)
                         Press([777,150])
-                        dungState = DungeonState.Map
+                        Sleep(1)
+                        # 检查能见度
+                        if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                            logger.warning("能见度太差，开始持续点击gohome回城")
+                            while True:
+                                _, current_state, _ = IdentifyState()
+                                if current_state == DungeonState.Quit:
+                                    logger.info("已回到城内")
+                                    dungState = DungeonState.Quit
+                                    break
+                                gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                                if gohome_pos:
+                                    logger.info(f"点击gohome: {gohome_pos}")
+                                    Press(gohome_pos)
+                                Sleep(2)
+                        else:
+                            dungState = DungeonState.Map
                 case DungeonState.Map:
                     if runtimeContext._SHOULDAPPLYSPELLSEQUENCE: # 默认值(第一次)和重启后应当直接应用序列
                         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = False
@@ -1973,6 +2036,7 @@ def Factory():
                         )
                     state = State.Dungeon
                 case State.Dungeon:
+                    runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     RestartableSequenceExecution(
                         lambda: StateDungeon(targetInfoList)
