@@ -1524,8 +1524,8 @@ def Factory():
     def StateMoving_CheckFrozen():
         lastscreen = None
         dungState = None
-        frozen_count = 0  # 画面静止计数（不管有没有Resume）
-        MAX_FROZEN_COUNT = 3  # 最大静止次数，超过后触发回家逻辑
+        resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
+        MAX_RESUME_RETRIES = 5  # Resume最大连续点击次数
         logger.info("面具男, 移动.")
         while 1:
             Sleep(3)
@@ -1544,48 +1544,41 @@ def Factory():
                 mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
                 logger.debug(f"移动停止检查:{mean_diff:.2f}")
                 if mean_diff < 0.1:
-                    # 画面静止
-                    frozen_count += 1
-                    logger.info(f"画面静止（第 {frozen_count} 次）")
-                    
+                    # 画面静止，检查Resume按钮（如果启用了Resume优化）
                     if setting._ENABLE_RESUME_OPTIMIZATION:
-                        # 尝试点击Resume（如果存在）
                         resume_pos = CheckIf(screen, 'resume')
+                        
                         if resume_pos:
-                            logger.info(f"检测到Resume按钮，点击继续移动 位置:{resume_pos}")
-                            Press(resume_pos)
-                            Sleep(1)
-                        
-                        # 检查是否达到最大静止次数
-                        if frozen_count >= MAX_FROZEN_COUNT:
-                            # 静止3次，触发回家逻辑
-                            logger.warning(f"画面静止{MAX_FROZEN_COUNT}次，开始持续点击gohome回城")
-                            while True:
-                                _, current_state, _ = IdentifyState()
-                                if current_state == DungeonState.Quit:
-                                    logger.info("已回到城内")
-                                    dungState = DungeonState.Quit
-                                    break
-                                
-                                gohome_pos = CheckIf(ScreenShot(), 'gohome')
-                                if gohome_pos:
-                                    logger.info(f"点击gohome: {gohome_pos}")
-                                    Press(gohome_pos)
-                                Sleep(2)
+                            # Resume按钮存在 = 移动被打断但未到达
+                            resume_consecutive_count += 1
+                            
+                            if resume_consecutive_count <= MAX_RESUME_RETRIES:
+                                # 继续点击Resume
+                                logger.info(f"检测到Resume按钮（画面静止），点击继续移动（第 {resume_consecutive_count} 次）位置:{resume_pos}")
+                                Press(resume_pos)
+                                Sleep(1)
+                                lastscreen = None  # 重置lastscreen以重新开始检测
+                                continue  # 继续循环，不退出
+                            else:
+                                # Resume点击多次仍然静止 = 可能卡住，返回重新打开地图
+                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，可能卡住，返回重新打开地图")
+                                dungState = None
+                                break
+                        else:
+                            # Resume按钮不存在 = 已到达目标
+                            logger.info("已退出移动状态（画面静止且Resume按钮消失）.进行状态检查...")
+                            dungState = None
                             break
-                        
-                        lastscreen = None  # 重置lastscreen以重新开始检测
-                        continue
                     else:
                         # 未启用Resume优化，使用原始逻辑
                         dungState = None
                         logger.info("已退出移动状态.进行状态检查...")
                         break
                 else:
-                    # 画面在移动，重置静止计数器
-                    if frozen_count > 0:
-                        logger.debug(f"画面恢复移动，重置静止计数器（之前: {frozen_count}）")
-                        frozen_count = 0
+                    # 画面在移动，重置连续计数器
+                    if resume_consecutive_count > 0:
+                        logger.debug(f"画面恢复移动，重置Resume计数器（之前: {resume_consecutive_count}）")
+                        resume_consecutive_count = 0
             lastscreen = screen
         return dungState
     def StateSearch(waitTimer, targetInfoList : list[TargetInfo]):
@@ -1871,12 +1864,20 @@ def Factory():
                                 Sleep(1)
                                 # 检查能见度
                                 if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                    logger.warning("能见度太差，开始持续点击gohome回城")
+                                    logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                                     while True:
                                         _, current_state, _ = IdentifyState()
                                         if current_state == DungeonState.Quit:
                                             logger.info("已回到城内")
                                             dungState = DungeonState.Quit
+                                            break
+                                        elif current_state == DungeonState.Combat:
+                                            logger.info("回城途中遇到战斗")
+                                            dungState = DungeonState.Combat
+                                            break
+                                        elif current_state == DungeonState.Chest:
+                                            logger.info("回城途中遇到宝箱")
+                                            dungState = DungeonState.Chest
                                             break
                                         gohome_pos = CheckIf(ScreenShot(), 'gohome')
                                         if gohome_pos:
@@ -1896,12 +1897,20 @@ def Factory():
                             Sleep(1)
                             # 检查能见度
                             if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                logger.warning("能见度太差，开始持续点击gohome回城")
+                                logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                                 while True:
                                     _, current_state, _ = IdentifyState()
                                     if current_state == DungeonState.Quit:
                                         logger.info("已回到城内")
                                         dungState = DungeonState.Quit
+                                        break
+                                    elif current_state == DungeonState.Combat:
+                                        logger.info("回城途中遇到战斗")
+                                        dungState = DungeonState.Combat
+                                        break
+                                    elif current_state == DungeonState.Chest:
+                                        logger.info("回城途中遇到宝箱")
+                                        dungState = DungeonState.Chest
                                         break
                                     gohome_pos = CheckIf(ScreenShot(), 'gohome')
                                     if gohome_pos:
@@ -1916,12 +1925,20 @@ def Factory():
                         Sleep(1)
                         # 检查能见度
                         if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                            logger.warning("能见度太差，开始持续点击gohome回城")
+                            logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                             while True:
                                 _, current_state, _ = IdentifyState()
                                 if current_state == DungeonState.Quit:
                                     logger.info("已回到城内")
                                     dungState = DungeonState.Quit
+                                    break
+                                elif current_state == DungeonState.Combat:
+                                    logger.info("回城途中遇到战斗")
+                                    dungState = DungeonState.Combat
+                                    break
+                                elif current_state == DungeonState.Chest:
+                                    logger.info("回城途中遇到宝箱")
+                                    dungState = DungeonState.Chest
                                     break
                                 gohome_pos = CheckIf(ScreenShot(), 'gohome')
                                 if gohome_pos:
