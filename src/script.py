@@ -1508,8 +1508,9 @@ def Factory():
             # 如果没找到技能，继续正常流程
 
         if (setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE):
-            Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]]))
-            Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
+            # 只點擊一次，避免兩個都匹配時連續點擊導致開啟後又關閉
+            if not Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]])):
+                Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
             Sleep(5)
             return
 
