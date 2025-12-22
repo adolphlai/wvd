@@ -1583,7 +1583,7 @@ def Factory():
         lastscreen = None
         dungState = None
         resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
-        MAX_RESUME_RETRIES = 5  # Resume最大连续点击次数
+        MAX_RESUME_RETRIES = 3  # Resume最大连续点击次数
         logger.info("面具男, 移动.")
         while 1:
             Sleep(3)
@@ -1630,9 +1630,10 @@ def Factory():
                                 lastscreen = None  # 重置lastscreen以重新开始检测
                                 continue  # 继续循环，不退出
                             else:
-                                # Resume点击多次仍然静止 = 可能卡住，返回重新打开地图
-                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，可能卡住，返回重新打开地图")
-                                dungState = None
+                                # Resume点击多次仍然静止 = 可能卡住，执行回城
+                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，执行回城")
+                                runtimeContext._GOHOME_IN_PROGRESS = True
+                                dungState = DungeonState.Dungeon
                                 break
                         else:
                             # Resume按钮不存在 = 已到达目标
@@ -1909,9 +1910,12 @@ def Factory():
                     # 如果正在回城中（被战斗/宝箱打断后），继续回城
                     if runtimeContext._GOHOME_IN_PROGRESS:
                         logger.info("继续回城（之前被战斗/宝箱打断）")
+                        gohome_click_count = 0
+                        MAX_GOHOME_CLICKS = 10
                         while True:
-                            _, current_state, _ = IdentifyState()
-                            if current_state == DungeonState.Quit:
+                            main_state, current_state, _ = IdentifyState()
+                            # 检查是否已回到城内（Inn）
+                            if main_state == State.Inn:
                                 logger.info("已回到城内")
                                 dungState = DungeonState.Quit
                                 runtimeContext._GOHOME_IN_PROGRESS = False
@@ -1928,10 +1932,20 @@ def Factory():
                             if gohome_pos:
                                 logger.info(f"点击gohome: {gohome_pos}")
                                 Press(gohome_pos)
+                                gohome_click_count += 1
+                                if gohome_click_count >= MAX_GOHOME_CLICKS:
+                                    logger.warning(f"gohome点击{MAX_GOHOME_CLICKS}次仍未回到城内，放弃回城")
+                                    runtimeContext._GOHOME_IN_PROGRESS = False
+                                    break
                             else:
                                 # 如果找不到gohome，尝试打开地图
                                 logger.info("未找到gohome按钮，尝试打开地图")
                                 Press([777,150])
+                                gohome_click_count += 1
+                                if gohome_click_count >= MAX_GOHOME_CLICKS:
+                                    logger.warning(f"尝试{MAX_GOHOME_CLICKS}次仍未找到gohome，放弃回城")
+                                    runtimeContext._GOHOME_IN_PROGRESS = False
+                                    break
                             Sleep(2)
                     ########### 防止转圈 (from upstream 1.9.27)
                     if not runtimeContext._STEPAFTERRESTART:
