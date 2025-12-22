@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('550x728')
+        self.geometry('600x550')  # 适中的窗口大小
         
         self.title(self.TITLE)
 
@@ -102,6 +102,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.karma_adjust_var.set(config['_KARMAADJUST'])
 
     def create_widgets(self):
+        # === 日志显示区域（右侧）===
         scrolled_text_formatter = logging.Formatter('%(message)s')
         self.log_display = scrolledtext.ScrolledText(self, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff',bd=2,relief=tk.FLAT, width = 34, height = 30)
         self.log_display.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -109,7 +110,6 @@ class ConfigPanelApp(tk.Toplevel):
         self.scrolled_text_handler.setLevel(logging.INFO)
         self.scrolled_text_handler.setFormatter(scrolled_text_formatter)
         logger.addHandler(self.scrolled_text_handler)
-
 
         self.summary_log_display = scrolledtext.ScrolledText(self, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4",bd=2, width = 34, )
         self.summary_log_display.grid(row=1, column=1, pady=5)
@@ -126,283 +126,54 @@ class ConfigPanelApp(tk.Toplevel):
         self.summary_text_handler.emit = new_emit
         logger.addHandler(self.summary_text_handler)
 
+        # === 主框架（左侧）===
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        #设定adb
-        row_counter = 0
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)  # 首行框架
-        self.adb_status_label = ttk.Label(frame_row)
-        self.adb_status_label.grid(row=0, column=0,)
-        # 隐藏的Entry用于存储变量
-        adb_entry = ttk.Entry(frame_row, textvariable=self.emu_path_var)
-        adb_entry.grid_remove()
-        def selectADB_PATH():
-            path = filedialog.askopenfilename(
-                title="选择ADB执行文件",
-                filetypes=[("Executable", "*.exe"), ("All files", "*.*")]
-            )
-            if path:
-                self.emu_path_var.set(path)
-                self.save_config()
-        # 浏览按钮
-        self.adb_path_change_button = ttk.Button(
-            frame_row,
-            text="修改",
-            command=selectADB_PATH,
-            width = 5,
-        )
-        self.adb_path_change_button.grid(row=0,column=1)
-        # 初始化标签状态
-        def update_adb_status(*args):
-            if self.emu_path_var.get():
-                self.adb_status_label.config(text="已设置模拟器", foreground="green")
-            else:
-                self.adb_status_label.config(text="未设置模拟器", foreground="red")
-        
-        self.emu_path_var.trace_add("write", lambda *args: update_adb_status())
-        update_adb_status()  # 初始调用
-        ttk.Label(frame_row, text="端口:").grid(row=0, column=2, sticky=tk.W, pady=5)
+        # === 分页控件 ===
+        self.notebook = ttk.Notebook(self.main_frame)
+        self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+        # 创建四个分页
+        self.tab_general = ttk.Frame(self.notebook, padding=10)
+        self.tab_battle = ttk.Frame(self.notebook, padding=10)
+        self.tab_skills = ttk.Frame(self.notebook, padding=10)
+        self.tab_advanced = ttk.Frame(self.notebook, padding=10)
+
+        self.notebook.add(self.tab_general, text="一般設定")
+        self.notebook.add(self.tab_battle, text="戰鬥設定")
+        self.notebook.add(self.tab_skills, text="技能設定")
+        self.notebook.add(self.tab_advanced, text="進階設定")
+
+        # 验证命令（数字输入）
         vcmd_non_neg = self.register(lambda x: ((x=="")or(x.isdigit())))
-        self.adb_port_entry = ttk.Entry(frame_row,
-                                        textvariable=self.adb_port_var,
-                                        validate="key",
-                                        validatecommand=(vcmd_non_neg, '%P'),
-                                        width=5)
-        self.adb_port_entry.grid(row=0, column=3)
-        self.button_save_adb_port = ttk.Button(
-            frame_row,
-            text="保存",
-            command = self.save_config,
-            width=5
-            )
-        self.button_save_adb_port.grid(row=0, column=4)
 
-        # 分割线.
-        row_counter += 1
-        ttk.Separator(self.main_frame, orient='horizontal').grid(row=row_counter, column=0, columnspan=3, sticky='ew', pady=10)
-
-        # 地下城目标
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)  # 第二行框架
-        ttk.Label(frame_row, text="地下城目标:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.farm_target_combo = ttk.Combobox(frame_row, textvariable=self.farm_target_text_var, values=list(DUNGEON_TARGETS.keys()), state="readonly")
-        self.farm_target_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5)
-        self.farm_target_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
-
-        # 开箱人选设置
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
-        ttk.Label(frame_row, text="开箱人选:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.open_chest_mapping = {
-            0:"随机",
-            1:"左上",
-            2:"中上",
-            3:"右上",
-            4:"左下",
-            5:"中下",
-            6:"右下",
-        }
-        self.who_will_open_text_var = tk.StringVar(value=self.open_chest_mapping[self.who_will_open_it_var.get()])
-        self.who_will_open_combobox = ttk.Combobox(
-            frame_row,
-            textvariable=self.who_will_open_text_var,  # 绑定变量
-            values=list(self.open_chest_mapping.values()),  # 使用中文选项
-            state="readonly",  # 设置为只读（只能选择）
-            width=4
-        )
-        self.who_will_open_combobox.grid(row=0, column=1, sticky=tk.W, pady=5)
-        def handle_open_chest_selection(event = None):
-            open_chest_reverse_mapping = {v: k for k, v in self.open_chest_mapping.items()}
-            self.who_will_open_it_var.set(open_chest_reverse_mapping[self.who_will_open_text_var.get()])
-            self.save_config()
-        self.who_will_open_combobox.bind("<<ComboboxSelected>>", handle_open_chest_selection)
-
-        # 跳过恢复
-        row_counter += 1
-        row_recover = tk.Frame(self.main_frame)
-        row_recover.grid(row = row_counter,column=0, columnspan=2, sticky=tk.W, pady=5)
-        self.skip_recover_check = ttk.Checkbutton(
-            row_recover,
-            text="跳过战后恢复",
-            variable=self.skip_recover_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.skip_recover_check.grid(row=0, column=0)
-        self.skip_chest_recover_check = ttk.Checkbutton(
-            row_recover,
-            text="跳过开箱后恢复",
-            variable=self.skip_chest_recover_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.skip_chest_recover_check.grid(row=0, column=1)
-
-        # Resume 按钮优化
-        row_counter += 1
-        self.enable_resume_optimization_check = ttk.Checkbutton(
-            self.main_frame,
-            text="启用Resume按钮优化(减少地图操作)",
-            variable=self.enable_resume_optimization_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.enable_resume_optimization_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
-
-        # 重启/返回后强制使用强力单体技能（分开两个选项）
-        row_counter += 1
-        frame_force_physical = tk.Frame(self.main_frame)
-        frame_force_physical.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
-        self.force_physical_first_combat_check = ttk.Checkbutton(
-            frame_force_physical,
-            text="重启后首战使用强力技能",
-            variable=self.force_physical_first_combat_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_physical_first_combat_check.grid(row=0, column=0)
-        self.force_physical_after_inn_check = ttk.Checkbutton(
-            frame_force_physical,
-            text="返回后首战使用强力技能",
-            variable=self.force_physical_after_inn_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_physical_after_inn_check.grid(row=0, column=1)
-
-        # 休息设置
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
-
+        # checkcommand 用于多个地方
         def checkcommand():
             self.update_active_rest_state()
             self.save_config()
-        self.active_rest_check = ttk.Checkbutton(
-            frame_row,
-            variable=self.active_rest_var,
-            text="启用旅店休息",
-            command=checkcommand,
-            style="Custom.TCheckbutton"
-            )
-        self.active_rest_check.grid(row=0, column=0)
-        ttk.Label(frame_row, text=" | 间隔:").grid(row=0, column=1, sticky=tk.W, pady=5)
-        self.rest_intervel_entry = ttk.Entry(frame_row,
-                                             textvariable=self.rest_intervel_var,
-                                             validate="key",
-                                             validatecommand=(vcmd_non_neg, '%P'),
-                                             width=5)
-        self.rest_intervel_entry.grid(row=0, column=2)
-        self.button_save_rest_intervel = ttk.Button(
-            frame_row,
-            text="保存",
-            command = self.save_config,
-            width=4
-            )
-        self.button_save_rest_intervel.grid(row=0, column=3)
 
-        # 善恶设置
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
-        ttk.Label(frame_row, text=f"善恶:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.karma_adjust_mapping = {
-            "维持现状": "+0",
-            "恶→中立,中立→善": "+17",
-            "善→中立,中立→恶": "-17",
-            }
-        times = int(self.karma_adjust_var.get())
-        if times == 0:
-            self.karma_adjust_text_var = tk.StringVar(value = "维持现状")
-        elif times > 0:
-            self.karma_adjust_text_var = tk.StringVar(value = "恶→中立,中立→善")
-        elif times < 0:
-            self.karma_adjust_text_var = tk.StringVar(value = "善→中立,中立→恶")
-        self.karma_adjust_combobox = ttk.Combobox(
-            frame_row,
-            textvariable=self.karma_adjust_text_var,  # 绑定变量
-            values=list(self.karma_adjust_mapping.keys()),  # 使用中文选项
-            state="readonly",  # 设置为只读（只能选择）
-            width=14
-        )
-        self.karma_adjust_combobox.grid(row=0, column=1, sticky=tk.W, pady=5)
-        def handle_karma_adjust_selection(event = None):
-            karma_adjust_left = int(self.karma_adjust_var.get())
-            karma_adjust_want = int(self.karma_adjust_mapping[self.karma_adjust_text_var.get()])
-            if (karma_adjust_left == 0 and karma_adjust_want == 0) or (karma_adjust_left*karma_adjust_want > 0):
-                return
-            self.karma_adjust_var.set(self.karma_adjust_mapping[self.karma_adjust_text_var.get()])
-            self.save_config()
-        self.karma_adjust_combobox.bind("<<ComboboxSelected>>", handle_karma_adjust_selection)
-        ttk.Label(frame_row, text="还需").grid(row=0, column=2, sticky=tk.W, pady=5)
-        ttk.Label(frame_row, textvariable=self.karma_adjust_var).grid(row=0, column=3, sticky=tk.W, pady=5)
-        ttk.Label(frame_row, text="点").grid(row=0, column=4, sticky=tk.W, pady=5)
+        # =============================================
+        # Tab 1: 一般设定
+        # =============================================
+        self._create_general_tab(vcmd_non_neg)
 
-        # 分割线
-        row_counter += 1
-        ttk.Separator(self.main_frame, orient='horizontal').grid(row=row_counter, column=0, columnspan=3, sticky='ew', pady=10)
+        # =============================================
+        # Tab 2: 战斗设定
+        # =============================================
+        self._create_battle_tab()
 
-        # 系统自动战斗
-        row_counter += 1
-        self.system_auto_check = ttk.Checkbutton(
-            self.main_frame,
-            text="启用自动战斗",
-            variable=self.system_auto_combat_var,
-            command=self.update_system_auto_combat,
-            style="LargeFont.TCheckbutton"
-        )
-        self.system_auto_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
+        # =============================================
+        # Tab 3: 技能设定
+        # =============================================
+        self._create_skills_tab()
 
-        #仅释放一次aoe
-        def aoe_once_command():
-            if self.aoe_once_var.get():
-                if self.btn_enable_full_aoe_var.get() != True:
-                    self.btn_enable_full_aoe.invoke()
-                if self.btn_enable_secret_aoe_var.get() != True:
-                    self.btn_enable_secret_aoe.invoke()
-            self.update_change_aoe_once_check()
-            self.save_config()
-        row_counter += 1
-        self.aoe_once_check = ttk.Checkbutton(
-            self.main_frame,
-            text="一场战斗中仅释放一次全体AOE",
-            variable=self.aoe_once_var,
-            command= aoe_once_command,
-            style="BoldFont.TCheckbutton"
-        )
-        self.aoe_once_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
+        # =============================================
+        # Tab 4: 进阶设定
+        # =============================================
+        self._create_advanced_tab(vcmd_non_neg, checkcommand)
 
-        #任何aoe后自动战斗
-        row_counter += 1
-        self.auto_after_aoe_check = ttk.Checkbutton(
-            self.main_frame,
-            text="全体AOE后开启自动战斗",
-            variable=self.auto_after_aoe_var,
-            command= self.save_config,
-            style="BoldFont.TCheckbutton"
-        )
-        self.auto_after_aoe_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
-
-        # 技能按钮框架
-        row_counter += 1
-        self.skills_button_frame = ttk.Frame(self.main_frame)
-        self.skills_button_frame.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W)
-        for buttonName,buttonText,buttonSpell, row, col in SPELLSEKILL_TABLE:
-            setattr(self,buttonName,ttk.Checkbutton(
-                self.skills_button_frame,
-                text=f"启用{buttonText}",
-                variable= getattr(self,f"{buttonName}_var"),
-                command=lambda spell=buttonSpell, btnN = buttonName,btnT = buttonText:self.update_spell_config(spell,btnN,btnT),
-                style="Custom.TCheckbutton"
-                )
-                )
-            getattr(self, buttonName).grid(row=row,column=col,padx=2, pady=2)
-        
-        # 分割线
+        # === 启动/停止按钮区域 ===
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -432,62 +203,20 @@ class ConfigPanelApp(tk.Toplevel):
             self.toggle_start_stop()
         self.start_stop_btn = ttk.Button(
             button_frame,
-            text="脚本, 启动!",
+            text="腳本, 啟動!",
             command=btn_command,
             style='start.TButton',
         )
         self.start_stop_btn.grid(row=0, column=1, sticky='nsew', padx=5, pady= 26)
 
-        # 分割线
-        row_counter += 1
-        self.advance_sep = ttk.Separator(self.main_frame, orient='horizontal')
-        self.advance_sep.grid(row=row_counter, column=0, columnspan=3, sticky='ew', pady=10)
-
-        # 高级选项
-        row_counter += 1
-        frame_advanced = ttk.Frame(self.main_frame)
-        frame_advanced.grid(row=row_counter, column=0, sticky="ew", pady=5)
-        self.active_royalsuite_rest = ttk.Checkbutton(
-            frame_advanced,
-            variable=self.active_royalsuite_rest_var,
-            text="住豪华房",
-            command=checkcommand,
-            style="Custom.TCheckbutton"
-            )
-        self.active_royalsuite_rest.grid(row=0, column=0)
-        self.active_csc = ttk.Checkbutton(
-            frame_advanced,
-            variable=self.active_csc_var,
-            text="尝试调整因果",
-            command=checkcommand,
-            style="Custom.TCheckbutton"
-            )
-        self.active_csc.grid(row=0, column=1)
-
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
-        self.active_triumph = ttk.Checkbutton(
-            frame_row,
-            variable=self.active_triumph_var,
-            text="跳跃到\"凯旋\"(需要解锁凯旋)",
-            command=checkcommand,
-            style="Custom.TCheckbutton"
-            )
-        self.active_triumph.grid(row=0, column=0)
-
-
-        # 分割线
-        row_counter += 1
+        # === 更新提示区域（默认隐藏）===
         self.update_sep = ttk.Separator(self.main_frame, orient='horizontal')
-        self.update_sep.grid(row=row_counter, column=0, columnspan=3, sticky='ew', pady=10)
+        self.update_sep.grid(row=1, column=0, columnspan=3, sticky='ew', pady=10)
 
-        #更新按钮
-        row_counter += 1
         frame_row_update = tk.Frame(self.main_frame)
-        frame_row_update.grid(row=row_counter, column=0, sticky=tk.W)
+        frame_row_update.grid(row=2, column=0, sticky=tk.W)
 
-        self.find_update = ttk.Label(frame_row_update, text="发现新版本:",foreground="red")
+        self.find_update = ttk.Label(frame_row_update, text="發現新版本:",foreground="red")
         self.find_update.grid(row=0, column=0, sticky=tk.W)
 
         self.update_text = ttk.Label(frame_row_update, textvariable=self.latest_version,foreground="red")
@@ -495,7 +224,7 @@ class ConfigPanelApp(tk.Toplevel):
 
         self.button_auto_download = ttk.Button(
             frame_row_update,
-            text="自动下载",
+            text="自動下載",
             width=7
             )
         self.button_auto_download.grid(row=0, column=2, sticky=tk.W, padx= 5)
@@ -510,7 +239,7 @@ class ConfigPanelApp(tk.Toplevel):
                 os.system(f"xdg-open {url}")
         self.button_manual_download = ttk.Button(
             frame_row_update,
-            text="手动下载最新版",
+            text="手動下載最新版",
             command=open_url,
             width=7
             )
@@ -521,6 +250,284 @@ class ConfigPanelApp(tk.Toplevel):
         self.update_text.grid_remove()
         self.button_auto_download.grid_remove()
         self.button_manual_download.grid_remove()
+
+    def _create_general_tab(self, vcmd_non_neg):
+        """一般設定分頁：模擬器連接、地下城目標、開箱人選"""
+        tab = self.tab_general
+        row = 0
+
+        # --- 模擬器連接 ---
+        frame_adb = ttk.LabelFrame(tab, text="模擬器連接", padding=5)
+        frame_adb.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.adb_status_label = ttk.Label(frame_adb)
+        self.adb_status_label.grid(row=0, column=0, padx=5)
+
+        # 隐藏的Entry用于存储变量
+        adb_entry = ttk.Entry(frame_adb, textvariable=self.emu_path_var)
+        adb_entry.grid_remove()
+
+        def selectADB_PATH():
+            path = filedialog.askopenfilename(
+                title="選擇ADB執行檔",
+                filetypes=[("Executable", "*.exe"), ("All files", "*.*")]
+            )
+            if path:
+                self.emu_path_var.set(path)
+                self.save_config()
+
+        self.adb_path_change_button = ttk.Button(frame_adb, text="修改", command=selectADB_PATH, width=5)
+        self.adb_path_change_button.grid(row=0, column=1, padx=2)
+
+        def update_adb_status(*args):
+            if self.emu_path_var.get():
+                self.adb_status_label.config(text="已設置模擬器", foreground="green")
+            else:
+                self.adb_status_label.config(text="未設置模擬器", foreground="red")
+
+        self.emu_path_var.trace_add("write", lambda *args: update_adb_status())
+        update_adb_status()
+
+        ttk.Label(frame_adb, text="端口:").grid(row=0, column=2, padx=(10, 2))
+        self.adb_port_entry = ttk.Entry(frame_adb, textvariable=self.adb_port_var, validate="key",
+                                        validatecommand=(vcmd_non_neg, '%P'), width=6)
+        self.adb_port_entry.grid(row=0, column=3)
+        self.button_save_adb_port = ttk.Button(frame_adb, text="儲存", command=self.save_config, width=5)
+        self.button_save_adb_port.grid(row=0, column=4, padx=2)
+
+        # --- 地下城目標 ---
+        row += 1
+        frame_target = ttk.LabelFrame(tab, text="地下城目標", padding=5)
+        frame_target.grid(row=row, column=0, sticky="ew", pady=5)
+
+        ttk.Label(frame_target, text="目標:").grid(row=0, column=0, padx=5)
+        self.farm_target_combo = ttk.Combobox(frame_target, textvariable=self.farm_target_text_var,
+                                              values=list(DUNGEON_TARGETS.keys()), state="readonly", width=28)
+        self.farm_target_combo.grid(row=0, column=1, sticky="ew", padx=5)
+        self.farm_target_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        # --- 開箱人選 ---
+        row += 1
+        frame_chest = ttk.LabelFrame(tab, text="開箱設定", padding=5)
+        frame_chest.grid(row=row, column=0, sticky="ew", pady=5)
+
+        ttk.Label(frame_chest, text="開箱人選:").grid(row=0, column=0, padx=5)
+        self.open_chest_mapping = {
+            0:"隨機", 1:"左上", 2:"中上", 3:"右上",
+            4:"左下", 5:"中下", 6:"右下",
+        }
+        self.who_will_open_text_var = tk.StringVar(value=self.open_chest_mapping[self.who_will_open_it_var.get()])
+        self.who_will_open_combobox = ttk.Combobox(
+            frame_chest,
+            textvariable=self.who_will_open_text_var,
+            values=list(self.open_chest_mapping.values()),
+            state="readonly",
+            width=6
+        )
+        self.who_will_open_combobox.grid(row=0, column=1, padx=5)
+
+        def handle_open_chest_selection(event=None):
+            open_chest_reverse_mapping = {v: k for k, v in self.open_chest_mapping.items()}
+            self.who_will_open_it_var.set(open_chest_reverse_mapping[self.who_will_open_text_var.get()])
+            self.save_config()
+        self.who_will_open_combobox.bind("<<ComboboxSelected>>", handle_open_chest_selection)
+
+    def _create_battle_tab(self):
+        """戰鬥設定分頁：自動戰鬥、恢復、強力技能、AOE"""
+        tab = self.tab_battle
+        row = 0
+
+        # --- 自動戰鬥主開關 ---
+        frame_auto = ttk.LabelFrame(tab, text="自動戰鬥", padding=5)
+        frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.system_auto_check = ttk.Checkbutton(
+            frame_auto,
+            text="啟用自動戰鬥",
+            variable=self.system_auto_combat_var,
+            command=self.update_system_auto_combat,
+            style="Custom.TCheckbutton"
+        )
+        self.system_auto_check.grid(row=0, column=0, sticky=tk.W, pady=5)
+
+        # --- 恢復設定 ---
+        row += 1
+        frame_recover = ttk.LabelFrame(tab, text="恢復設定", padding=5)
+        frame_recover.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.skip_recover_check = ttk.Checkbutton(
+            frame_recover, text="跳過戰後恢復",
+            variable=self.skip_recover_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.skip_recover_check.grid(row=0, column=0, padx=5)
+
+        self.skip_chest_recover_check = ttk.Checkbutton(
+            frame_recover, text="跳過開箱後恢復",
+            variable=self.skip_chest_recover_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
+
+        self.enable_resume_optimization_check = ttk.Checkbutton(
+            frame_recover, text="啟用Resume按鈕優化",
+            variable=self.enable_resume_optimization_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.enable_resume_optimization_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+        # --- 強力技能模式 ---
+        row += 1
+        frame_force = ttk.LabelFrame(tab, text="強力技能模式", padding=5)
+        frame_force.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.force_physical_first_combat_check = ttk.Checkbutton(
+            frame_force, text="重啟後首戰使用強力技能",
+            variable=self.force_physical_first_combat_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_physical_first_combat_check.grid(row=0, column=0, sticky=tk.W)
+
+        self.force_physical_after_inn_check = ttk.Checkbutton(
+            frame_force, text="返回後首戰使用強力技能",
+            variable=self.force_physical_after_inn_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_physical_after_inn_check.grid(row=1, column=0, sticky=tk.W)
+
+        # --- AOE 設定 ---
+        row += 1
+        frame_aoe = ttk.LabelFrame(tab, text="AOE 設定", padding=5)
+        frame_aoe.grid(row=row, column=0, sticky="ew", pady=5)
+
+        def aoe_once_command():
+            if self.aoe_once_var.get():
+                if self.btn_enable_full_aoe_var.get() != True:
+                    self.btn_enable_full_aoe.invoke()
+                if self.btn_enable_secret_aoe_var.get() != True:
+                    self.btn_enable_secret_aoe.invoke()
+            self.update_change_aoe_once_check()
+            self.save_config()
+
+        self.aoe_once_check = ttk.Checkbutton(
+            frame_aoe, text="一場戰鬥中僅釋放一次全體AOE",
+            variable=self.aoe_once_var, command=aoe_once_command,
+            style="BoldFont.TCheckbutton"
+        )
+        self.aoe_once_check.grid(row=0, column=0, sticky=tk.W)
+
+        self.auto_after_aoe_check = ttk.Checkbutton(
+            frame_aoe, text="全體AOE後開啟自動戰鬥",
+            variable=self.auto_after_aoe_var, command=self.save_config,
+            style="BoldFont.TCheckbutton"
+        )
+        self.auto_after_aoe_check.grid(row=1, column=0, sticky=tk.W)
+
+    def _create_skills_tab(self):
+        """技能設定分頁：6個技能按鈕組"""
+        tab = self.tab_skills
+
+        frame_skills = ttk.LabelFrame(tab, text="技能選擇", padding=10)
+        frame_skills.grid(row=0, column=0, sticky="ew", pady=5)
+
+        self.skills_button_frame = frame_skills
+        for buttonName, buttonText, buttonSpell, btn_row, btn_col in SPELLSEKILL_TABLE:
+            setattr(self, buttonName, ttk.Checkbutton(
+                self.skills_button_frame,
+                text=f"啟用{buttonText}",
+                variable=getattr(self, f"{buttonName}_var"),
+                command=lambda spell=buttonSpell, btnN=buttonName, btnT=buttonText: self.update_spell_config(spell, btnN, btnT),
+                style="Custom.TCheckbutton"
+            ))
+            getattr(self, buttonName).grid(row=btn_row, column=btn_col, padx=10, pady=5, sticky=tk.W)
+
+    def _create_advanced_tab(self, vcmd_non_neg, checkcommand):
+        """進階設定分頁：旅店休息、善惡調整、凱旋、因果"""
+        tab = self.tab_advanced
+        row = 0
+
+        # --- 旅店休息 ---
+        frame_rest = ttk.LabelFrame(tab, text="旅店休息", padding=5)
+        frame_rest.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.active_rest_check = ttk.Checkbutton(
+            frame_rest, variable=self.active_rest_var,
+            text="啟用旅店休息", command=checkcommand,
+            style="Custom.TCheckbutton"
+        )
+        self.active_rest_check.grid(row=0, column=0, padx=5)
+
+        ttk.Label(frame_rest, text="間隔:").grid(row=0, column=1, padx=(10, 2))
+        self.rest_intervel_entry = ttk.Entry(frame_rest, textvariable=self.rest_intervel_var,
+                                             validate="key", validatecommand=(vcmd_non_neg, '%P'), width=5)
+        self.rest_intervel_entry.grid(row=0, column=2)
+        self.button_save_rest_intervel = ttk.Button(frame_rest, text="儲存", command=self.save_config, width=4)
+        self.button_save_rest_intervel.grid(row=0, column=3, padx=2)
+
+        self.active_royalsuite_rest = ttk.Checkbutton(
+            frame_rest, variable=self.active_royalsuite_rest_var,
+            text="住豪華房", command=checkcommand,
+            style="Custom.TCheckbutton"
+        )
+        self.active_royalsuite_rest.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+        # --- 善惡調整 ---
+        row += 1
+        frame_karma = ttk.LabelFrame(tab, text="善惡調整", padding=5)
+        frame_karma.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.karma_adjust_mapping = {
+            "維持現狀": "+0",
+            "惡→中立,中立→善": "+17",
+            "善→中立,中立→惡": "-17",
+        }
+        times = int(self.karma_adjust_var.get())
+        if times == 0:
+            self.karma_adjust_text_var = tk.StringVar(value="維持現狀")
+        elif times > 0:
+            self.karma_adjust_text_var = tk.StringVar(value="惡→中立,中立→善")
+        else:
+            self.karma_adjust_text_var = tk.StringVar(value="善→中立,中立→惡")
+
+        ttk.Label(frame_karma, text="方向:").grid(row=0, column=0, padx=5)
+        self.karma_adjust_combobox = ttk.Combobox(
+            frame_karma, textvariable=self.karma_adjust_text_var,
+            values=list(self.karma_adjust_mapping.keys()),
+            state="readonly", width=16
+        )
+        self.karma_adjust_combobox.grid(row=0, column=1, padx=5)
+
+        def handle_karma_adjust_selection(event=None):
+            karma_adjust_left = int(self.karma_adjust_var.get())
+            karma_adjust_want = int(self.karma_adjust_mapping[self.karma_adjust_text_var.get()])
+            if (karma_adjust_left == 0 and karma_adjust_want == 0) or (karma_adjust_left * karma_adjust_want > 0):
+                return
+            self.karma_adjust_var.set(self.karma_adjust_mapping[self.karma_adjust_text_var.get()])
+            self.save_config()
+        self.karma_adjust_combobox.bind("<<ComboboxSelected>>", handle_karma_adjust_selection)
+
+        ttk.Label(frame_karma, text="還需").grid(row=0, column=2, padx=2)
+        ttk.Label(frame_karma, textvariable=self.karma_adjust_var).grid(row=0, column=3)
+        ttk.Label(frame_karma, text="點").grid(row=0, column=4, padx=2)
+
+        self.active_csc = ttk.Checkbutton(
+            frame_karma, variable=self.active_csc_var,
+            text="嘗試調整因果", command=checkcommand,
+            style="Custom.TCheckbutton"
+        )
+        self.active_csc.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=5)
+
+        # --- 其他進階選項 ---
+        row += 1
+        frame_other = ttk.LabelFrame(tab, text="其他", padding=5)
+        frame_other.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.active_triumph = ttk.Checkbutton(
+            frame_other, variable=self.active_triumph_var,
+            text="跳躍到\"凱旋\"(需要解鎖凱旋)",
+            command=checkcommand, style="Custom.TCheckbutton"
+        )
+        self.active_triumph.grid(row=0, column=0, sticky=tk.W)
 
     def update_active_rest_state(self):
         if self.active_rest_var.get():
@@ -655,7 +662,7 @@ class ConfigPanelApp(tk.Toplevel):
 
     def finishingcallback(self):
         logger.info("已停止.")
-        self.start_stop_btn.config(text="脚本, 启动!")
+        self.start_stop_btn.config(text="腳本, 啟動!")
         self.set_controls_state(tk.NORMAL)
         self.updata_config()
         self.quest_active = False

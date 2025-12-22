@@ -24,11 +24,11 @@ ALL_SKILLS = [s for s in ALL_SKILLS if s in list(set(ALL_SKILLS))]
 
 SPELLSEKILL_TABLE = [
             ["btn_enable_all","所有技能",ALL_SKILLS,0,0],
-            ["btn_enable_horizontal_aoe","横排AOE",ROW_AOE_SKILLS,0,1],
-            ["btn_enable_full_aoe","全体AOE",FULL_AOE_SKILLS,1,0],
-            ["btn_enable_secret_aoe","秘术AOE",SECRET_AOE_SKILLS,1,1],
-            ["btn_enable_physical","强力单体",PHYSICAL_SKILLS,2,0],
-            ["btn_enable_cc","群体控制",CC_SKILLS,2,1]
+            ["btn_enable_horizontal_aoe","橫排AOE",ROW_AOE_SKILLS,0,1],
+            ["btn_enable_full_aoe","全體AOE",FULL_AOE_SKILLS,1,0],
+            ["btn_enable_secret_aoe","秘術AOE",SECRET_AOE_SKILLS,1,1],
+            ["btn_enable_physical","強力單體",PHYSICAL_SKILLS,2,0],
+            ["btn_enable_cc","群體控制",CC_SKILLS,2,1]
             ]
 
 DUNGEON_TARGETS = BuildQuestReflection()
