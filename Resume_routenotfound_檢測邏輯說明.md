@@ -145,7 +145,11 @@ _GOHOME_IN_PROGRESS = True
 
 ### 重啟後（控制項：「重啟後首戰使用強力技能」）
 
-當遊戲重啟後（`_FIRST_COMBAT_AFTER_RESTART > 0`）：
+**觸發條件**：
+- 程序剛啟動（初始狀態）
+- 遊戲重啟（`restartGame()` 被調用，通常是因為閃退/卡死）
+
+當 `_FIRST_COMBAT_AFTER_RESTART > 0` 時：
 
 1. **跳過 Resume 優化**：直接打開地圖（因為之前的路徑可能已失效）
 2. **前兩次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇

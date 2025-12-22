@@ -855,6 +855,7 @@ def Factory():
         runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重启后都会增加5次尝试次数, 以避免不同电脑导致的反复重启问题.
         runtimeContext._TIME_CHEST = 0
         runtimeContext._TIME_COMBAT = 0 # 因为重启了, 所以清空战斗和宝箱计时器.
+        runtimeContext._FIRST_COMBAT_AFTER_RESTART = 2  # 重启后重置战斗计数器
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
 
@@ -2277,7 +2278,7 @@ def Factory():
                     runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
                     runtimeContext._GOHOME_IN_PROGRESS = False  # 重置回城标志
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
-                    runtimeContext._FIRST_COMBAT_AFTER_RESTART = 2  # 重置重启后战斗计数器
+                    # 注意: _FIRST_COMBAT_AFTER_RESTART 只在 restartGame 中重置
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     RestartableSequenceExecution(
                         lambda: StateDungeon(targetInfoList)
