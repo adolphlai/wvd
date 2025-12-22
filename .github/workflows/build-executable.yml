@@ -2,9 +2,8 @@ name: Build Executable and Create Release
 
 on:
   push:
-    branches: [ master ]
     tags:
-      - 'v*'  # 當推送 v 開頭的 tag 時觸發（如 v1.9.20）
+      - 'v*'  # 只有推送 v 開頭的 tag 時才觸發（如 v1.9.25）
   workflow_dispatch:  # 允許在 GitHub 網頁手動觸發
 
 jobs:
