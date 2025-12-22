@@ -27,3 +27,21 @@ screenshotwhenrestart/
 /src/logs/
 /热力图
 /图像检测
+
+# IDE 配置
+.idea/
+.vscode/
+.venv/
+
+# 本地打包脚本和历史文件
+localpack.bat
+log_*.txt
+chest_direction_history.json
+diagnose_chest.py
+
+# 本地分析文档（可选，根据需要取消注释）
+# 宝箱*.md
+# 水路*.md
+# 示例*.md
+# *问题分析.md
+# *诊断.md
