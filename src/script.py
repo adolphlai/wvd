@@ -100,7 +100,7 @@ class RuntimeContext:
     _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
-    _FIRST_COMBAT_AFTER_RESTART = 2  # 重启后前N次战斗标志（计数器），强制使用强力单体技能
+    _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
     _FIRST_COMBAT_AFTER_INN = False  # 从村庄返回地城后第一次战斗标志
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
 class FarmQuest:
