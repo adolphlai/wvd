@@ -1489,15 +1489,17 @@ def Factory():
                     return
 
         # 重启后前N次战斗，开启整场战斗强制使用强力单体技能模式
-        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0:
+        # 只有在新战斗开始时（_FORCE_PHYSICAL_CURRENT_COMBAT 为 False）才倒数
+        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+            combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_RESTART  # 2->第1次, 1->第2次
             runtimeContext._FIRST_COMBAT_AFTER_RESTART -= 1
             if setting._FORCE_PHYSICAL_FIRST_COMBAT:
-                remaining = runtimeContext._FIRST_COMBAT_AFTER_RESTART
-                logger.info(f"重启后战斗，开启强力单体技能模式（整场战斗）（剩余 {remaining} 次）")
+                logger.info(f"重启后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
         
         # 从村庄返回后第一次战斗，开启整场战斗强制使用强力单体技能模式
-        if runtimeContext._FIRST_COMBAT_AFTER_INN:
+        # 同样只在新战斗开始时触发
+        if runtimeContext._FIRST_COMBAT_AFTER_INN and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
             runtimeContext._FIRST_COMBAT_AFTER_INN = False
             if setting._FORCE_PHYSICAL_FIRST_COMBAT:
                 logger.info("从村庄返回后第一次战斗，开启强力单体技能模式（整场战斗）")
