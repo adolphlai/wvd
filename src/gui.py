@@ -253,16 +253,26 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.enable_resume_optimization_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
 
-        # 重启/返回后强制使用强力单体技能
+        # 重启/返回后强制使用强力单体技能（分开两个选项）
         row_counter += 1
+        frame_force_physical = tk.Frame(self.main_frame)
+        frame_force_physical.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
         self.force_physical_first_combat_check = ttk.Checkbutton(
-            self.main_frame,
-            text="重启/返回后首战使用强力单体技能",
+            frame_force_physical,
+            text="重启后首战使用强力技能",
             variable=self.force_physical_first_combat_var,
             command=self.save_config,
             style="Custom.TCheckbutton"
         )
-        self.force_physical_first_combat_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
+        self.force_physical_first_combat_check.grid(row=0, column=0)
+        self.force_physical_after_inn_check = ttk.Checkbutton(
+            frame_force_physical,
+            text="返回后首战使用强力技能",
+            variable=self.force_physical_after_inn_var,
+            command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_physical_after_inn_check.grid(row=0, column=1)
 
         # 休息设置
         row_counter += 1
@@ -435,16 +445,24 @@ class ConfigPanelApp(tk.Toplevel):
 
         # 高级选项
         row_counter += 1
-        frame_lux_rest = ttk.Frame(self.main_frame)
-        frame_lux_rest.grid(row=row_counter, column=0, sticky="ew", pady=5)
+        frame_advanced = ttk.Frame(self.main_frame)
+        frame_advanced.grid(row=row_counter, column=0, sticky="ew", pady=5)
         self.active_royalsuite_rest = ttk.Checkbutton(
-            frame_lux_rest,
+            frame_advanced,
             variable=self.active_royalsuite_rest_var,
             text="住豪华房",
             command=checkcommand,
             style="Custom.TCheckbutton"
             )
         self.active_royalsuite_rest.grid(row=0, column=0)
+        self.active_csc = ttk.Checkbutton(
+            frame_advanced,
+            variable=self.active_csc_var,
+            text="尝试调整因果",
+            command=checkcommand,
+            style="Custom.TCheckbutton"
+            )
+        self.active_csc.grid(row=0, column=1)
 
         row_counter += 1
         frame_row = ttk.Frame(self.main_frame)
@@ -457,18 +475,6 @@ class ConfigPanelApp(tk.Toplevel):
             style="Custom.TCheckbutton"
             )
         self.active_triumph.grid(row=0, column=0)
-
-        row_counter += 1
-        frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
-        self.active_csc = ttk.Checkbutton(
-            frame_row,
-            variable=self.active_csc_var,
-            text="尝试调整因果",
-            command=checkcommand,
-            style="Custom.TCheckbutton"
-            )
-        self.active_csc.grid(row=0, column=0)
 
 
         # 分割线
@@ -602,6 +608,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.skip_chest_recover_check,
             self.enable_resume_optimization_check,
             self.force_physical_first_combat_check,
+            self.force_physical_after_inn_check,
             self.active_rest_check,
             self.rest_intervel_entry,
             self.button_save_rest_intervel,

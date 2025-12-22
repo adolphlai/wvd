@@ -44,6 +44,7 @@ CONFIG_VAR_LIST = [
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             ["force_physical_first_combat_var", tk.BooleanVar, "_FORCE_PHYSICAL_FIRST_COMBAT", True],
+            ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
@@ -1501,7 +1502,7 @@ def Factory():
         # 同样只在新战斗开始时触发
         if runtimeContext._FIRST_COMBAT_AFTER_INN and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
             runtimeContext._FIRST_COMBAT_AFTER_INN = False
-            if setting._FORCE_PHYSICAL_FIRST_COMBAT:
+            if setting._FORCE_PHYSICAL_AFTER_INN:
                 logger.info("从村庄返回后第一次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
         

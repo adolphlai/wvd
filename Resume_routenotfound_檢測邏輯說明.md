@@ -141,18 +141,29 @@ _GOHOME_IN_PROGRESS = True
 
 ---
 
-## 重啟後行為
+## 重啟後 / 返回後行為
+
+### 重啟後（控制項：「重啟後首戰使用強力技能」）
 
 當遊戲重啟後（`_FIRST_COMBAT_AFTER_RESTART > 0`）：
 
-1. **跳過 Resume 優化**：直接打開地圖，不檢測 Resume 按鈕（因為之前的路徑可能已失效）
-2. **前兩次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇，之後自動戰鬥會持續使用該技能
+1. **跳過 Resume 優化**：直接打開地圖（因為之前的路徑可能已失效）
+2. **前兩次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇
+
+### 返回後（控制項：「返回後首戰使用強力技能」）
+
+當從村庄返回地城後（`_FIRST_COMBAT_AFTER_INN = True`）：
+
+1. **第一次戰鬥**：強制使用強力單體技能
 
 ### 相關變數
 
 | 變數 | 類型 | 預設值 | 說明 |
 |------|------|--------|------|
+| `_FORCE_PHYSICAL_FIRST_COMBAT` | bool | True | 重啟後首戰使用強力技能 |
+| `_FORCE_PHYSICAL_AFTER_INN` | bool | True | 返回後首戰使用強力技能 |
 | `_FIRST_COMBAT_AFTER_RESTART` | int | 2 | 重啟後戰鬥計數器（倒數） |
+| `_FIRST_COMBAT_AFTER_INN` | bool | False | 返回後第一次戰鬥標誌 |
 
 ### 強力單體技能列表
 
