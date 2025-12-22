@@ -1591,9 +1591,21 @@ def Factory():
         dungState = None
         resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
         MAX_RESUME_RETRIES = 3  # Resume最大连续点击次数
+
+        # 移动超时检测（防止原地旋转BUG）
+        moving_start_time = time.time()
+        MOVING_TIMEOUT = 60  # 60秒超时
+
         logger.info("面具男, 移动.")
         while 1:
             Sleep(3)
+
+            # 检查移动是否超时
+            elapsed = time.time() - moving_start_time
+            if elapsed > MOVING_TIMEOUT:
+                logger.error(f"移动超时（{elapsed:.1f}秒），疑似原地旋转BUG，准备重启游戏")
+                restartGame()
+
             _, dungState, screen = IdentifyState()
             if dungState == DungeonState.Map:
                 logger.info(f"开始移动失败. 不要停下来啊面具男!")
@@ -1956,10 +1968,24 @@ def Factory():
                             Sleep(2)
                     ########### 防止转圈 (from upstream 1.9.27)
                     if not runtimeContext._STEPAFTERRESTART:
-                        logger.info("防止转圈: 左右平移一次")
-                        Press([27,950])   # 左平移
+                        logger.info("防止转圈: 前後左右移動測試")
+
+                        # 前進（向上）
+                        DeviceShell("input swipe 440 950 440 750")
                         Sleep(1)
-                        Press([853,950])  # 右平移
+
+                        # 後退（向下）
+                        DeviceShell("input swipe 440 950 440 1150")
+                        Sleep(1)
+
+                        # 左平移（原本邏輯）
+                        Press([27,950])
+                        Sleep(1)
+
+                        # 右平移（原本邏輯）
+                        Press([853,950])
+                        Sleep(1)
+
                         runtimeContext._STEPAFTERRESTART = True
                     # 第一次进入地城时，无条件打开地图（不检查能见度）
                     if runtimeContext._FIRST_DUNGEON_ENTRY:
