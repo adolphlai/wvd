@@ -99,7 +99,7 @@ class RuntimeContext:
     _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
-    _FIRST_COMBAT_AFTER_RESTART = True  # 重启后第一次战斗标志，强制使用强力单体技能
+    _FIRST_COMBAT_AFTER_RESTART = 2  # 重启后前N次战斗标志（计数器），强制使用强力单体技能
     _FIRST_COMBAT_AFTER_INN = False  # 从村庄返回地城后第一次战斗标志
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
 class FarmQuest:
@@ -1400,12 +1400,13 @@ def Factory():
         
         logger.info(f"{reason}，强制使用强力单体技能")
         
-        # 先关闭自动战斗（如果已启用）
+        # 先打断自动战斗（点击画面空白处）
+        # 因为自动战斗进行中画面会变动，无法可靠检测，所以直接盲点
+        logger.info("点击打断自动战斗...")
+        for _ in range(3):
+            Press([1, 1])
+            Sleep(0.5)
         scn = ScreenShot()
-        if Press(CheckIf(scn, 'autoBattleEnable')):
-            logger.info("检测到自动战斗已启用，正在关闭...")
-            Sleep(1)
-            scn = ScreenShot()  # 重新截图
         
         for skillspell in PHYSICAL_SKILLS:
             if Press(CheckIf(scn, 'spellskill/'+skillspell)):
@@ -1487,11 +1488,12 @@ def Factory():
 
                     return
 
-        # 重启后第一次战斗，开启整场战斗强制使用强力单体技能模式
-        if runtimeContext._FIRST_COMBAT_AFTER_RESTART:
-            runtimeContext._FIRST_COMBAT_AFTER_RESTART = False
+        # 重启后前N次战斗，开启整场战斗强制使用强力单体技能模式
+        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0:
+            runtimeContext._FIRST_COMBAT_AFTER_RESTART -= 1
             if setting._FORCE_PHYSICAL_FIRST_COMBAT:
-                logger.info("重启后第一次战斗，开启强力单体技能模式（整场战斗）")
+                remaining = runtimeContext._FIRST_COMBAT_AFTER_RESTART
+                logger.info(f"重启后战斗，开启强力单体技能模式（整场战斗）（剩余 {remaining} 次）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
         
         # 从村庄返回后第一次战斗，开启整场战斗强制使用强力单体技能模式
@@ -2023,8 +2025,8 @@ def Factory():
                                         logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                                         runtimeContext._GOHOME_IN_PROGRESS = True
                                         while True:
-                                            _, current_state, _ = IdentifyState()
-                                            if current_state == DungeonState.Quit:
+                                            main_state, current_state, _ = IdentifyState()
+                                            if main_state == State.Inn:
                                                 logger.info("已回到城内")
                                                 dungState = DungeonState.Quit
                                                 runtimeContext._GOHOME_IN_PROGRESS = False
@@ -2078,8 +2080,8 @@ def Factory():
                                 logger.warning(f"Resume优化: {MAX_RESUME_RETRIES}次Resume失败，执行gohome回城")
                                 runtimeContext._GOHOME_IN_PROGRESS = True
                                 while True:
-                                    _, current_state, _ = IdentifyState()
-                                    if current_state == DungeonState.Quit:
+                                    main_state, current_state, _ = IdentifyState()
+                                    if main_state == State.Inn:
                                         logger.info("已回到城内")
                                         dungState = DungeonState.Quit
                                         runtimeContext._GOHOME_IN_PROGRESS = False
@@ -2111,8 +2113,8 @@ def Factory():
                                 logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                                 runtimeContext._GOHOME_IN_PROGRESS = True
                                 while True:
-                                    _, current_state, _ = IdentifyState()
-                                    if current_state == DungeonState.Quit:
+                                    main_state, current_state, _ = IdentifyState()
+                                    if main_state == State.Inn:
                                         logger.info("已回到城内")
                                         dungState = DungeonState.Quit
                                         runtimeContext._GOHOME_IN_PROGRESS = False
@@ -2141,8 +2143,8 @@ def Factory():
                             logger.warning("visibliityistoopoor，开始持续点击gohome回城")
                             runtimeContext._GOHOME_IN_PROGRESS = True
                             while True:
-                                _, current_state, _ = IdentifyState()
-                                if current_state == DungeonState.Quit:
+                                main_state, current_state, _ = IdentifyState()
+                                if main_state == State.Inn:
                                     logger.info("已回到城内")
                                     dungState = DungeonState.Quit
                                     runtimeContext._GOHOME_IN_PROGRESS = False
@@ -2272,7 +2274,7 @@ def Factory():
                     runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
                     runtimeContext._GOHOME_IN_PROGRESS = False  # 重置回城标志
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
-                    runtimeContext._FIRST_COMBAT_AFTER_RESTART = True  # 重置重启后第一次战斗标志
+                    runtimeContext._FIRST_COMBAT_AFTER_RESTART = 2  # 重置重启后战斗计数器
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     RestartableSequenceExecution(
                         lambda: StateDungeon(targetInfoList)

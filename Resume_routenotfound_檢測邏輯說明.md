@@ -143,16 +143,16 @@ _GOHOME_IN_PROGRESS = True
 
 ## 重啟後行為
 
-當遊戲重啟後（`_STEPAFTERRESTART = False`）：
+當遊戲重啟後（`_FIRST_COMBAT_AFTER_RESTART > 0`）：
 
 1. **跳過 Resume 優化**：直接打開地圖，不檢測 Resume 按鈕（因為之前的路徑可能已失效）
-2. **第一次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），之後恢復使用者 GUI 設定的戰鬥邏輯
+2. **前兩次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇，之後自動戰鬥會持續使用該技能
 
 ### 相關變數
 
 | 變數 | 類型 | 預設值 | 說明 |
 |------|------|--------|------|
-| `_FIRST_COMBAT_AFTER_RESTART` | bool | True | 重啟後第一次戰鬥標誌 |
+| `_FIRST_COMBAT_AFTER_RESTART` | int | 2 | 重啟後戰鬥計數器（倒數） |
 
 ### 強力單體技能列表
 
