@@ -192,19 +192,11 @@ class ConfigPanelApp(tk.Toplevel):
         self.farm_target_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5)
         self.farm_target_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
 
-        # 开箱子设置
+        # 开箱人选设置
         row_counter += 1
         frame_row = ttk.Frame(self.main_frame)
-        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)  # 第二行框架
-        self.random_chest_check = ttk.Checkbutton(
-            frame_row,
-            text="智能开箱(测试版)",
-            variable=self.randomly_open_chest_var,
-            command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.random_chest_check.grid(row=0, column=0,  sticky=tk.W, pady=5)
-        ttk.Label(frame_row, text="| 开箱人选:").grid(row=0, column=1, sticky=tk.W, pady=5)
+        frame_row.grid(row=row_counter, column=0, sticky="ew", pady=5)
+        ttk.Label(frame_row, text="开箱人选:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.open_chest_mapping = {
             0:"随机",
             1:"左上",
@@ -222,7 +214,7 @@ class ConfigPanelApp(tk.Toplevel):
             state="readonly",  # 设置为只读（只能选择）
             width=4
         )
-        self.who_will_open_combobox.grid(row=0, column=2, sticky=tk.W, pady=5)
+        self.who_will_open_combobox.grid(row=0, column=1, sticky=tk.W, pady=5)
         def handle_open_chest_selection(event = None):
             open_chest_reverse_mapping = {v: k for k, v in self.open_chest_mapping.items()}
             self.who_will_open_it_var.set(open_chest_reverse_mapping[self.who_will_open_text_var.get()])
@@ -260,6 +252,17 @@ class ConfigPanelApp(tk.Toplevel):
             style="Custom.TCheckbutton"
         )
         self.enable_resume_optimization_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+        # 重启/返回后强制使用强力单体技能
+        row_counter += 1
+        self.force_physical_first_combat_check = ttk.Checkbutton(
+            self.main_frame,
+            text="重启/返回后首战使用强力单体技能",
+            variable=self.force_physical_first_combat_var,
+            command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_physical_first_combat_check.grid(row=row_counter, column=0, columnspan=2, sticky=tk.W, pady=5)
 
         # 休息设置
         row_counter += 1
@@ -591,7 +594,6 @@ class ConfigPanelApp(tk.Toplevel):
     def set_controls_state(self, state):
         self.button_and_entry = [
             self.adb_path_change_button,
-            self.random_chest_check,
             self.who_will_open_combobox,
             self.system_auto_check,
             self.aoe_once_check,
@@ -599,6 +601,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.skip_recover_check,
             self.skip_chest_recover_check,
             self.enable_resume_optimization_check,
+            self.force_physical_first_combat_check,
             self.active_rest_check,
             self.rest_intervel_entry,
             self.button_save_rest_intervel,

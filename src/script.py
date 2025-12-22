@@ -43,6 +43,7 @@ CONFIG_VAR_LIST = [
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
+            ["force_physical_first_combat_var", tk.BooleanVar, "_FORCE_PHYSICAL_FIRST_COMBAT", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
@@ -99,6 +100,8 @@ class RuntimeContext:
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
     _FIRST_COMBAT_AFTER_RESTART = True  # 重启后第一次战斗标志，强制使用强力单体技能
+    _FIRST_COMBAT_AFTER_INN = False  # 从村庄返回地城后第一次战斗标志
+    _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -1381,6 +1384,36 @@ def Factory():
                     Press(pos)
         Sleep(1)
         Press(CheckIf(ScreenShot(), 'GotoDung'))
+    def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
+        """
+        强制使用强力单体技能
+        Args:
+            screen: 当前截图
+            doubleConfirmCastSpell_func: 确认施法的函数
+            reason: 触发原因（用于日志）
+        Returns:
+            bool: 是否成功使用了技能
+        """
+        if not setting._FORCE_PHYSICAL_FIRST_COMBAT:
+            logger.info(f"{reason}，但功能已关闭，跳过强力单体技能")
+            return False
+        
+        logger.info(f"{reason}，强制使用强力单体技能")
+        
+        # 先关闭自动战斗（如果已启用）
+        scn = ScreenShot()
+        if Press(CheckIf(scn, 'autoBattleEnable')):
+            logger.info("检测到自动战斗已启用，正在关闭...")
+            Sleep(1)
+            scn = ScreenShot()  # 重新截图
+        
+        for skillspell in PHYSICAL_SKILLS:
+            if Press(CheckIf(scn, 'spellskill/'+skillspell)):
+                logger.info(f"强制使用技能: {skillspell}")
+                doubleConfirmCastSpell_func()
+                return True
+        logger.info("未找到可用的强力单体技能")
+        return False
     def StateCombat():
         def doubleConfirmCastSpell():
             is_success_aoe = False
@@ -1454,6 +1487,26 @@ def Factory():
 
                     return
 
+        # 重启后第一次战斗，开启整场战斗强制使用强力单体技能模式
+        if runtimeContext._FIRST_COMBAT_AFTER_RESTART:
+            runtimeContext._FIRST_COMBAT_AFTER_RESTART = False
+            if setting._FORCE_PHYSICAL_FIRST_COMBAT:
+                logger.info("重启后第一次战斗，开启强力单体技能模式（整场战斗）")
+                runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
+        
+        # 从村庄返回后第一次战斗，开启整场战斗强制使用强力单体技能模式
+        if runtimeContext._FIRST_COMBAT_AFTER_INN:
+            runtimeContext._FIRST_COMBAT_AFTER_INN = False
+            if setting._FORCE_PHYSICAL_FIRST_COMBAT:
+                logger.info("从村庄返回后第一次战斗，开启强力单体技能模式（整场战斗）")
+                runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
+        
+        # 如果当前战斗需要强制使用强力单体技能
+        if runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+            if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "强力单体技能模式"):
+                return
+            # 如果没找到技能，继续正常流程
+
         if (setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE):
             Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]]))
             Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
@@ -1464,26 +1517,8 @@ def Factory():
             return
         if runtimeContext._SUICIDE:
             Press(CheckIf(screen,'spellskill/'+'defend'))
-        # 重启后第一次战斗，强制使用强力单体技能
-        elif runtimeContext._FIRST_COMBAT_AFTER_RESTART:
-            logger.info("重启后第一次战斗，强制使用强力单体技能")
-            runtimeContext._FIRST_COMBAT_AFTER_RESTART = False
-            used_skill = False
-            for skillspell in PHYSICAL_SKILLS:
-                if Press(CheckIf(screen, 'spellskill/'+skillspell)):
-                    logger.info(f"重启后强制使用技能: {skillspell}")
-                    doubleConfirmCastSpell()
-                    used_skill = True
-                    break
-            if not used_skill:
-                logger.info("未找到可用的强力单体技能，使用正常战斗逻辑")
-                # 如果没有强力单体技能，执行正常逻辑
-                Press(CheckIf(ScreenShot(),'combatClose'))
-                Press([850,1100])
-                Sleep(0.5)
-                Press([850,1100])
-                Sleep(3)
         else:
+            # 正常战斗逻辑
             castSpellSkill = False
             castAndPressOK = False
             for skillspell in setting._SPELLSKILLCONFIG:
@@ -1792,6 +1827,7 @@ def Factory():
                     # 战斗结束了, 我们将一些设置复位
                     if setting._AOE_ONCE:
                         runtimeContext._ENOUGH_AOE = False
+                    runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = False  # 重置强力单体技能模式
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
                         spend_on_chest = 0
@@ -2210,6 +2246,7 @@ def Factory():
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
+                        runtimeContext._FIRST_COMBAT_AFTER_INN = True  # 设置村庄返回标志
                     state = State.EoT
                 case State.EoT:
                     RestartableSequenceExecution(
