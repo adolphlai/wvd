@@ -1,7 +1,7 @@
 {
-  "release_notes": "https://github.com/adolphlai/wvd/releases/tag/1.9.28",
-  "version": "1.9.28",
-  "release_date": "2025-12-22 23:40:26",
   "download_url": "https://github.com/adolphlai/wvd/releases/download/1.9.28/wvd.zip",
-  "md5": "57fdeaf95b4dab1c9251bea0e22cebdb"
+  "md5": "aeb221cc640dccd563002060ae4714c3",
+  "release_date": "2025-12-22 23:42:53",
+  "release_notes": "https://github.com/adolphlai/wvd/releases/tag/1.9.28",
+  "version": "1.9.28"
 }
