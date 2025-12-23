@@ -45,14 +45,22 @@
       │       │         （若移動中檢測到 routenotfound → 直接打開地圖）
       │       │
       │       └─ 點了 5 次 Resume，畫面沒變化 或 沒出現 routenotfound
-      │             → 執行 gohome
+      │             │
+      │             ├─ 當前目標是樓梯 (stair_XXX) → 判定為換樓成功（進入 3.4）
+      │             │
+      │             └─ 當前目標非樓梯 → 執行 gohome
       │
       ├─ 3.2 出現 routenotfound
       │       → 打開地圖
       │
-      └─ 3.3 打開地圖後
-              ├─ 顯示 visibliityistoopoor → 執行 gohome
-              └─ 正常 → 繼續搜尋目標
+      ├─ 3.3 打開地圖後
+      │       ├─ 顯示 visibliityistoopoor → 執行 gohome
+      │       └─ 正常 → 繼續搜尋目標
+      │
+      └─ 3.4 樓梯換樓成功判定
+              → 彈出當前樓梯目標
+              → 打開地圖
+              → 繼續下一個目標
 ```
 
 ---
@@ -100,9 +108,46 @@ _GOHOME_IN_PROGRESS = True
 |------|------|
 | **回城中斷恢復** | 戰鬥/寶箱結束後檢查 `_GOHOME_IN_PROGRESS`，為 True 則繼續回城 |
 | **Resume 按鈕檢測** | 最多重試 3 次（每次間隔 1 秒），等待畫面過渡 |
-| **Resume 點擊失敗（5次）** | 畫面沒變化 或 沒出現 routenotfound → 執行 gohome |
+| **Resume 點擊失敗（5次）** | 畫面沒變化 或 沒出現 routenotfound → 檢查目標類型 |
+| **樓梯目標 Resume 失敗** | 判定為換樓成功 → 彈出目標 → 打開地圖繼續 |
+| **非樓梯目標 Resume 失敗** | 執行 gohome 回城 |
 | **出現 routenotfound** | 已到達目的地 → 打開地圖 |
 | **打開地圖後 visibliityistoopoor** | 執行 gohome |
+
+---
+
+## 樓梯換樓判定邏輯
+
+### 問題背景
+
+在暴風雪地形（如深雪 R5/R6）中，換樓後可能無法打開地圖，導致無法通過傳統方式（檢測樓層標識圖片）判斷是否換樓成功。
+
+### 解決方案
+
+**利用 Resume 失效來判斷換樓成功**：
+
+1. Resume 是用來繼續之前的移動路徑
+2. 換樓後，之前的路徑失效（目標在上一樓）
+3. 因此 **Resume 失效 = 換樓成功**
+
+### 處理流程
+
+```
+目標：去樓梯 stair_XXX
+     ↓
+移動中，Resume 失效（點擊 5 次無反應）
+     ↓
+檢查當前目標類型
+     ↓
+目標是 stair_XXX → 判定換樓成功 → 彈出目標 → 繼續下一個目標
+目標不是樓梯   → 執行 gohome 回城
+```
+
+### 適用的目標類型
+
+所有以 `stair` 開頭的目標都會觸發此邏輯：
+- `stair_up`, `stair_down`, `stair_teleport`（內建樓梯）
+- `stair_DH_R5`, `stair_fortress1f` 等（自定義樓梯）
 
 ---
 

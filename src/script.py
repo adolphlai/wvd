@@ -2255,33 +2255,44 @@ def Factory():
                                     break
                             
                             if not resume_success:
-                                # 5次Resume失败，执行gohome
-                                logger.warning(f"Resume优化: {MAX_RESUME_RETRIES}次Resume失败，执行gohome回城")
-                                runtimeContext._GOHOME_IN_PROGRESS = True
-                                while True:
-                                    main_state, current_state, _ = IdentifyState()
-                                    if main_state == State.Inn:
-                                        logger.info("已回到城内")
-                                        dungState = DungeonState.Quit
-                                        runtimeContext._GOHOME_IN_PROGRESS = False
-                                        break
-                                    elif current_state == DungeonState.Combat:
-                                        logger.info("回城途中遇到战斗")
-                                        dungState = DungeonState.Combat
-                                        break
-                                    elif current_state == DungeonState.Chest:
-                                        logger.info("回城途中遇到宝箱")
-                                        dungState = DungeonState.Chest
-                                        break
-                                    gohome_pos = CheckIf(ScreenShot(), 'gohome')
-                                    if gohome_pos:
-                                        logger.info(f"点击gohome: {gohome_pos}")
-                                        Press(gohome_pos)
-                                    else:
-                                        # 如果找不到gohome，尝试打开地图
-                                        logger.info("未找到gohome按钮，尝试打开地图")
-                                        Press([777,150])
-                                    Sleep(2)
+                                # 5次Resume失败
+                                # 检查当前目标是否是楼梯：如果是楼梯，Resume失效代表换楼成功
+                                current_target = targetInfoList[0].target if targetInfoList else None
+                                if current_target and current_target.startswith('stair'):
+                                    logger.info(f"Resume优化: {MAX_RESUME_RETRIES}次Resume失败，但目标是楼梯({current_target})，判定为换楼成功")
+                                    targetInfoList.pop(0)  # 弹出当前楼梯目标
+                                    logger.info("Resume优化: 打开地图继续下一个目标")
+                                    Press([777,150])  # 打开地图
+                                    Sleep(1)
+                                    dungState = DungeonState.Map
+                                else:
+                                    # 非楼梯目标，执行gohome
+                                    logger.warning(f"Resume优化: {MAX_RESUME_RETRIES}次Resume失败，执行gohome回城")
+                                    runtimeContext._GOHOME_IN_PROGRESS = True
+                                    while True:
+                                        main_state, current_state, _ = IdentifyState()
+                                        if main_state == State.Inn:
+                                            logger.info("已回到城内")
+                                            dungState = DungeonState.Quit
+                                            runtimeContext._GOHOME_IN_PROGRESS = False
+                                            break
+                                        elif current_state == DungeonState.Combat:
+                                            logger.info("回城途中遇到战斗")
+                                            dungState = DungeonState.Combat
+                                            break
+                                        elif current_state == DungeonState.Chest:
+                                            logger.info("回城途中遇到宝箱")
+                                            dungState = DungeonState.Chest
+                                            break
+                                        gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                                        if gohome_pos:
+                                            logger.info(f"点击gohome: {gohome_pos}")
+                                            Press(gohome_pos)
+                                        else:
+                                            # 如果找不到gohome，尝试打开地图
+                                            logger.info("未找到gohome按钮，尝试打开地图")
+                                            Press([777,150])
+                                        Sleep(2)
                         else:
                             # 3次都没检测到Resume，打开地图
                             logger.info("Resume优化: 3次均未检测到Resume按钮，打开地图")
