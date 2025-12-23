@@ -83,6 +83,8 @@ class RuntimeContext:
     _COUNTERDUNG = 0
     _COUNTERCOMBAT = 0
     _COUNTERCHEST = 0
+    _COUNTERADBRETRY = 0      # ADB 重启次数（闪退/连接失败）
+    _COUNTEREMULATORCRASH = 0 # 模拟器崩溃次数（需完全重启模拟器）
     _TIME_COMBAT= 0
     _TIME_COMBAT_TOTAL = 0
     _TIME_CHEST = 0
@@ -609,6 +611,7 @@ def Factory():
                 if isinstance(e, (AttributeError,RuntimeError, ConnectionResetError, cv2.error)):
                     if retry_count < max_retries:
                         logger.info(f"adb重启中... (重試 {retry_count}/{max_retries})")
+                        runtimeContext._COUNTERADBRETRY += 1
                         ResetADBDevice()
                         logger.info("ADB 重置完成，準備重試")
                     else:
@@ -871,6 +874,7 @@ def Factory():
             logger.info(f"跳过了重启前截图.\n崩溃计数器: {runtimeContext._CRASHCOUNTER}\n崩溃计数器超过5次后会重启模拟器.")
             if runtimeContext._CRASHCOUNTER > 5:
                 runtimeContext._CRASHCOUNTER = 0
+                runtimeContext._COUNTEREMULATORCRASH += 1
                 KillEmulator(setting)
                 CheckRestartConnectADB(setting)
 
@@ -2422,7 +2426,9 @@ def Factory():
                         if runtimeContext._COUNTERCHEST > 0:
                             summary_text += f"箱子效率{round(runtimeContext._TOTALTIME/runtimeContext._COUNTERCHEST,2)}秒/箱.\n累计开箱{runtimeContext._COUNTERCHEST}次,开箱平均耗时{round(runtimeContext._TIME_CHEST_TOTAL/runtimeContext._COUNTERCHEST,2)}秒.\n"
                         if runtimeContext._COUNTERCOMBAT > 0:
-                            summary_text += f"累计战斗{runtimeContext._COUNTERCOMBAT}次.战斗平均用时{round(runtimeContext._TIME_COMBAT_TOTAL/runtimeContext._COUNTERCOMBAT,2)}秒."
+                            summary_text += f"累计战斗{runtimeContext._COUNTERCOMBAT}次.战斗平均用时{round(runtimeContext._TIME_COMBAT_TOTAL/runtimeContext._COUNTERCOMBAT,2)}秒.\n"
+                        if runtimeContext._COUNTERADBRETRY > 0 or runtimeContext._COUNTEREMULATORCRASH > 0:
+                            summary_text += f"ADB重启{runtimeContext._COUNTERADBRETRY}次,模拟器崩溃{runtimeContext._COUNTEREMULATORCRASH}次."
                         logger.info(f"{runtimeContext._IMPORTANTINFO}{summary_text}",extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
