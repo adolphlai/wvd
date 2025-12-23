@@ -58,7 +58,9 @@ CONFIG_VAR_LIST = [
             ["last_version",                tk.StringVar,  "LAST_VERSION",               ""],
             ["latest_version",              tk.StringVar,  "LATEST_VERSION",             None],
             ["_spell_skill_config_internal",list,          "_SPELLSKILLCONFIG",          []],
-            ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True]
+            ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True],
+            ["organize_backpack_enabled_var", tk.BooleanVar, "_ORGANIZE_BACKPACK_ENABLED", False],
+            ["organize_backpack_count_var",  tk.IntVar,     "_ORGANIZE_BACKPACK_COUNT",   0],
             ]
 
 class FarmConfig:
@@ -1298,6 +1300,7 @@ def Factory():
                     'Nope',
                     'ignorethequest',
                     'dontGiveAntitoxin',
+                    'pass',
                                 ]
                 for op in dialogOption:
                     if Press(CheckIf(screen, op)):
@@ -1364,15 +1367,145 @@ def Factory():
             if totalDiff<=0.15:
                 return queue, True
         return queue, False
+    
+    def get_organize_items():
+        """動態讀取 Organize 資料夾中的物品圖片"""
+        import glob
+        # 使用 ResourcePath 和 IMAGE_FOLDER 來取得正確路徑
+        organize_path = ResourcePath(os.path.join(IMAGE_FOLDER, 'Organize'))
+        items = []
+        for ext in ['*.png', '*.jpg']:
+            items.extend(glob.glob(os.path.join(organize_path, ext)))
+        # 返回相對路徑名稱（不含副檔名）
+        return [os.path.splitext(os.path.basename(f))[0] for f in items]
+    
+    def StateOrganizeBackpack(num_characters):
+        """整理背包功能：將 Organize 資料夾中的物品放入倉庫
+
+        流程：
+        0. 點選 Inn 打開角色選擇畫面（等待看到 inventory 按鈕）
+        1. 點選角色
+        2. 點選 inventory，彈出 inventory 視窗
+        3. 找尋要整理的設備
+           3.1 點選設備後，在彈出框中點選 putinstorage
+           3.2 點選 putinstorage 後自動關閉回到 inventory 視窗
+           3.3 繼續找尋符合的設備，直到畫面中沒有符合的設備
+        4. 按下 X 關閉 inventory 視窗
+        5. 如果還有下一位，點選下一位角色，重複 1-4
+        6. 關閉角色選擇畫面回到 Inn 主畫面
+        """
+        if num_characters <= 0:
+            return
+
+        items_to_organize = get_organize_items()
+        if not items_to_organize:
+            logger.info("Organize 資料夾為空，跳過整理")
+            return
+
+        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
+
+        for char_index in range(num_characters):
+            logger.info(f"整理第 {char_index} 號角色背包")
+            
+            # 角色座標（固定值）
+            char_positions = [
+                [162, 1333],   # 角色 0
+                [465, 1333],   # 角色 1
+                [750, 1333],   # 角色 2
+                [162, 1515],   # 角色 3
+                [465, 1515],   # 角色 4
+                [750, 1515],   # 角色 5
+            ]
+            char_pos = char_positions[char_index]
+            
+            # 步驟1: 點選角色
+            logger.info(f"步驟1: 點選角色 {char_index} 位置 {char_pos}")
+            Press(char_pos)
+            Sleep(5)  # 等待角色詳情載入
+            
+            # 步驟2: 點選 inventory 打開背包
+            logger.info("步驟2: 點選 inventory 打開背包")
+            scn = ScreenShot()
+            inv_pos = CheckIf(scn, 'inventory')
+            if inv_pos:
+                Press(inv_pos)
+                Sleep(5)
+            else:
+                logger.warning("找不到 inventory 按鈕，跳過此角色")
+                PressReturn()
+                Sleep(5)
+                continue
+            
+            # 步驟3: 對每個物品執行整理
+            logger.info("步驟3: 開始整理物品")
+            for item in items_to_organize:
+                item_path = f'Organize/{item}'
+                
+                # 可能需要多次嘗試（如果有多個相同物品）
+                while True:
+                    scn = ScreenShot()
+                    item_pos = CheckIf(scn, item_path)
+                    
+                    if not item_pos:
+                        logger.info(f"沒有找到物品: {item}")
+                        break  # 沒有找到物品，跳到下一個物品類型
+                    
+                    logger.info(f"找到物品: {item}，位置: {item_pos}")
+                    Press(item_pos)
+                    Sleep(5)
+                    
+                    # 點擊 putinstorage
+                    scn = ScreenShot()
+                    put_pos = CheckIf(scn, 'putinstorage')
+                    if put_pos:
+                        Press(put_pos)
+                        Sleep(5)
+                        logger.info(f"已將 {item} 放入倉庫")
+                    else:
+                        logger.warning("找不到 putinstorage 按鈕")
+                        PressReturn()
+                        Sleep(5)
+                        break
+            
+            # 步驟4: 關閉 inventory 視窗
+            logger.info("步驟4: 關閉 inventory")
+            scn = ScreenShot()
+            close_pos = CheckIf(scn, 'closeInventory')
+            if close_pos:
+                Press(close_pos)
+            else:
+                PressReturn()
+            Sleep(5)
+
+        # 關閉角色選擇畫面回到 Inn 主畫面
+        logger.info("關閉角色選擇畫面")
+        PressReturn()
+        Sleep(5)
+
+        logger.info("背包整理完成")
+
     def StateInn():
+        # 1. 住宿
         if not setting._ACTIVE_ROYALSUITE_REST:
-            FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','Economy',[1,1]],2)
         else:
-            FindCoordsOrElseExecuteFallbackAndWait('refilled', ['Inn', 'box', 'refill', 'OK', [1, 1]], 2)
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
-        PressReturn()
+
+        # 2. 自動補給
+        FindCoordsOrElseExecuteFallbackAndWait('refilled', ['box', 'refill', 'OK', [1, 1]], 2)
+        Press([1, 1])
+        Sleep(2)  # 等待補給動畫結束
+
+        # 3. 整理背包（如果啟用）- 補給結束後在角色選擇畫面
+        if setting._ORGANIZE_BACKPACK_ENABLED and setting._ORGANIZE_BACKPACK_COUNT > 0:
+            try:
+                StateOrganizeBackpack(setting._ORGANIZE_BACKPACK_COUNT)
+            except Exception as e:
+                logger.error(f"整理背包失敗: {e}")
+                for _ in range(3):
+                    PressReturn()
+                    Sleep(1)
     def StateEoT():
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
@@ -3128,3 +3261,300 @@ def Factory():
             logger.error(f"Farm 執行時發生錯誤: {e}")
             setting._FINISHINGCALLBACK()
     return Farm
+
+def TestFactory():
+    """獨立的測試工廠，用於快速測試特定功能而不執行完整任務循環"""
+    setting = None
+    
+    def ResetADBDevice():
+        nonlocal setting
+        if device := CheckRestartConnectADB(setting):
+            setting._ADBDEVICE = device
+            logger.info("ADB服务成功启动，设备已连接.")
+    
+    def DeviceShell(cmdStr):
+        logger.debug(f"DeviceShell {cmdStr}")
+        while True:
+            try:
+                result = setting._ADBDEVICE.shell(cmdStr, timeout=5)
+                return result
+            except Exception as e:
+                logger.error(f"ADB命令失败: {e}")
+                ResetADBDevice()
+                continue
+    
+    def Sleep(waitTime=1):
+        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            return
+        time.sleep(waitTime)
+    
+    def ScreenShot():
+        screenshot = setting._ADBDEVICE.screencap()
+        screenshot_np = np.frombuffer(screenshot, dtype=np.uint8)
+        image = cv2.imdecode(screenshot_np, cv2.IMREAD_COLOR)
+        return image
+    
+    def Press(pos):
+        if pos:
+            DeviceShell(f"input tap {pos[0]} {pos[1]}")
+            return True
+        return False
+    
+    def PressReturn():
+        DeviceShell("input keyevent KEYCODE_BACK")
+    
+    def CheckIf(screenImage, shortPathOfTarget, roi=None, outputMatchResult=False, threshold=0.80):
+        template = LoadTemplateImage(shortPathOfTarget)
+        if template is None:
+            return None
+        screenshot = screenImage.copy()
+        search_area = CutRoI(screenshot, roi)
+        try:
+            result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+        except Exception as e:
+            logger.error(f"{e}")
+            return None
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        logger.debug(f"搜索到疑似{shortPathOfTarget}, 匹配程度:{max_val*100:.2f}%")
+        if max_val < threshold:
+            logger.debug("匹配程度不足阈值.")
+            return None
+        pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
+        return pos
+    
+    def get_organize_items():
+        """動態讀取 Organize 資料夾中的物品圖片"""
+        import glob
+        organize_path = ResourcePath(os.path.join(IMAGE_FOLDER, 'Organize'))
+        items = []
+        for ext in ['*.png', '*.jpg']:
+            items.extend(glob.glob(os.path.join(organize_path, ext)))
+        return [os.path.splitext(os.path.basename(f))[0] for f in items]
+
+    def FindCoordsOrElseExecuteFallbackAndWait(targetPattern, fallback, waitTime):
+        """簡化版的 FindCoordsOrElseExecuteFallbackAndWait（模擬原版邏輯）"""
+        max_attempts = 60
+
+        for attempt in range(max_attempts):
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return None
+
+            scn = ScreenShot()
+
+            # 檢查是否找到目標
+            if isinstance(targetPattern, (list, tuple)):
+                for pattern in targetPattern:
+                    pos = CheckIf(scn, pattern)
+                    if pos:
+                        logger.info(f"找到目標: {pattern}")
+                        return pos
+            else:
+                pos = CheckIf(scn, targetPattern)
+                if pos:
+                    logger.info(f"找到目標: {targetPattern}")
+                    return pos
+
+            # 執行整個 fallback 列表
+            if fallback:
+                if isinstance(fallback, (list, tuple)):
+                    # 檢查是否為單一座標 [x, y]
+                    if len(fallback) == 2 and all(isinstance(x, (int, float)) for x in fallback):
+                        Press(fallback)
+                    else:
+                        # 遍歷 fallback 列表
+                        for fb in fallback:
+                            if isinstance(fb, str):
+                                if fb.lower() == 'return':
+                                    PressReturn()
+                                elif fb.startswith('input '):
+                                    DeviceShell(fb)
+                                else:
+                                    Press(CheckIf(scn, fb))
+                            elif isinstance(fb, (list, tuple)) and len(fb) == 2:
+                                Press(fb)
+                                Sleep(0.1)
+                elif isinstance(fallback, str):
+                    if fallback.lower() == 'return':
+                        PressReturn()
+                    elif fallback.startswith('input '):
+                        DeviceShell(fallback)
+                    else:
+                        Press(CheckIf(scn, fallback))
+
+            Sleep(waitTime)
+
+        logger.warning(f"超過最大嘗試次數，未找到: {targetPattern}")
+        return None
+
+    def TestOrganizeBackpack(num_characters):
+        """測試整理背包功能"""
+        if num_characters <= 0:
+            return
+        
+        items_to_organize = get_organize_items()
+        if not items_to_organize:
+            logger.info("Organize 資料夾為空，跳過整理")
+            return
+        
+        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
+        
+        for char_index in range(num_characters):
+            # 檢查停止信號
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                logger.info("收到停止信號，終止整理背包")
+                return
+            
+            logger.info(f"整理第 {char_index} 號角色背包")
+            
+            # 角色座標（固定值）
+            char_positions = [
+                [162, 1333],   # 角色 0
+                [465, 1333],   # 角色 1
+                [750, 1333],   # 角色 2
+                [162, 1515],   # 角色 3
+                [465, 1515],   # 角色 4
+                [750, 1515],   # 角色 5
+            ]
+            char_pos = char_positions[char_index]
+            
+            # 步驟1: 點選角色
+            logger.info(f"步驟1: 點選角色 {char_index} 位置 {char_pos}")
+            Press(char_pos)
+            Sleep(5)  # 等待角色詳情載入
+            
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return
+            
+            # 步驟2: 點選 inventory 打開背包
+            logger.info("步驟2: 點選 inventory 打開背包")
+            scn = ScreenShot()
+            inv_pos = CheckIf(scn, 'inventory')
+            if inv_pos:
+                Press(inv_pos)
+                Sleep(5)
+            else:
+                logger.warning("找不到 inventory 按鈕，跳過此角色")
+                PressReturn()
+                Sleep(5)
+                continue
+            
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return
+            
+            # 步驟3: 對每個物品執行整理
+            logger.info("步驟3: 開始整理物品")
+            for item in items_to_organize:
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return
+                
+                item_path = f'Organize/{item}'
+                
+                while True:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return
+                    
+                    scn = ScreenShot()
+                    item_pos = CheckIf(scn, item_path)
+                    
+                    if not item_pos:
+                        logger.info(f"沒有找到物品: {item}")
+                        break
+                    
+                    logger.info(f"找到物品: {item}，位置: {item_pos}")
+                    Press(item_pos)
+                    Sleep(5)
+                    
+                    scn = ScreenShot()
+                    put_pos = CheckIf(scn, 'putinstorage')
+                    if put_pos:
+                        Press(put_pos)
+                        Sleep(5)
+                        logger.info(f"已將 {item} 放入倉庫")
+                    else:
+                        logger.warning("找不到 putinstorage 按鈕")
+                        PressReturn()
+                        Sleep(5)
+                        break
+            
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return
+
+            # 步驟4: 關閉 inventory 視窗
+            logger.info("步驟4: 關閉 inventory")
+            scn = ScreenShot()
+            close_pos = CheckIf(scn, 'closeInventory')
+            if close_pos:
+                Press(close_pos)
+            else:
+                PressReturn()
+            Sleep(5)
+
+        logger.info("背包整理完成")
+
+    def TestStateInn(num_characters, use_royal_suite=False):
+        """測試完整的 StateInn 流程：住宿 → 補給 → 整理背包"""
+        logger.info("=== 開始測試 StateInn 流程 ===")
+
+        # 1. 住宿
+        logger.info("步驟1: 住宿")
+        if not use_royal_suite:
+            FindCoordsOrElseExecuteFallbackAndWait('OK', ['Inn', 'Stay', 'Economy', [1, 1]], 2)
+
+        else:
+            FindCoordsOrElseExecuteFallbackAndWait('OK', ['Inn', 'Stay', 'royalsuite', [1, 1]], 2)
+
+        FindCoordsOrElseExecuteFallbackAndWait('Stay', ['OK', [299, 1464]], 2)
+        Sleep(2)
+
+        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            return
+
+        # 2. 自動補給
+        logger.info("步驟2: 自動補給")
+        FindCoordsOrElseExecuteFallbackAndWait('refilled', ['box', 'refill', 'OK', [1, 1]], 2)
+
+
+        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            return
+
+        # 3. 整理背包
+        if num_characters > 0:
+            logger.info("步驟3: 整理背包")
+            try:
+                TestOrganizeBackpack(num_characters)
+            except Exception as e:
+                logger.error(f"整理背包失敗: {e}")
+                for _ in range(3):
+                    PressReturn()
+                    Sleep(1)
+        else:
+            logger.info("步驟3: 跳過整理背包（未設定角色數量）")
+
+        logger.info("=== StateInn 流程測試完成 ===")
+
+    def run(set, test_type, **kwargs):
+        nonlocal setting
+        setting = set
+        setting._FORCESTOPING = Event()
+        
+        try:
+            ResetADBDevice()
+            
+            if not setting._ADBDEVICE:
+                logger.error("ADB 連接失敗")
+                return
+            
+            if test_type == "organize_backpack":
+                count = kwargs.get('count', 1)
+                TestOrganizeBackpack(count)
+            elif test_type == "state_inn":
+                count = kwargs.get('count', 0)
+                use_royal_suite = kwargs.get('use_royal_suite', False)
+                TestStateInn(count, use_royal_suite)
+
+            logger.info("測試完成")
+        except Exception as e:
+            logger.error(f"測試失敗: {e}")
+    
+    
+    return run

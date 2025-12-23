@@ -58,6 +58,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.create_widgets()
         self.update_system_auto_combat()
         self.update_active_rest_state() # 初始化时更新旅店住宿entry.
+        self.update_organize_backpack_state()  # 初始化整理背包狀態
         
 
         logger.info("**********************************")
@@ -134,16 +135,18 @@ class ConfigPanelApp(tk.Toplevel):
         self.notebook = ttk.Notebook(self.main_frame)
         self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # 创建四个分页
+        # 创建五个分页
         self.tab_general = ttk.Frame(self.notebook, padding=10)
         self.tab_battle = ttk.Frame(self.notebook, padding=10)
         self.tab_skills = ttk.Frame(self.notebook, padding=10)
         self.tab_advanced = ttk.Frame(self.notebook, padding=10)
+        self.tab_test = ttk.Frame(self.notebook, padding=10)
 
         self.notebook.add(self.tab_general, text="一般設定")
         self.notebook.add(self.tab_battle, text="戰鬥設定")
         self.notebook.add(self.tab_skills, text="技能設定")
         self.notebook.add(self.tab_advanced, text="進階設定")
+        self.notebook.add(self.tab_test, text="測試")
 
         # 验证命令（数字输入）
         vcmd_non_neg = self.register(lambda x: ((x=="")or(x.isdigit())))
@@ -172,6 +175,11 @@ class ConfigPanelApp(tk.Toplevel):
         # Tab 4: 进阶设定
         # =============================================
         self._create_advanced_tab(vcmd_non_neg, checkcommand)
+
+        # =============================================
+        # Tab 5: 测试
+        # =============================================
+        self._create_test_tab()
 
         # === 启动/停止按钮区域 ===
         self.columnconfigure(0, weight=1)
@@ -517,6 +525,28 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.active_csc.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=5)
 
+        # --- 整理背包 ---
+        row += 1
+        frame_organize = ttk.LabelFrame(tab, text="整理背包", padding=5)
+        frame_organize.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.organize_backpack_check = ttk.Checkbutton(
+            frame_organize, variable=self.organize_backpack_enabled_var,
+            text="啟用整理背包", command=self.update_organize_backpack_state,
+            style="Custom.TCheckbutton"
+        )
+        self.organize_backpack_check.grid(row=0, column=0, padx=5)
+
+        ttk.Label(frame_organize, text="人數:").grid(row=0, column=1, padx=(10, 2))
+        self.organize_backpack_count_spinbox = ttk.Spinbox(
+            frame_organize, from_=1, to=6, width=3,
+            textvariable=self.organize_backpack_count_var,
+            command=self.save_config
+        )
+        self.organize_backpack_count_spinbox.grid(row=0, column=2)
+        
+        ttk.Label(frame_organize, text="(將 Organize 資料夾內的物品放入倉庫)").grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
+
         # --- 其他進階選項 ---
         row += 1
         frame_other = ttk.LabelFrame(tab, text="其他", padding=5)
@@ -529,6 +559,138 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.active_triumph.grid(row=0, column=0, sticky=tk.W)
 
+    def _create_test_tab(self):
+        """測試分頁：提供快速測試功能（完全獨立運行）"""
+        tab = self.tab_test
+        row = 0
+
+        # --- 說明 ---
+        ttk.Label(tab, text="測試功能（獨立運行，不需啟動主任務）", font=("微软雅黑", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
+        row += 1
+
+        # --- ADB 連接狀態 ---
+        self.test_adb_status = tk.StringVar(value="未連接")
+        ttk.Label(tab, text="ADB 狀態:").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(tab, textvariable=self.test_adb_status).grid(row=row, column=1, sticky=tk.W, pady=2)
+        row += 1
+
+        # --- 測試按鈕區域 ---
+        frame_test = ttk.LabelFrame(tab, text="Inn 流程測試", padding=5)
+        frame_test.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
+
+        # 測試整理背包按鈕
+        self.test_organize_btn = ttk.Button(
+            frame_test,
+            text="測試整理背包",
+            command=self._test_organize_backpack_standalone
+        )
+        self.test_organize_btn.grid(row=0, column=0, padx=5, pady=5)
+
+        # 測試住宿流程按鈕
+        self.test_state_inn_btn = ttk.Button(
+            frame_test,
+            text="測試住宿流程",
+            command=self._test_state_inn_standalone
+        )
+        self.test_state_inn_btn.grid(row=0, column=1, padx=5, pady=5)
+
+        row += 1
+        ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試整理背包：請確保遊戲在角色選擇畫面\n3. 測試住宿流程：請確保遊戲在 Inn 主畫面\n4. 不需要啟動主任務",
+                  foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+    def _test_organize_backpack_standalone(self):
+        """測試整理背包功能（完全獨立運行）"""
+        import threading
+        
+        # 禁用按鈕防止重複點擊
+        self.test_organize_btn.config(state="disabled")
+        self.test_adb_status.set("正在連接...")
+        
+        def run_test():
+            try:
+                logger.info("=== 開始獨立測試整理背包 ===")
+                
+                # 初始化設定
+                setting = FarmConfig()
+                config = LoadConfigFromFile()
+                for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
+                    setattr(setting, var_config_name, config.get(var_config_name, var_default_value))
+                
+                # 設置停止信號
+                from threading import Event
+                setting._FORCESTOPING = Event()
+                
+                # 使用 TestFactory 執行測試
+                test_func = TestFactory()
+                count = self.organize_backpack_count_var.get()
+                if count <= 0:
+                    count = 1
+                
+                # 更新狀態
+                self.test_adb_status.set("已連接，執行中...")
+                
+                test_func(setting, "organize_backpack", count=count)
+                
+                self.test_adb_status.set("測試完成")
+                logger.info("=== 測試整理背包完成 ===")
+                
+            except Exception as e:
+                logger.error(f"測試失敗: {e}")
+                self.test_adb_status.set(f"失敗: {e}")
+            finally:
+                # 重新啟用按鈕
+                self.test_organize_btn.config(state="normal")
+        
+        thread = threading.Thread(target=run_test, daemon=True)
+        thread.start()
+
+    def _test_state_inn_standalone(self):
+        """測試完整住宿流程（住宿 → 補給 → 整理背包）"""
+        import threading
+
+        # 禁用按鈕防止重複點擊
+        self.test_state_inn_btn.config(state="disabled")
+        self.test_organize_btn.config(state="disabled")
+        self.test_adb_status.set("正在連接...")
+
+        def run_test():
+            try:
+                logger.info("=== 開始測試住宿流程 ===")
+
+                # 初始化設定
+                setting = FarmConfig()
+                config = LoadConfigFromFile()
+                for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
+                    setattr(setting, var_config_name, config.get(var_config_name, var_default_value))
+
+                # 設置停止信號
+                from threading import Event
+                setting._FORCESTOPING = Event()
+
+                # 使用 TestFactory 執行測試
+                test_func = TestFactory()
+                count = self.organize_backpack_count_var.get()
+                use_royal_suite = self.active_rest_var.get()
+
+                # 更新狀態
+                self.test_adb_status.set("已連接，執行中...")
+
+                test_func(setting, "state_inn", count=count, use_royal_suite=use_royal_suite)
+
+                self.test_adb_status.set("測試完成")
+                logger.info("=== 測試住宿流程完成 ===")
+
+            except Exception as e:
+                logger.error(f"測試失敗: {e}")
+                self.test_adb_status.set(f"失敗: {e}")
+            finally:
+                # 重新啟用按鈕
+                self.test_state_inn_btn.config(state="normal")
+                self.test_organize_btn.config(state="normal")
+
+        thread = threading.Thread(target=run_test, daemon=True)
+        thread.start()
+
     def update_active_rest_state(self):
         if self.active_rest_var.get():
             self.rest_intervel_entry.config(state="normal")
@@ -536,6 +698,13 @@ class ConfigPanelApp(tk.Toplevel):
         else:
             self.rest_intervel_entry.config(state="disable")
             self.button_save_rest_intervel.config(state="disable")
+
+    def update_organize_backpack_state(self):
+        if self.organize_backpack_enabled_var.get():
+            self.organize_backpack_count_spinbox.config(state="normal")
+        else:
+            self.organize_backpack_count_spinbox.config(state="disable")
+        self.save_config()
 
     def update_change_aoe_once_check(self):
         if self.aoe_once_var.get()==False:
@@ -624,7 +793,9 @@ class ConfigPanelApp(tk.Toplevel):
             self.active_triumph,
             self.active_royalsuite_rest,
             self.button_save_adb_port,
-            self.active_csc
+            self.active_csc,
+            self.organize_backpack_check,
+            self.organize_backpack_count_spinbox,
             ]
 
         if state == tk.DISABLED:
@@ -637,6 +808,7 @@ class ConfigPanelApp(tk.Toplevel):
                 widget.configure(state="normal")
             self.update_active_rest_state()
             self.update_change_aoe_once_check()
+            self.update_organize_backpack_state()
 
         if not self.system_auto_combat_var.get():
             widgets = [
