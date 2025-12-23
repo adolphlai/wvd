@@ -45,3 +45,8 @@ diagnose_chest.py
 # 示例*.md
 # *问题分析.md
 # *诊断.md
+
+# Claude
+.claude/
+rolling.md
+src/output.txt

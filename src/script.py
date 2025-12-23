@@ -101,7 +101,7 @@ class RuntimeContext:
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
     _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
-    _FIRST_COMBAT_AFTER_INN = False  # 从村庄返回地城后第一次战斗标志
+    _FIRST_COMBAT_AFTER_INN = 0  # 从村庄返回地城后前N次战斗标志（计数器）
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
@@ -1389,6 +1389,8 @@ def Factory():
     def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
         强制使用强力单体技能
+        注意：此函数由调用者决定何时调用（通过 _FORCE_PHYSICAL_CURRENT_COMBAT 标志）
+              函数本身不再检查开关设定，信任调用者的判断
         Args:
             screen: 当前截图
             doubleConfirmCastSpell_func: 确认施法的函数
@@ -1396,10 +1398,6 @@ def Factory():
         Returns:
             bool: 是否成功使用了技能
         """
-        if not setting._FORCE_PHYSICAL_FIRST_COMBAT:
-            logger.info(f"{reason}，但功能已关闭，跳过强力单体技能")
-            return False
-        
         logger.info(f"{reason}，强制使用强力单体技能")
         
         # 先打断自动战斗（点击画面空白处）
@@ -1499,12 +1497,13 @@ def Factory():
                 logger.info(f"重启后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
         
-        # 从村庄返回后第一次战斗，开启整场战斗强制使用强力单体技能模式
-        # 同样只在新战斗开始时触发
-        if runtimeContext._FIRST_COMBAT_AFTER_INN and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
-            runtimeContext._FIRST_COMBAT_AFTER_INN = False
+        # 从村庄返回后前N次战斗，开启整场战斗强制使用强力单体技能模式
+        # 同样只在新战斗开始时（_FORCE_PHYSICAL_CURRENT_COMBAT 为 False）才倒数
+        if runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+            combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_INN  # 2->第1次, 1->第2次
+            runtimeContext._FIRST_COMBAT_AFTER_INN -= 1
             if setting._FORCE_PHYSICAL_AFTER_INN:
-                logger.info("从村庄返回后第一次战斗，开启强力单体技能模式（整场战斗）")
+                logger.info(f"返回后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
         
         # 如果当前战斗需要强制使用强力单体技能
@@ -1968,23 +1967,36 @@ def Factory():
                             Sleep(2)
                     ########### 防止转圈 (from upstream 1.9.27)
                     if not runtimeContext._STEPAFTERRESTART:
-                        logger.info("防止转圈: 前後左右移動測試")
+                        # 重啟後：前後左右移動
+                        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0:
+                            logger.info("防止转圈（重啟後）: 前後左右移動測試")
 
-                        # 前進（向上）
-                        DeviceShell("input swipe 440 950 440 750")
-                        Sleep(1)
+                            # 前進（向上）
+                            DeviceShell("input swipe 440 950 440 750")
+                            Sleep(1)
 
-                        # 後退（向下）
-                        DeviceShell("input swipe 440 950 440 1150")
-                        Sleep(1)
+                            # 後退（向下）
+                            DeviceShell("input swipe 440 950 440 1150")
+                            Sleep(1)
 
-                        # 左平移（原本邏輯）
-                        Press([27,950])
-                        Sleep(1)
+                            # 左平移
+                            Press([27,950])
+                            Sleep(1)
 
-                        # 右平移（原本邏輯）
-                        Press([853,950])
-                        Sleep(1)
+                            # 右平移
+                            Press([853,950])
+                            Sleep(1)
+                        else:
+                            # 第一次進入：只左右移動
+                            logger.info("防止转圈: 左右平移一次")
+
+                            # 左平移
+                            Press([27,950])
+                            Sleep(1)
+
+                            # 右平移
+                            Press([853,950])
+                            Sleep(1)
 
                         runtimeContext._STEPAFTERRESTART = True
                     # 第一次进入地城时，无条件打开地图（不检查能见度）
@@ -2293,7 +2305,8 @@ def Factory():
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
-                        runtimeContext._FIRST_COMBAT_AFTER_INN = True  # 设置村庄返回标志
+                    # 无论是否休息，只要从村庄进入地城，都设置返回后前2次战斗标志
+                    runtimeContext._FIRST_COMBAT_AFTER_INN = 2
                     state = State.EoT
                 case State.EoT:
                     RestartableSequenceExecution(

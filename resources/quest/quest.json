@@ -92,6 +92,9 @@
         "_TYPE":"dungeon",
         "questName":"*新!*[宝箱+刷怪]深雪R6",
         "_TARGETINFOLIST":[
+            ["position","右下",[506,1243]],
+            ["position","右下",[768,660]],
+            ["chest","右下",[[426,271,900,1600]]],
             ["position","左上",[35,707]],
             ["position","左下",[816,605]],
             ["position","左下",[80,873]],	
