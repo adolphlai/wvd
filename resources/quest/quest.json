@@ -110,6 +110,29 @@
         ]
     },
 
+    "DH-6f-right":{
+        "_TYPE":"dungeon",
+        "questName":"*新!*深雪R6右側及下方箱子",
+        "_TARGETINFOLIST":[
+            ["position","右下",[506,1243]],
+            ["position","右下",[768,660]],
+            ["chest","右下",[[426,271,900,1600]]],
+            ["position","左上",[35,707]],
+            ["position","左下",[816,605]],
+            ["position","左下",[80,873]],	
+            ["position","左下",[821,821]],			
+            ["chest","左下",[[0,0,900,1600]]],
+            ["chest","右下",[[0,0,424,1256]]],			
+            ["stair_DH_R5", "右下",[73,1240]],
+            ["harken", "左上",null]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],1],
+            ["press","DH-R6","input swipe 650 250 650 900",1]
+        ]
+    },
+
+
     "fordraig-B3F":{
         "_TYPE":"dungeon",
         "questName":"[宝箱]鸟洞三层fordraigB3F",
