@@ -107,6 +107,8 @@ class RuntimeContext:
     _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
     _FIRST_COMBAT_AFTER_INN = 0  # 从村庄返回地城后前N次战斗标志（计数器）
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
+    _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
+    _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -120,11 +122,12 @@ class FarmQuest:
         # 当访问不存在的属性时，抛出AttributeError
         raise AttributeError(f"FarmQuest对象没有属性'{name}'")
 class TargetInfo:
-    def __init__(self, target: str, swipeDir: list = None, roi=None, activeSpellSequenceOverride = False):
+    def __init__(self, target: str, swipeDir: list = None, roi=None, floorImage=None, activeSpellSequenceOverride = False):
         self.target = target
         self.swipeDir = swipeDir
         # 注意 roi校验需要target的值. 请严格保证roi在最后.
         self.roi = roi
+        self.floorImage = floorImage  # 用於 harken 樓層選擇
         self.activeSpellSequenceOverride = activeSpellSequenceOverride
     @property
     def swipeDir(self):
@@ -620,39 +623,82 @@ def Factory():
                 else:
                     logger.error(f"截圖遇到未預期的錯誤: {type(e).__name__}: {e}")
                     raise
+    # 多模板映射：某些目標需要嘗試多個模板，選擇匹配度最高的
+    # 使用函數動態獲取模板列表，支持自動掃描資料夾
+    def get_multi_templates(target_name):
+        """獲取目標的所有可用模板，支持動態掃描 harken, harken2, harken3... 等"""
+        import glob
+        import re
+        
+        # 對於 harken，動態掃描所有 harken 或 harken+數字 的檔案
+        if target_name == 'harken':
+            harken_path = ResourcePath(os.path.join(IMAGE_FOLDER, 'harken*.png'))
+            harken_files = glob.glob(harken_path)
+            if harken_files:
+                templates = []
+                # 只匹配 harken.png 或 harken+數字.png（如 harken2.png, harken3.png）
+                pattern = re.compile(r'^harken\d*$')
+                for f in harken_files:
+                    name = os.path.splitext(os.path.basename(f))[0]
+                    if pattern.match(name):
+                        templates.append(name)
+                if templates:
+                    return templates
+        
+        # 預設只返回原始目標
+        return [target_name]
+    
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
-        template = LoadTemplateImage(shortPathOfTarget)
-        screenshot = screenImage.copy()
-        pos = None
-        search_area = CutRoI(screenshot, roi)
-        try:
-            result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
-        except Exception as e:
+        # 檢查是否需要多模板匹配
+        templates_to_try = get_multi_templates(shortPathOfTarget)
+        
+        best_pos = None
+        best_val = 0
+        best_template_name = None
+        
+        for template_name in templates_to_try:
+            template = LoadTemplateImage(template_name)
+            screenshot = screenImage.copy()
+            search_area = CutRoI(screenshot, roi)
+            try:
+                result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+            except Exception as e:
                 logger.error(f"{e}")
                 logger.info(f"{e}")
                 if isinstance(e, (cv2.error)):
                     logger.info(f"cv2异常.")
-                    # timestamp = datetime.now().strftime("cv2_%Y%m%d_%H%M%S")  # 格式：20230825_153045
-                    # file_path = os.path.join(LOGS_FOLDER_NAME, f"{timestamp}.png")
-                    # cv2.imwrite(file_path, ScreenShot())
-                    return None
+                    continue  # 嘗試下一個模板
 
-        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            
+            logger.debug(f"搜索到疑似{template_name}, 匹配程度:{max_val*100:.2f}%")
+            
+            # 記錄最佳匹配
+            if max_val > best_val:
+                best_val = max_val
+                best_pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
+                best_template_name = template_name
 
-        if outputMatchResult:
-            cv2.imwrite("origin.png", screenshot)
-            cv2.rectangle(screenshot, max_loc, (max_loc[0] + template.shape[1], max_loc[1] + template.shape[0]), (0, 255, 0), 2)
-            cv2.imwrite("matched.png", screenshot)
+        if outputMatchResult and best_pos:
+            cv2.imwrite("origin.png", screenImage)
+            screenshot_copy = screenImage.copy()
+            template = LoadTemplateImage(best_template_name)
+            cv2.rectangle(screenshot_copy, 
+                         (best_pos[0] - template.shape[1]//2, best_pos[1] - template.shape[0]//2),
+                         (best_pos[0] + template.shape[1]//2, best_pos[1] + template.shape[0]//2), 
+                         (0, 255, 0), 2)
+            cv2.imwrite("matched.png", screenshot_copy)
 
-        logger.debug(f"搜索到疑似{shortPathOfTarget}, 匹配程度:{max_val*100:.2f}%")
-        if max_val < threshold:
+        if best_val < threshold:
             logger.debug("匹配程度不足阈值.")
             return None
-        if max_val<=0.9:
+        if best_val <= 0.9:
             logger.debug(f"警告: {shortPathOfTarget}的匹配程度超过了{threshold*100:.0f}%但不足90%")
+        
+        if len(templates_to_try) > 1:
+            logger.debug(f"多模板匹配: 選擇 {best_template_name} (匹配度 {best_val*100:.2f}%)")
 
-        pos=[max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
-        return pos
+        return best_pos
     def CheckIf_MultiRect(screenImage, shortPathOfTarget):
         template = LoadTemplateImage(shortPathOfTarget)
         screenshot = screenImage
@@ -1183,6 +1229,32 @@ def Factory():
             if TryPressRetry(screen):
                     Sleep(2)
 
+            # harken 樓層選擇：優先處理，當設置了 _HARKEN_FLOOR_TARGET 時檢查樓層選擇界面
+            if runtimeContext._HARKEN_FLOOR_TARGET is not None:
+                floor_target = runtimeContext._HARKEN_FLOOR_TARGET
+                logger.info(f"哈肯樓層選擇: 正在檢查樓層 {floor_target}...")
+                
+                # 檢查是否出現樓層選擇按鈕
+                floor_pos = CheckIf(screen, floor_target)
+                if floor_pos and Press(floor_pos):
+                    logger.info(f"哈肯樓層選擇: 點擊樓層 {floor_target}")
+                    runtimeContext._HARKEN_FLOOR_TARGET = None  # 清除 flag
+                    runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = True  # 設置傳送完成標記
+                    Sleep(2)
+                    return IdentifyState()
+                
+                # 如果沒找到樓層按鈕，檢查 returnText（可能選擇界面還沒出現）
+                returntext_pos = CheckIf(screen, "returnText")
+                if returntext_pos:
+                    # returnText 出現但樓層按鈕還沒出現，先點擊等待
+                    logger.info(f"哈肯樓層選擇: 發現 returnText，等待樓層 {floor_target} 出現...")
+                    Press(returntext_pos)
+                    Sleep(2)
+                    return IdentifyState()
+                
+                # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
+                logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
+
             identifyConfig = [
                 ('combatActive',  DungeonState.Combat),
                 ('combatActive_2',DungeonState.Combat),
@@ -1193,6 +1265,10 @@ def Factory():
                 ]
             for pattern, state in identifyConfig:
                 if CheckIf(screen, pattern):
+                    # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
+                    if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
+                        logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
+                        continue
                     return State.Dungeon, state, screen
 
             if CheckIf(screen,'someonedead'):
@@ -1201,13 +1277,15 @@ def Factory():
                     Press([400+random.randint(0,100),750+random.randint(0,100)])
                     Sleep(1)
 
-            if Press(CheckIf(screen, "returnText")):
-                Sleep(2)
-                return IdentifyState()
+            # 正常的 returnText 和 returntoTown 處理（當沒有設置樓層選擇時）
+            if runtimeContext._HARKEN_FLOOR_TARGET is None:
+                if Press(CheckIf(screen, "returnText")):
+                    Sleep(2)
+                    return IdentifyState()
 
-            if CheckIf(screen,"returntoTown"):
-                FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
-                return State.Inn,DungeonState.Quit, screen
+                if CheckIf(screen,"returntoTown"):
+                    FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                    return State.Inn,DungeonState.Quit, screen
 
             if Press(CheckIf(screen,"openworldmap")):
                 return IdentifyState()
@@ -1708,6 +1786,7 @@ def Factory():
                 targetPos = CheckIf_throughStair(scn,targetInfo)
             else:
                 logger.info(f"搜索{target}...")
+                # harken: roi 正常用於搜索區域限制，floorImage 用於樓層選擇
                 if targetPos:=CheckIf(scn,target,roi):
                     logger.info(f'找到了 {target}! {targetPos}')
                     if (target == 'chest') and (swipeDir!= None):
@@ -1743,6 +1822,18 @@ def Factory():
                 restartGame()
 
             _, dungState, screen = IdentifyState()
+            
+            # harken 樓層傳送完成檢測：如果 _HARKEN_FLOOR_TARGET 被清除，說明傳送已完成
+            if runtimeContext._HARKEN_FLOOR_TARGET is None and dungState == DungeonState.Dungeon:
+                # 檢查是否剛剛完成了樓層傳送（此時應該在新樓層的地城中）
+                if hasattr(runtimeContext, '_HARKEN_TELEPORT_JUST_COMPLETED') and runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED:
+                    logger.info("哈肯樓層傳送完成，打開地圖搜索下一個目標")
+                    runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = False
+                    Press([777,150])  # 打開地圖
+                    Sleep(1)
+                    dungState = DungeonState.Map  # 直接返回 Map 狀態，跳過 Resume 優化
+                    break
+            
             if dungState == DungeonState.Map:
                 logger.info(f"开始移动失败. 不要停下来啊面具男!")
                 FindCoordsOrElseExecuteFallbackAndWait("dungFlag", [[280, 1433], [1, 1]], 1)
@@ -1842,9 +1933,19 @@ def Factory():
             return DungeonState.Map,  targetInfoList
         else:
             if target in normalPlace or target.endswith("_quit") or target.startswith('stair'):
+                # harken 樓層選擇：在移動之前設置 flag，讓傳送完成後 IdentifyState 能處理
+                if target == 'harken' and targetInfo.floorImage is not None:
+                    logger.info(f"哈肯樓層選擇: 設置目標樓層 {targetInfo.floorImage}")
+                    runtimeContext._HARKEN_FLOOR_TARGET = targetInfo.floorImage
+                
                 Press(searchResult)
                 Press([280,1433]) # automove
                 result_state = StateMoving_CheckFrozen()
+                
+                # harken 成功後彈出當前目標，切換到下一個目標
+                if target == 'harken':
+                    targetInfoList.pop(0)
+                    logger.info(f"哈肯目標完成，切換到下一個目標")
                 
                 # 如果启用了Resume优化且成功到达(返回None)，返回Dungeon状态避免重新打开地图
                 if setting._ENABLE_RESUME_OPTIMIZATION and result_state is None:
