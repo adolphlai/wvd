@@ -109,6 +109,8 @@ class RuntimeContext:
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
+    _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
+    _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -799,6 +801,49 @@ def Factory():
                 logger.info("判定为楼梯存在, 尚未通过.")
                 return position
             return None
+
+    # 小地圖區域 ROI (右上角): 左上角(651,24) 右下角(870,244)
+    MINIMAP_ROI = [651, 24, 870, 244]  # [x1, y1, x2, y2]
+    
+    def CheckIf_minimapFloor(screenImage, floorImage):
+        """偵測主畫面小地圖中的樓層標識
+        
+        Args:
+            screenImage: 主畫面截圖（非地圖畫面）
+            floorImage: 樓層標識圖片名稱
+        
+        Returns:
+            dict: 包含是否找到、匹配度、位置等資訊
+        """
+        template = LoadTemplateImage(floorImage)
+        if template is None:
+            logger.error(f"無法載入圖片: {floorImage}")
+            return {"found": False, "match_val": 0, "pos": None, "error": "圖片不存在"}
+        
+        # 使用固定的小地圖 ROI 區域 [x1, y1, x2, y2]
+        x1, y1, x2, y2 = MINIMAP_ROI
+        search_area = screenImage[y1:y2, x1:x2].copy()
+        
+        try:
+            result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+        except Exception as e:
+            logger.error(f"匹配失敗: {e}")
+            return {"found": False, "match_val": 0, "pos": None, "error": str(e)}
+        
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        threshold = 0.80
+        
+        pos = None
+        if max_val >= threshold:
+            pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
+        
+        return {
+            "found": max_val >= threshold,
+            "match_val": max_val,
+            "pos": pos,
+            "threshold": threshold
+        }
+
     def CheckIf_fastForwardOff(screenImage):
         position = [240,1490]
         template =  LoadTemplateImage(f"fastforward_off")
@@ -1781,6 +1826,11 @@ def Factory():
             if target == 'position':
                 logger.info(f"当前目标: 地点{roi}")
                 targetPos = CheckIf_ReachPosition(scn,targetInfo)
+            elif target == 'minimap_stair':
+                # minimap_stair: 直接使用座標，不搜索圖片（偵測在 StateMoving_CheckFrozen 中進行）
+                logger.info(f"当前目标: 小地圖樓梯 座標{roi} 目標圖片{targetInfo.floorImage}")
+                targetPos = roi  # 直接返回座標
+                break
             elif target.startswith("stair"):
                 logger.info(f"当前目标: 楼梯{target}")
                 targetPos = CheckIf_throughStair(scn,targetInfo)
@@ -1833,6 +1883,24 @@ def Factory():
                     Sleep(1)
                     dungState = DungeonState.Map  # 直接返回 Map 狀態，跳過 Resume 優化
                     break
+            
+            # minimap_stair 小地圖偵測：持續監控小地圖直到找到樓層標識
+            if runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
+                floor_target = runtimeContext._MINIMAP_STAIR_FLOOR_TARGET
+                result = CheckIf_minimapFloor(screen, floor_target)
+                
+                if result["found"]:
+                    logger.info(f"✓ 小地圖偵測到樓層標識 {floor_target}！匹配度: {result['match_val']*100:.2f}%")
+                    logger.info("已到達目標樓層，清除 minimap_stair flag")
+                    runtimeContext._MINIMAP_STAIR_FLOOR_TARGET = None
+                    runtimeContext._MINIMAP_STAIR_IN_PROGRESS = False
+                    # 打開地圖繼續下一個目標
+                    Press([777,150])
+                    Sleep(1)
+                    dungState = DungeonState.Map
+                    break
+                else:
+                    logger.debug(f"小地圖監控中... 匹配度: {result['match_val']*100:.2f}%")
             
             if dungState == DungeonState.Map:
                 logger.info(f"开始移动失败. 不要停下来啊面具男!")
@@ -1932,11 +2000,17 @@ def Factory():
 
             return DungeonState.Map,  targetInfoList
         else:
-            if target in normalPlace or target.endswith("_quit") or target.startswith('stair'):
+            if target in normalPlace or target.endswith("_quit") or target.startswith('stair') or target == 'minimap_stair':
                 # harken 樓層選擇：在移動之前設置 flag，讓傳送完成後 IdentifyState 能處理
                 if target == 'harken' and targetInfo.floorImage is not None:
                     logger.info(f"哈肯樓層選擇: 設置目標樓層 {targetInfo.floorImage}")
                     runtimeContext._HARKEN_FLOOR_TARGET = targetInfo.floorImage
+                
+                # minimap_stair：在移動之前設置 flag，讓 StateMoving_CheckFrozen 持續監控小地圖
+                if target == 'minimap_stair' and targetInfo.floorImage is not None:
+                    logger.info(f"小地圖樓梯偵測: 設置目標樓層圖片 {targetInfo.floorImage}")
+                    runtimeContext._MINIMAP_STAIR_FLOOR_TARGET = targetInfo.floorImage
+                    runtimeContext._MINIMAP_STAIR_IN_PROGRESS = True
                 
                 Press(searchResult)
                 Press([280,1433]) # automove
@@ -1946,6 +2020,16 @@ def Factory():
                 if target == 'harken':
                     targetInfoList.pop(0)
                     logger.info(f"哈肯目標完成，切換到下一個目標")
+                
+                # minimap_stair 成功後彈出當前目標（由 StateMoving_CheckFrozen 清除 flag）
+                if target == 'minimap_stair' and not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
+                    targetInfoList.pop(0)
+                    logger.info(f"小地圖樓梯目標完成，切換到下一個目標")
+                
+                # position 和 stair 目標點擊移動後彈出（避免重複處理）
+                if target == 'position' or (target.startswith('stair') and target != 'minimap_stair'):
+                    targetInfoList.pop(0)
+                    logger.info(f"目標 {target} 已點擊並移動，切換到下一個目標")
                 
                 # 如果启用了Resume优化且成功到达(返回None)，返回Dungeon状态避免重新打开地图
                 if setting._ENABLE_RESUME_OPTIMIZATION and result_state is None:
@@ -2244,6 +2328,34 @@ def Factory():
                         Press([777,150])
                         dungState = DungeonState.Map
                         runtimeContext._FIRST_DUNGEON_ENTRY = False  # 标记为已进入过
+                    # minimap_stair 恢復監控：如果標誌仍在（戰鬥/寶箱打斷後），繼續移動並監控小地圖
+                    elif runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
+                        logger.info(f"minimap_stair 恢復監控: 繼續尋找樓層標識 {runtimeContext._MINIMAP_STAIR_FLOOR_TARGET}")
+                        Sleep(1)
+                        # 檢測 Resume 按鈕並繼續移動
+                        screen = ScreenShot()
+                        resume_pos = CheckIf(screen, 'resume')
+                        if resume_pos:
+                            logger.info(f"minimap_stair: 檢測到 Resume 按鈕，繼續移動 {resume_pos}")
+                            Press(resume_pos)
+                            Sleep(1)
+                            result_state = StateMoving_CheckFrozen()
+                            if result_state == DungeonState.Map:
+                                dungState = DungeonState.Map
+                            elif not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
+                                # minimap_stair 完成（在 StateMoving_CheckFrozen 中清除 flag）
+                                logger.info("minimap_stair: 目標完成，彈出目標並返回 Map 狀態")
+                                # 彈出當前目標
+                                if targetInfoList and len(targetInfoList) > 0:
+                                    targetInfoList.pop(0)
+                                dungState = DungeonState.Map
+                            else:
+                                dungState = result_state
+                        else:
+                            # 沒有 Resume 按鈕，可能角色已停止，嘗試打開地圖
+                            logger.info("minimap_stair: 未檢測到 Resume 按鈕，打開地圖繼續")
+                            Press([777,150])
+                            dungState = DungeonState.Map
                     # Resume优化: 非第一次进入，检查Resume按钮决定下一步动作
                     # 注意: 重启后跳过Resume优化，因为之前的路径可能已失效
                     elif setting._ENABLE_RESUME_OPTIMIZATION and runtimeContext._STEPAFTERRESTART:
@@ -3650,6 +3762,145 @@ def TestFactory():
 
         logger.info("=== StateInn 流程測試完成 ===")
 
+    # 小地圖區域 ROI (右上角): 左上角(651,24) 右下角(870,244)
+    MINIMAP_ROI = [651, 24, 870, 244]  # [x1, y1, x2, y2]
+    
+    def CheckIf_minimapFloor(screenImage, floorImage):
+        """偵測主畫面小地圖中的樓層標識
+        
+        Args:
+            screenImage: 主畫面截圖（非地圖畫面）
+            floorImage: 樓層標識圖片名稱
+        
+        Returns:
+            dict: 包含是否找到、匹配度、位置等資訊
+        """
+        template = LoadTemplateImage(floorImage)
+        if template is None:
+            logger.error(f"無法載入圖片: {floorImage}")
+            return {"found": False, "match_val": 0, "pos": None, "error": "圖片不存在"}
+        
+        # 使用固定的小地圖 ROI 區域 [x1, y1, x2, y2]
+        x1, y1, x2, y2 = MINIMAP_ROI
+        search_area = screenImage[y1:y2, x1:x2].copy()
+        
+        try:
+            result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+        except Exception as e:
+            logger.error(f"匹配失敗: {e}")
+            return {"found": False, "match_val": 0, "pos": None, "error": str(e)}
+        
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        threshold = 0.80
+        
+        logger.info(f"小地圖樓層偵測 {floorImage}: 匹配度 {max_val*100:.2f}%")
+        
+        pos = None
+        if max_val >= threshold:
+            pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
+        
+        return {
+            "found": max_val >= threshold,
+            "match_val": max_val,
+            "pos": pos,
+            "threshold": threshold
+        }
+    
+    def TestMinimapStairDetection(floor_image, stair_coords, swipe_dir):
+        """測試小地圖樓梯偵測完整流程
+        
+        流程：開地圖 → 滑動找樓梯 → 點擊移動 → 持續監控小地圖
+        
+        Args:
+            floor_image: 要偵測的樓層圖片名稱（如 "DH-R5-minimap"）
+            stair_coords: 樓梯在大地圖上的座標 [x, y]
+            swipe_dir: 滑動方向字符串（如 "右下"）
+        """
+        logger.info("=== 開始小地圖樓梯完整流程測試 ===")
+        logger.info(f"目標樓層圖片: {floor_image}")
+        logger.info(f"樓梯座標: {stair_coords}")
+        logger.info(f"滑動方向: {swipe_dir}")
+        logger.info(f"小地圖 ROI 區域: {MINIMAP_ROI}")
+        
+        # 滑動方向對照表
+        SWIPE_DIRECTIONS = {
+            "左上": [200, 400, 700, 1100],
+            "右上": [700, 400, 200, 1100],
+            "左下": [200, 1100, 700, 400],
+            "右下": [700, 1100, 200, 400],
+        }
+        
+        # 步驟 1：打開地圖
+        logger.info("步驟 1: 打開地圖...")
+        Press([777, 150])  # 地圖按鈕位置
+        Sleep(1.5)
+        
+        # 檢查地圖是否打開
+        screen = ScreenShot()
+        map_flag = CheckIf(screen, 'mapFlag')
+        if not map_flag:
+            logger.error("地圖未打開，嘗試再次打開...")
+            Press([777, 150])
+            Sleep(1.5)
+            screen = ScreenShot()
+            if not CheckIf(screen, 'mapFlag'):
+                logger.error("無法打開地圖，測試終止")
+                return
+        
+        logger.info("地圖已打開 ✓")
+        
+        # 步驟 2：滑動地圖找樓梯
+        if swipe_dir and swipe_dir in SWIPE_DIRECTIONS:
+            logger.info(f"步驟 2: 滑動地圖（{swipe_dir}）...")
+            swipe = SWIPE_DIRECTIONS[swipe_dir]
+            DeviceShell(f"input swipe {swipe[0]} {swipe[1]} {swipe[2]} {swipe[3]}")
+            Sleep(1)
+        else:
+            logger.info("步驟 2: 無需滑動地圖")
+        
+        # 步驟 3：點擊樓梯座標開始移動
+        logger.info(f"步驟 3: 點擊樓梯座標 {stair_coords}...")
+        Press(stair_coords)
+        Sleep(0.3)
+        Press([280, 1433])  # automove 按鈕
+        Sleep(1)
+        
+        # 步驟 4：持續監控小地圖
+        logger.info("步驟 4: 開始監控小地圖，尋找樓層標識...")
+        max_checks = 60  # 最多檢查 60 次（約 60 秒）
+        found = False
+        
+        for i in range(max_checks):
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                logger.info("偵測到停止訊號，結束測試")
+                break
+            
+            screen = ScreenShot()
+            result = CheckIf_minimapFloor(screen, floor_image)
+            
+            if result["found"]:
+                logger.info(f"✓ 偵測到樓層標識！匹配度: {result['match_val']*100:.2f}%")
+                logger.info(f"已到達目標樓層！")
+                found = True
+                break
+            else:
+                # 每 5 次輸出一次狀態
+                if i % 5 == 0:
+                    logger.info(f"監控中... ({i}/{max_checks}) 匹配度: {result['match_val']*100:.2f}%")
+            
+            Sleep(1)
+        
+        if not found:
+            logger.warning(f"超過 {max_checks} 秒未偵測到樓層標識")
+        
+        # 步驟 5：完成
+        logger.info("步驟 5: 打開地圖確認狀態...")
+        Press([777, 150])
+        Sleep(1)
+        
+        logger.info("=== 小地圖樓梯完整流程測試完成 ===")
+        return found
+
     def run(set, test_type, **kwargs):
         nonlocal setting
         setting = set
@@ -3669,6 +3920,11 @@ def TestFactory():
                 count = kwargs.get('count', 0)
                 use_royal_suite = kwargs.get('use_royal_suite', False)
                 TestStateInn(count, use_royal_suite)
+            elif test_type == "minimap_stair":
+                floor_image = kwargs.get('floor_image', 'DH-R5-minimap')
+                stair_coords = kwargs.get('stair_coords', [294, 239])
+                swipe_dir = kwargs.get('swipe_dir', '右上')
+                TestMinimapStairDetection(floor_image, stair_coords, swipe_dir)
 
             logger.info("測試完成")
         except Exception as e:

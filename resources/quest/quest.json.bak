@@ -101,7 +101,7 @@
             ["position","左下",[821,821]],			
             ["chest","左下",[[0,0,900,1600]]],
             ["chest","右下",[[0,0,424,1256]]],			
-            ["minimap_stair","右下",[88,1242],"DH-R5-minimap"],
+            ["stair_DH_R5", "右下",[73,1240]],
             ["harken", "左上",null]
         ],
         "_EOT":[
@@ -342,19 +342,6 @@
             "LACONES":["LACONES","LACONES","LACONES","defend"],
             "居合":["defend","居合"]
         }
-	},
-    "TestMinimapStair":{
-        "_TYPE":"dungeon",
-        "questName":"[測試]小地圖樓梯偵測",
-        "_TARGETINFOLIST":[
-            ["minimap_stair","右上",[285,235],"DH-R6-minimap"],
-            ["minimap_stair","右下",[88,1242],"DH-R5-minimap"],			
-            ["harken","左上",null]
-        ],
-        "_EOT":[
-            ["press","DH",["EdgeOfTown",[1,1]],1],
-            ["press","DH-R5","input swipe 650 250 650 900",1]
-        ]
     }
 
 }
