@@ -13,6 +13,101 @@ from pathlib import Path
 import numpy as np
 import copy
 
+# pyscrcpy 串流支援
+try:
+    from pyscrcpy import Client as ScrcpyClient
+    PYSCRCPY_AVAILABLE = True
+    logger.info("pyscrcpy 可用，將使用視頻串流模式")
+except ImportError:
+    PYSCRCPY_AVAILABLE = False
+    ScrcpyClient = None
+    logger.info("pyscrcpy 不可用，將使用傳統 ADB 截圖")
+
+class ScrcpyStreamManager:
+    """pyscrcpy 串流管理器"""
+    
+    def __init__(self, max_fps=60, max_size=1600):
+        self.max_fps = max_fps
+        self.max_size = max_size
+        self.client = None
+        self.latest_frame = None
+        self.frame_count = 0
+        self.running = False
+        self._lock = Event()
+    
+    def _on_frame(self, client, frame):
+        """幀回調"""
+        if frame is not None:
+            self.latest_frame = frame.copy()
+            self.frame_count += 1
+    
+    def start(self):
+        """啟動串流"""
+        if not PYSCRCPY_AVAILABLE:
+            logger.warning("pyscrcpy 不可用，無法啟動串流")
+            return False
+        
+        if self.running:
+            return True
+        
+        try:
+            logger.info(f"啟動 pyscrcpy 串流 (max_fps={self.max_fps}, max_size={self.max_size})")
+            self.client = ScrcpyClient(
+                max_fps=self.max_fps,
+                max_size=self.max_size,
+            )
+            self.client.on_frame(self._on_frame)
+            self.client.start(threaded=True)
+            
+            # 等待第一幀
+            for i in range(50):  # 最多等 5 秒
+                if self.client.last_frame is not None:
+                    self.latest_frame = self.client.last_frame.copy()
+                    self.frame_count += 1
+                    self.running = True
+                    logger.info(f"✓ pyscrcpy 串流已啟動！")
+                    return True
+                time.sleep(0.1)
+            
+            logger.warning("pyscrcpy 串流啟動超時")
+            return False
+            
+        except Exception as e:
+            logger.error(f"pyscrcpy 串流啟動失敗: {e}")
+            return False
+    
+    def get_frame(self):
+        """獲取最新幀"""
+        if self.client and self.client.last_frame is not None:
+            return self.client.last_frame.copy()
+        return None
+    
+    def stop(self):
+        """停止串流"""
+        self.running = False
+        if self.client:
+            try:
+                self.client.stop()
+                logger.info("pyscrcpy 串流已停止")
+            except:
+                pass
+        self.client = None
+    
+    def is_available(self):
+        """檢查串流是否可用"""
+        return self.running and self.client is not None
+
+# 全局串流管理器
+_scrcpy_stream = None
+
+def get_scrcpy_stream():
+    """獲取或創建串流管理器"""
+    global _scrcpy_stream
+    if _scrcpy_stream is None and PYSCRCPY_AVAILABLE:
+        _scrcpy_stream = ScrcpyStreamManager()
+    return _scrcpy_stream
+
+
 CC_SKILLS = ["KANTIOS"]
 SECRET_AOE_SKILLS = ["SAoLABADIOS","SAoLAERLIK","SAoLAFOROS"]
 FULL_AOE_SKILLS = ["LAERLIK", "LAMIGAL","LAZELOS", "LACONES", "LAFOROS","LAHALITO", "LAFERU", "千恋万花"]
@@ -539,6 +634,32 @@ def Factory():
             time.sleep(sleep_time)
             elapsed += sleep_time
     def ScreenShot():
+        """截圖函數：優先使用 pyscrcpy 串流，失敗時退回 ADB 截圖"""
+        
+        # 檢查停止信號
+        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            logger.info("ScreenShot 檢測到停止信號，停止截圖")
+            raise RuntimeError("截圖已停止")
+        
+        # 嘗試使用 pyscrcpy 串流（極快：~1ms）
+        stream = get_scrcpy_stream()
+        if stream and stream.is_available():
+            frame = stream.get_frame()
+            if frame is not None:
+                # 驗證尺寸
+                if frame.shape == (1600, 900, 3):
+                    return frame
+                elif frame.shape == (900, 1600, 3):
+                    logger.warning("串流幀為橫屏，旋轉處理")
+                    return cv2.transpose(frame)
+                else:
+                    logger.warning(f"串流幀尺寸異常: {frame.shape}，使用 ADB 截圖")
+        
+        # 退回 ADB 截圖（較慢：~150-570ms）
+        return _ScreenShot_ADB()
+    
+    def _ScreenShot_ADB():
+        """使用 ADB 截圖（原始方式）"""
         max_retries = 5
         retry_count = 0
 
@@ -3473,9 +3594,19 @@ def Factory():
                 setting._FINISHINGCALLBACK()
                 return
 
+            # 啟動 pyscrcpy 串流（如果可用）
+            stream = get_scrcpy_stream()
+            if stream:
+                if stream.start():
+                    logger.info("pyscrcpy 串流已啟動，截圖將使用快速模式")
+                else:
+                    logger.info("pyscrcpy 串流啟動失敗，將使用傳統 ADB 截圖")
+
             # 再次檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 logger.info("Farm ADB 初始化後檢測到停止信號")
+                if stream:
+                    stream.stop()
                 setting._FINISHINGCALLBACK()
                 return
 
@@ -3490,6 +3621,11 @@ def Factory():
         except Exception as e:
             logger.error(f"Farm 執行時發生錯誤: {e}")
             setting._FINISHINGCALLBACK()
+        finally:
+            # 清理：停止 pyscrcpy 串流
+            stream = get_scrcpy_stream()
+            if stream:
+                stream.stop()
     return Farm
 
 def TestFactory():
