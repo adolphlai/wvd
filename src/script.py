@@ -1981,10 +1981,33 @@ def Factory():
         # 移动超时检测（防止原地旋转BUG）
         moving_start_time = time.time()
         MOVING_TIMEOUT = 60  # 60秒超时
+        
+        # 輪詢參數（替代固定 Sleep(3)）
+        POLL_INTERVAL = 0.3  # 每 0.3 秒檢查一次
+        MAX_POLL_COUNT = 10  # 最多檢查 10 次 = 3 秒
 
         logger.info("面具男, 移动.")
         while 1:
-            Sleep(3)
+            # 輪詢式等待：檢查畫面變化，發現靜止就提前進入下一步
+            poll_screen = None
+            for poll_i in range(MAX_POLL_COUNT):
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return None
+                time.sleep(POLL_INTERVAL)
+                poll_screen = ScreenShot()
+                
+                # 如果有上一幀，比較畫面變化
+                if lastscreen is not None:
+                    gray_poll = cv2.cvtColor(poll_screen, cv2.COLOR_BGR2GRAY)
+                    gray_last = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
+                    diff = cv2.absdiff(gray_poll, gray_last).mean() / 255
+                    
+                    if diff < 0.05:  # 畫面幾乎靜止，可能已停止移動
+                        logger.debug(f"輪詢 {poll_i+1}/{MAX_POLL_COUNT}: 畫面靜止 (diff={diff:.3f})，提前進入狀態檢查")
+                        break
+                    else:
+                        logger.debug(f"輪詢 {poll_i+1}/{MAX_POLL_COUNT}: 畫面變化中 (diff={diff:.3f})")
+                        lastscreen = poll_screen  # 更新參考幀
 
             # 检查移动是否超时
             elapsed = time.time() - moving_start_time
