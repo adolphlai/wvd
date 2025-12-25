@@ -164,6 +164,7 @@ CONFIG_VAR_LIST = [
             ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
+            ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
             ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
             ["active_rest_var",             tk.BooleanVar, "_ACTIVE_REST",               True],
             ["active_royalsuite_rest_var",  tk.BooleanVar, "_ACTIVE_ROYALSUITE_REST",    False],
@@ -209,6 +210,7 @@ class RuntimeContext:
     #### 其他临时参数
     _MEET_CHEST_OR_COMBAT = False
     _ENOUGH_AOE = False
+    _AOE_CAST_TIME = 0  # AOE 釋放次數計數器
     _COMBATSPD = False
     _SUICIDE = False # 当有两个人死亡的时候(multipeopledead), 在战斗中尝试自杀.
     _MAXRETRYLIMIT = 20
@@ -1519,11 +1521,20 @@ def Factory():
                     return IdentifyState()
 
                 if CheckIf(screen,"returntoTown"):
-                    FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
-                    return State.Inn,DungeonState.Quit, screen
+                    if runtimeContext._MEET_CHEST_OR_COMBAT:
+                        FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                        return State.Inn,DungeonState.Quit, screen
+                    else:
+                        logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
+                        return State.EoT,DungeonState.Quit, screen
 
-            if Press(CheckIf(screen,"openworldmap")):
-                return IdentifyState()
+            if pos:=CheckIf(screen,"openworldmap"):
+                if runtimeContext._MEET_CHEST_OR_COMBAT:
+                    Press(pos)
+                    return IdentifyState()
+                else:
+                    logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
+                    return State.EoT,DungeonState.Quit, screen
 
             if CheckIf(screen,"RoyalCityLuknalia"):
                 FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
@@ -1986,8 +1997,11 @@ def Factory():
                     castAndPressOK = doubleConfirmCastSpell()
                     castSpellSkill = True
                     if castAndPressOK and setting._AOE_ONCE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                        runtimeContext._ENOUGH_AOE = True
-                        logger.info(f"已经释放了首次全体aoe.")
+                        runtimeContext._AOE_CAST_TIME += 1
+                        if runtimeContext._AOE_CAST_TIME >= setting._AOE_TIME:
+                            runtimeContext._ENOUGH_AOE = True
+                            runtimeContext._AOE_CAST_TIME = 0
+                        logger.info(f"已释放全体AOE ({runtimeContext._AOE_CAST_TIME}/{setting._AOE_TIME})")
                     break
             if not castSpellSkill:
                 Press(CheckIf(ScreenShot(),'combatClose'))
@@ -2818,6 +2832,42 @@ def Factory():
                         if targetInfoList[0].activeSpellSequenceOverride:
                             logger.info("因为初始化, 复制了施法序列.")
                             runtimeContext._ACTIVESPELLSEQUENCE = copy.deepcopy(quest._SPELLSEQUENCE)
+
+                    # chest_auto 特殊處理：不打開地圖，直接使用遊戲內建自動寶箱
+                    if targetInfoList and targetInfoList[0] and (targetInfoList[0].target == "chest_auto"):
+                        logger.info("使用遊戲內建自動寶箱功能")
+                        lastscreen = ScreenShot()
+                        chest_auto_pos = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
+                        if not Press(chest_auto_pos):
+                            # 找不到就打開地圖面板再找
+                            Press(CheckIf(lastscreen, "mapFlag"))
+                            Press([664,329])
+                            Sleep(1)
+                            lastscreen = ScreenShot()
+                            if not Press(CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])):
+                                logger.warning("無法找到自動寶箱按鈕，跳過此目標")
+                                dungState = None
+                                continue
+                        Sleep(0.5)
+                        # 等待移動完成
+                        while True:
+                            Sleep(3)
+                            _, dungState, screen = IdentifyState()
+                            if dungState != DungeonState.Dungeon:
+                                logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
+                                break
+                            elif lastscreen is not None:
+                                gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                                gray2 = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
+                                mean_diff = cv2.absdiff(gray1, gray2).mean()/255
+                                logger.debug(f"移動停止檢查:{mean_diff:.2f}")
+                                if mean_diff < 0.05:
+                                    logger.info(f"停止移動. 誤差:{mean_diff}. 當前狀態為{dungState}.")
+                                    if dungState == DungeonState.Dungeon:
+                                        targetInfoList.pop(0)
+                                    break
+                                lastscreen = screen
+                        continue
 
                     dungState, newTargetInfoList = StateSearch(waitTimer,targetInfoList)
                     
