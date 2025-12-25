@@ -25,8 +25,12 @@
 ├─ 1. 第一次進入地城 (_FIRST_DUNGEON_ENTRY = True)
 │     → 無條件打開地圖
 │
-├─ 2. 剛重啟過遊戲 (_STEPAFTERRESTART = False)
-│     → 跳過 Resume 優化，直接打開地圖（之前的路徑可能已失效）
+├─ 2. 剛重啟過遊戲 (_RESTART_OPEN_MAP_PENDING = True)
+│     → 跳過 Resume 優化，直接嘗試打開地圖
+│     │
+│     ├─ 成功打開地圖 → 繼續任務
+│     ├─ 能見度差 (visibliityistoopoor) → 執行 gohome
+│     └─ 其他情況 → 重新檢測狀態
 │
 └─ 3. 非第一次進入且非重啟後 (Resume 優化啟用時)
       │
@@ -166,6 +170,7 @@ _GOHOME_IN_PROGRESS = True
 |------|------|--------|------|
 | `_FIRST_DUNGEON_ENTRY` | bool | True | 第一次進入地城標誌 |
 | `_GOHOME_IN_PROGRESS` | bool | False | 正在回城標誌 |
+| `_RESTART_OPEN_MAP_PENDING` | bool | False | 重啟後待打開地圖標誌，跳過 Resume 優化 |
 
 ---
 
@@ -194,10 +199,13 @@ _GOHOME_IN_PROGRESS = True
 - 遊戲重啟（`restartGame()` 被調用，通常是因為閃退/卡死）
 - **注意**：正常啟動腳本不會觸發（初始值 = 0）
 
-當 `_FIRST_COMBAT_AFTER_RESTART > 0` 時：
+當 `_RESTART_OPEN_MAP_PENDING = True` 時：
 
-1. **跳過 Resume 優化**：直接打開地圖（因為之前的路徑可能已失效）
-2. **前兩次戰鬥**：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇
+1. **跳過 Resume 優化**：直接嘗試打開地圖（因為之前的路徑可能已失效）
+   - 成功打開地圖 → 繼續任務
+   - 能見度差 → 執行 gohome
+   - 其他情況 → 重新檢測狀態
+2. **前兩次戰鬥**（`_FIRST_COMBAT_AFTER_RESTART > 0`）：強制使用強力單體技能（`PHYSICAL_SKILLS`），讓遊戲記住技能選擇
 
 ### 返回後（控制項：「返回後首戰使用強力技能」）
 
@@ -209,6 +217,7 @@ _GOHOME_IN_PROGRESS = True
 
 | 變數 | 類型 | 預設值 | 說明 |
 |------|------|--------|------|
+| `_RESTART_OPEN_MAP_PENDING` | bool | False | 重啟後待打開地圖標誌 |
 | `_FORCE_PHYSICAL_FIRST_COMBAT` | bool | True | 重啟後首戰使用強力技能 |
 | `_FORCE_PHYSICAL_AFTER_INN` | bool | True | 返回後首戰使用強力技能 |
 | `_FIRST_COMBAT_AFTER_RESTART` | int | 2 | 重啟後戰鬥計數器（倒數） |

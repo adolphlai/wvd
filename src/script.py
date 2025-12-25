@@ -228,6 +228,7 @@ class RuntimeContext:
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
     _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
+    _RESTART_OPEN_MAP_PENDING = False  # 重启后待打开地图标志，跳过Resume优化
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -1142,6 +1143,7 @@ def Factory():
         runtimeContext._FIRST_COMBAT_AFTER_RESTART = 2  # 重启后重置战斗计数器
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
+        runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重启后待打开地图，跳过Resume优化
 
         if not skipScreenShot:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # 格式：20230825_153045
@@ -2043,7 +2045,7 @@ def Factory():
         lastscreen = None
         dungState = None
         resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
-        MAX_RESUME_RETRIES = 10  # Resume最大连续点击次数（截圖快了所以增加次數）
+        MAX_RESUME_RETRIES = 5  # Resume最大连续点击次数
 
         # 移动超时检测（防止原地旋转BUG）
         moving_start_time = time.time()
@@ -2544,6 +2546,26 @@ def Factory():
                         Press([777,150])
                         dungState = DungeonState.Map
                         runtimeContext._FIRST_DUNGEON_ENTRY = False  # 标记为已进入过
+                    # 重启后：跳过Resume优化，直接尝试打开地图
+                    elif runtimeContext._RESTART_OPEN_MAP_PENDING:
+                        logger.info("重启后：跳过Resume优化，尝试打开地图")
+                        Sleep(1)
+                        Press([777,150])
+                        Sleep(1)
+                        screen = ScreenShot()
+                        if CheckIf(screen, 'mapFlag'):
+                            logger.info("重启后：成功打开地图")
+                            dungState = DungeonState.Map
+                            runtimeContext._RESTART_OPEN_MAP_PENDING = False
+                        elif CheckIf(screen, 'visibliityistoopoor'):
+                            # 能见度太低，无法打开地图，执行gohome
+                            logger.warning("重启后：能见度太低无法打开地图，执行gohome")
+                            runtimeContext._GOHOME_IN_PROGRESS = True
+                            runtimeContext._RESTART_OPEN_MAP_PENDING = False
+                        else:
+                            # 其他情况（可能在战斗/宝箱），重新检测状态
+                            logger.info("重启后：地图未打开，重新检测状态")
+                            dungState = None
                     # minimap_stair 恢復監控：如果標誌仍在（戰鬥/寶箱打斷後），繼續移動並監控小地圖
                     elif runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
                         logger.info(f"minimap_stair 恢復監控: 繼續尋找樓層標識 {runtimeContext._MINIMAP_STAIR_FLOOR_TARGET}")
