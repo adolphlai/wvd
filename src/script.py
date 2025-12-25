@@ -2232,7 +2232,7 @@ def Factory():
                     runtimeContext._MINIMAP_STAIR_IN_PROGRESS = True
                 
                 Press(searchResult)
-                Press([280,1433]) # automove
+                Press([138,1432]) # automove
                 result_state = StateMoving_CheckFrozen()
                 
                 # harken 成功後彈出當前目標，切換到下一個目標
@@ -2260,7 +2260,7 @@ def Factory():
                 if (CheckIf_FocusCursor(ScreenShot(),target)): #注意 这里通过二次确认 我们可以看到目标地点 而且是未选中的状态
                     logger.info("经过对比中心区域, 确认没有抵达.")
                     Press(searchResult)
-                    Press([280,1433]) # automove
+                    Press([138,1432]) # automove
                     return StateMoving_CheckFrozen(),targetInfoList
                 else:
                     if setting._DUNGWAITTIMEOUT == 0:
