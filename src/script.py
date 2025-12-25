@@ -103,6 +103,11 @@ class ScrcpyStreamManager:
         if not self.running or self.client is None:
             return False
         try:
+            # 檢查客戶端是否仍在運行（pyscrcpy 內部狀態）
+            if hasattr(self.client, 'alive') and not self.client.alive:
+                logger.debug("pyscrcpy 客戶端已停止")
+                self.running = False
+                return False
             return self.client.last_frame is not None
         except:
             self.running = False
@@ -594,6 +599,14 @@ def Factory():
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
             logger.info("ADB服务成功启动，设备已连接.")
+
+            # ADB 重連後，嘗試重啟 pyscrcpy 串流
+            stream = get_scrcpy_stream()
+            if stream:
+                if stream.restart():
+                    logger.info("pyscrcpy 串流重啟成功")
+                else:
+                    logger.warning("pyscrcpy 串流重啟失敗，將使用傳統 ADB 截圖")
     def DeviceShell(cmdStr):
         logger.debug(f"DeviceShell {cmdStr}")
 
@@ -661,11 +674,11 @@ def Factory():
         # 嘗試使用 pyscrcpy 串流（極快：~1ms）
         stream = get_scrcpy_stream()
         if stream:
-            # 如果串流存在但不可用，嘗試重連
-            if not stream.is_available() and stream.client is None:
+            # 如果串流存在但不可用，嘗試重連（放寬條件：只要不可用就嘗試重連）
+            if not stream.is_available():
                 logger.info("串流不可用，嘗試重新連接...")
                 stream.restart()
-            
+
             if stream.is_available():
                 frame = stream.get_frame()
                 if frame is not None:
