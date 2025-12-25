@@ -4,9 +4,8 @@ opencv-python
 scipy
 pyinstaller
 win10toast
-av
-pyscrcpy
 adbutils
 loguru
 deprecation
 retry2
+# pyscrcpy and av - install locally for streaming: pip install pyscrcpy av
