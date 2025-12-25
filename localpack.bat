@@ -33,17 +33,30 @@ if not defined VIRTUAL_ENV (
 )
 echo Successfully activated 'vpy'. VIRTUAL_ENV is %VIRTUAL_ENV%
 
-echo Installing requirements...
-pip install -r requirements.txt
+echo Installing requirements (using pre-built wheels for av)...
+pip install av --only-binary=:all:
+pip install pyscrcpy --no-deps
+pip install adbutils loguru deprecation retry2
+pip install -r requirements.txt --ignore-installed av pyscrcpy
 if errorlevel 1 (
-    echo Failed to install requirements.
-    pause
-    exit /b 1
+    echo Warning: Some requirements may have failed, continuing...
 )
 
 for /f %%i in ('powershell -Command "Get-Date -Format 'yyyyMMddHHmm'"') do set timestamp=%%i
 
-pyinstaller --onedir --noconsole --add-data "resources;resources/" src/main.py -n wvd
+echo Building with PyInstaller (including pyscrcpy dependencies)...
+py -3.11 -m PyInstaller --onedir --noconsole --noconfirm ^
+    --add-data "resources;resources/" ^
+    --hidden-import=pyscrcpy ^
+    --hidden-import=pyscrcpy.core ^
+    --hidden-import=av ^
+    --hidden-import=adbutils ^
+    --hidden-import=deprecation ^
+    --hidden-import=retry2 ^
+    --hidden-import=loguru ^
+    --collect-all=pyscrcpy ^
+    --collect-all=adbutils ^
+    src/main.py -n wvd
 
 if errorlevel 1 (
     echo Failed to run pyinstaller.

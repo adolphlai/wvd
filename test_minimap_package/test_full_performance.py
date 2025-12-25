@@ -244,9 +244,14 @@ def benchmark_method(name, get_frame_func, iterations=20):
             times.append(elapsed)
             success += 1
             
+            # 測試 R5 和 R6
             r5 = check_template(frame, TEMPLATES["DH-R5-minimap"], MINIMAP_ROI)
-            found_mark = "<<找到!>>" if r5["found"] else ""
-            print(f"  #{i+1:2d}: {elapsed*1000:6.1f}ms  R5:{r5['match_val']*100:5.1f}% {found_mark}")
+            r6 = check_template(frame, TEMPLATES["DH-R6-minimap"], MINIMAP_ROI)
+            
+            r5_mark = "<<找到!>>" if r5["found"] else ""
+            r6_mark = "<<找到!>>" if r6["found"] else ""
+            
+            print(f"  #{i+1:2d}: {elapsed*1000:6.1f}ms  R5:{r5['match_val']*100:5.1f}% {r5_mark:10} R6:{r6['match_val']*100:5.1f}% {r6_mark}")
         else:
             print(f"  #{i+1:2d}: 失敗")
     

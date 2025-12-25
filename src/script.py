@@ -2017,7 +2017,7 @@ def Factory():
         lastscreen = None
         dungState = None
         resume_consecutive_count = 0  # Resume连续点击计数（画面持续静止）
-        MAX_RESUME_RETRIES = 3  # Resume最大连续点击次数
+        MAX_RESUME_RETRIES = 10  # Resume最大连续点击次数（截圖快了所以增加次數）
 
         # 移动超时检测（防止原地旋转BUG）
         moving_start_time = time.time()
