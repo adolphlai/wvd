@@ -663,9 +663,13 @@ def Factory():
             sleep_time = min(interval, t - elapsed)
             time.sleep(sleep_time)
             elapsed += sleep_time
+
+    _adb_mode_logged = False  # 追蹤是否已輸出 ADB 模式日誌
+
     def ScreenShot():
         """截圖函數：優先使用 pyscrcpy 串流，失敗時退回 ADB 截圖"""
-        
+        nonlocal _adb_mode_logged
+
         # 檢查停止信號
         if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
             logger.info("ScreenShot 檢測到停止信號，停止截圖")
@@ -683,11 +687,15 @@ def Factory():
                 frame = stream.get_frame()
                 if frame is not None:
                     h, w = frame.shape[:2]
-                    
+
                     # 檢查是否接近預期尺寸 (允許 ±10 像素差異)
                     if abs(h - 1600) <= 10 and abs(w - 900) <= 10:
                         # 如果尺寸完全正確，直接返回
                         if h == 1600 and w == 900:
+                            # 首次使用串流或從 ADB 切換回來時輸出日誌
+                            if stream.frame_count == 1 or _adb_mode_logged:
+                                logger.info("[截圖模式] 使用 pyscrcpy 串流 (~1ms)")
+                                _adb_mode_logged = False  # 重置 ADB 模式標誌
                             return frame
                         # 否則用補黑邊方式調整
                         pad_bottom = max(0, 1600 - h)
@@ -714,6 +722,7 @@ def Factory():
     
     def _ScreenShot_ADB():
         """使用 ADB 截圖（原始方式）"""
+        nonlocal _adb_mode_logged
         max_retries = 5
         retry_count = 0
 
@@ -784,6 +793,10 @@ def Factory():
 
                 #cv2.imwrite('screen.png', image)
                 logger.debug('截圖成功')
+                # 首次使用 ADB 截圖時輸出日誌
+                if not _adb_mode_logged:
+                    logger.info("[截圖模式] 使用 ADB 截圖 (~150-570ms)")
+                    _adb_mode_logged = True
                 return image
             except Exception as e:
                 retry_count += 1
