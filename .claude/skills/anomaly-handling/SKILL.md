@@ -33,4 +33,4 @@ description: 說明 IdentifyState 函數的異常處理與自動恢復邏輯，�
 - **重啟遊戲 (counter >= 25)**: 調用 `restartGame()`
 
 ## 5. 畫面盲點嘗試 (counter >= 4)
-點擊 `[1, 1]` (左上角) 三次，每次間隔 0.25 秒。
+按 Android 返回鍵 (`KEYCODE_BACK`) 兩次，間隔 0.5 秒。
