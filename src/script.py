@@ -2578,14 +2578,14 @@ def Factory():
                             Press(resume_pos)
                             Sleep(1)
                             result_state = StateMoving_CheckFrozen()
-                            if result_state == DungeonState.Map:
-                                dungState = DungeonState.Map
-                            elif not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
+                            if not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
                                 # minimap_stair 完成（在 StateMoving_CheckFrozen 中清除 flag）
                                 logger.info("minimap_stair: 目標完成，彈出目標並返回 Map 狀態")
                                 # 彈出當前目標
                                 if targetInfoList and len(targetInfoList) > 0:
                                     targetInfoList.pop(0)
+                                dungState = DungeonState.Map
+                            elif result_state == DungeonState.Map:
                                 dungState = DungeonState.Map
                             else:
                                 dungState = result_state
