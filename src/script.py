@@ -78,8 +78,13 @@ class ScrcpyStreamManager:
     
     def get_frame(self):
         """獲取最新幀"""
-        if self.client and self.client.last_frame is not None:
-            return self.client.last_frame.copy()
+        try:
+            if self.client and self.client.last_frame is not None:
+                return self.client.last_frame.copy()
+        except Exception as e:
+            # 串流可能已斷開
+            logger.warning(f"pyscrcpy 獲取幀失敗: {e}，標記為不可用")
+            self.running = False
         return None
     
     def stop(self):
@@ -95,7 +100,13 @@ class ScrcpyStreamManager:
     
     def is_available(self):
         """檢查串流是否可用"""
-        return self.running and self.client is not None
+        if not self.running or self.client is None:
+            return False
+        try:
+            return self.client.last_frame is not None
+        except:
+            self.running = False
+            return False
 
 # 全局串流管理器
 _scrcpy_stream = None
@@ -646,12 +657,30 @@ def Factory():
         if stream and stream.is_available():
             frame = stream.get_frame()
             if frame is not None:
-                # 驗證尺寸
-                if frame.shape == (1600, 900, 3):
-                    return frame
-                elif frame.shape == (900, 1600, 3):
-                    logger.warning("串流幀為橫屏，旋轉處理")
-                    return cv2.transpose(frame)
+                h, w = frame.shape[:2]
+                
+                # 檢查是否接近預期尺寸 (允許 ±10 像素差異)
+                if abs(h - 1600) <= 10 and abs(w - 900) <= 10:
+                    # 如果尺寸完全正確，直接返回
+                    if h == 1600 and w == 900:
+                        return frame
+                    # 否則用補黑邊方式調整
+                    pad_bottom = max(0, 1600 - h)
+                    pad_right = max(0, 900 - w)
+                    if pad_bottom > 0 or pad_right > 0:
+                        frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                    return frame[:1600, :900]
+                elif abs(h - 900) <= 10 and abs(w - 1600) <= 10:
+                    # 橫屏，旋轉後處理
+                    frame = cv2.transpose(frame)
+                    h, w = frame.shape[:2]
+                    if h == 1600 and w == 900:
+                        return frame
+                    pad_bottom = max(0, 1600 - h)
+                    pad_right = max(0, 900 - w)
+                    if pad_bottom > 0 or pad_right > 0:
+                        frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                    return frame[:1600, :900]
                 else:
                     logger.warning(f"串流幀尺寸異常: {frame.shape}，使用 ADB 截圖")
         
@@ -2513,6 +2542,13 @@ def Factory():
                         for detect_retry in range(MAX_RESUME_DETECT_RETRIES):
                             screen = ScreenShot()
                             
+                            # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
+                            if CheckIf(screen, 'mapFlag'):
+                                logger.info("Resume优化: 已在地圖狀態，跳過 Resume 檢測")
+                                dungState = DungeonState.Map
+                                detected_other_state = True
+                                break
+                            
                             # 先检查是否有宝箱或战斗
                             if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
                                 logger.info(f"Resume优化: 检测到宝箱状态（第 {detect_retry + 1} 次尝试）")
@@ -3596,7 +3632,30 @@ def Factory():
         nonlocal quest
         nonlocal setting # 初始化
         nonlocal runtimeContext
+        
+        # 保存統計計數器（避免重啟時清零）
+        saved_counters = None
+        if runtimeContext is not None:
+            saved_counters = {
+                '_COUNTERDUNG': runtimeContext._COUNTERDUNG,
+                '_COUNTERCOMBAT': runtimeContext._COUNTERCOMBAT,
+                '_COUNTERCHEST': runtimeContext._COUNTERCHEST,
+                '_COUNTERADBRETRY': runtimeContext._COUNTERADBRETRY,
+                '_COUNTEREMULATORCRASH': runtimeContext._COUNTEREMULATORCRASH,
+                '_TIME_COMBAT_TOTAL': runtimeContext._TIME_COMBAT_TOTAL,
+                '_TIME_CHEST_TOTAL': runtimeContext._TIME_CHEST_TOTAL,
+                '_TOTALTIME': runtimeContext._TOTALTIME,
+                '_LAPTIME': runtimeContext._LAPTIME,
+                '_CRASHCOUNTER': runtimeContext._CRASHCOUNTER,
+                '_IMPORTANTINFO': runtimeContext._IMPORTANTINFO,
+            }
+        
         runtimeContext = RuntimeContext()
+        
+        # 恢復計數器
+        if saved_counters:
+            for key, value in saved_counters.items():
+                setattr(runtimeContext, key, value)
 
         setting = set
 

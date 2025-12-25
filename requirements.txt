@@ -4,3 +4,9 @@ opencv-python
 scipy
 pyinstaller
 win10toast
+pyscrcpy
+av
+adbutils
+loguru
+deprecation
+retry2
