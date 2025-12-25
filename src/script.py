@@ -107,6 +107,12 @@ class ScrcpyStreamManager:
         except:
             self.running = False
             return False
+    
+    def restart(self):
+        """重新啟動串流（斷開後重連）"""
+        logger.info("嘗試重新啟動 pyscrcpy 串流...")
+        self.stop()
+        return self.start()
 
 # 全局串流管理器
 _scrcpy_stream = None
@@ -654,35 +660,41 @@ def Factory():
         
         # 嘗試使用 pyscrcpy 串流（極快：~1ms）
         stream = get_scrcpy_stream()
-        if stream and stream.is_available():
-            frame = stream.get_frame()
-            if frame is not None:
-                h, w = frame.shape[:2]
-                
-                # 檢查是否接近預期尺寸 (允許 ±10 像素差異)
-                if abs(h - 1600) <= 10 and abs(w - 900) <= 10:
-                    # 如果尺寸完全正確，直接返回
-                    if h == 1600 and w == 900:
-                        return frame
-                    # 否則用補黑邊方式調整
-                    pad_bottom = max(0, 1600 - h)
-                    pad_right = max(0, 900 - w)
-                    if pad_bottom > 0 or pad_right > 0:
-                        frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
-                    return frame[:1600, :900]
-                elif abs(h - 900) <= 10 and abs(w - 1600) <= 10:
-                    # 橫屏，旋轉後處理
-                    frame = cv2.transpose(frame)
+        if stream:
+            # 如果串流存在但不可用，嘗試重連
+            if not stream.is_available() and stream.client is None:
+                logger.info("串流不可用，嘗試重新連接...")
+                stream.restart()
+            
+            if stream.is_available():
+                frame = stream.get_frame()
+                if frame is not None:
                     h, w = frame.shape[:2]
-                    if h == 1600 and w == 900:
-                        return frame
-                    pad_bottom = max(0, 1600 - h)
-                    pad_right = max(0, 900 - w)
-                    if pad_bottom > 0 or pad_right > 0:
-                        frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
-                    return frame[:1600, :900]
-                else:
-                    logger.warning(f"串流幀尺寸異常: {frame.shape}，使用 ADB 截圖")
+                    
+                    # 檢查是否接近預期尺寸 (允許 ±10 像素差異)
+                    if abs(h - 1600) <= 10 and abs(w - 900) <= 10:
+                        # 如果尺寸完全正確，直接返回
+                        if h == 1600 and w == 900:
+                            return frame
+                        # 否則用補黑邊方式調整
+                        pad_bottom = max(0, 1600 - h)
+                        pad_right = max(0, 900 - w)
+                        if pad_bottom > 0 or pad_right > 0:
+                            frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                        return frame[:1600, :900]
+                    elif abs(h - 900) <= 10 and abs(w - 1600) <= 10:
+                        # 橫屏，旋轉後處理
+                        frame = cv2.transpose(frame)
+                        h, w = frame.shape[:2]
+                        if h == 1600 and w == 900:
+                            return frame
+                        pad_bottom = max(0, 1600 - h)
+                        pad_right = max(0, 900 - w)
+                        if pad_bottom > 0 or pad_right > 0:
+                            frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                        return frame[:1600, :900]
+                    else:
+                        logger.warning(f"串流幀尺寸異常: {frame.shape}，使用 ADB 截圖")
         
         # 退回 ADB 截圖（較慢：~150-570ms）
         return _ScreenShot_ADB()
@@ -2091,6 +2103,12 @@ def Factory():
                 if mean_diff < 0.1:
                     # 画面静止，检查Resume按钮（如果启用了Resume优化）
                     if setting._ENABLE_RESUME_OPTIMIZATION:
+                        # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
+                        if CheckIf(screen, 'mapFlag'):
+                            logger.info("StateMoving: 已在地圖狀態，跳過 Resume 檢測")
+                            dungState = DungeonState.Map
+                            break
+                        
                         resume_pos = CheckIf(screen, 'resume')
                         
                         if resume_pos:
@@ -2409,7 +2427,6 @@ def Factory():
                                     1
                                     )
                                 if CheckIf(ScreenShot(),'recover'):
-                                    Sleep(1.5)
                                     Press([600,1200])
                                     Sleep(1)
                                     for _ in range(5):
