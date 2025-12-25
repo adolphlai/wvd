@@ -51,6 +51,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # Install av (PyAV) first with pre-built wheel - requires no FFmpeg dev libs
+        pip install av --only-binary=av
+        # Install pyscrcpy separately to ensure av is available
+        pip install pyscrcpy
+        # Install remaining dependencies
         pip install -r requirements.txt pyinstaller
 
     - name: Build with PyInstaller
