@@ -4,8 +4,8 @@ opencv-python
 scipy
 pyinstaller
 win10toast
-# pyscrcpy - 可選依賴，用於高效能串流截圖
-# 如需使用，請手動安裝: pip install pyscrcpy av
+av
+pyscrcpy
 adbutils
 loguru
 deprecation
