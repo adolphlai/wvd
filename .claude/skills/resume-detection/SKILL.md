@@ -1,5 +1,6 @@
 ---
-description: Resume 按鈕與 routenotfound 檢測邏輯
+name: Resume 按鈕檢測邏輯
+description: 說明 Resume 按鈕優化與 routenotfound 檢測邏輯，包含樓梯換樓判定、gohome 狀態追蹤、重啟後行為。當使用者詢問 Resume 優化、StateDungeon、StateMoving_CheckFrozen 或移動卡住問題時，應啟用此技能。
 ---
 
 # Resume + routenotfound 檢測邏輯
@@ -36,13 +37,13 @@ description: Resume 按鈕與 routenotfound 檢測邏輯
       │             ├─ 目標是樓梯 → 判定換樓成功 → 彈出目標
       │             └─ 目標非樓梯 → 執行 gohome
       │
-      └─ 3.4 樓梯換樓成功判定
-              → 彈出當前樓梯目標 → 打開地圖 → 繼續下一個目標
+      │       └─ 3.4 樓梯換樓成功判定 (Stair Logic)
+      │               → 彈出當前樓梯目標 → 打開地圖 → 繼續下一個目標
+      │
+      └─ 3.5 Minimap Stair 恢復邏輯 (Recovery Path)
+              → 若 _MINIMAP_STAIR_IN_PROGRESS 為 True 且目標完成
+              → 優先彈出目標 → 然後再處理 Map 狀態
 ```
-
-## Gohome 狀態追蹤
-
-當執行 gohome 時設置 `_GOHOME_IN_PROGRESS = True`。戰鬥/寶箱結束後會檢查此標記繼續回城。
 
 ## 樓梯換樓判定邏輯
 
@@ -64,27 +65,6 @@ description: Resume 按鈕與 routenotfound 檢測邏輯
 |------|------|--------|------|
 | `_FIRST_DUNGEON_ENTRY` | bool | True | 第一次進入地城標誌 |
 | `_GOHOME_IN_PROGRESS` | bool | False | 正在回城標誌 |
-| `_RESTART_OPEN_MAP_PENDING` | bool | False | 重啟後待打開地圖標誌 |
-
-## 重啟後 / 返回後行為
-
-### 重啟後（控制項：「重啟後首戰使用強力技能」）
-
-**觸發條件**：遊戲重啟（`restartGame()` 被調用）
-
-當 `_RESTART_OPEN_MAP_PENDING = True` 時：
-1. **跳過 Resume 優化**：直接嘗試打開地圖
-2. **前兩次戰鬥**（`_FIRST_COMBAT_AFTER_RESTART > 0`）：強制使用強力單體技能
-
-### 返回後（控制項：「返回後首戰使用強力技能」）
-
-當從村庄返回地城後（`_FIRST_COMBAT_AFTER_INN = True`）：
-1. **第一次戰鬥**：強制使用強力單體技能
-
-### 相關變數
-
-| 變數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
 | `_RESTART_OPEN_MAP_PENDING` | bool | False | 重啟後待打開地圖標誌 |
 | `_FORCE_PHYSICAL_FIRST_COMBAT` | bool | True | 重啟後首戰使用強力技能 |
 | `_FORCE_PHYSICAL_AFTER_INN` | bool | True | 返回後首戰使用強力技能 |
