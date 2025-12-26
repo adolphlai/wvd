@@ -169,6 +169,7 @@ CONFIG_VAR_LIST = [
             ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
             ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
             # AE 手設定
+            ["has_preemptive_var", tk.BooleanVar, "_HAS_PREEMPTIVE", False],  # 隊伍有先制角色
             ["ae_caster_1_order_var", tk.StringVar, "_AE_CASTER_1_ORDER", "關閉"],  # AE 手 1 順序：關閉/1~6
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # AE 手 1 技能
             ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # AE 手 1 技能等級：關閉/LV2~LV5
@@ -2108,15 +2109,25 @@ def Factory():
         def get_ae_caster_type(action_count):
             """判斷當前行動是否為 AE 手
             Returns:
-                0: 非 AE 手
+                0: 非 AE 手（或先制攻擊）
                 1: AE 手 1
                 2: AE 手 2
             """
             order1 = setting._AE_CASTER_1_ORDER
             order2 = setting._AE_CASTER_2_ORDER
+
+            # 如果有先制，扣掉第一次攻擊
+            offset = 1 if setting._HAS_PREEMPTIVE else 0
+            adjusted = action_count - offset
+
+            # 如果是先制攻擊（調整後 <= 0），跳過不處理
+            if adjusted <= 0:
+                logger.info(f"[AE 手] action={action_count}, 先制攻擊，跳過")
+                return 0
+
             # 計算當前是第幾個角色（1~6）
-            position = ((action_count - 1) % 6) + 1
-            logger.info(f"[AE 手] action={action_count}, position={position}, order1={order1}, order2={order2}")
+            position = ((adjusted - 1) % 6) + 1
+            logger.info(f"[AE 手] action={action_count}, adjusted={adjusted}, position={position}, order1={order1}, order2={order2}")
             if order1 != "關閉" and position == int(order1):
                 return 1
             if order2 != "關閉" and position == int(order2):
