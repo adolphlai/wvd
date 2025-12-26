@@ -512,6 +512,67 @@ class ConfigPanelApp(tk.Toplevel):
         self.auto_upgrade_skill_level_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
         self.auto_upgrade_skill_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
 
+        # --- AE 手設定 ---
+        frame_ae_caster = ttk.LabelFrame(tab, text="AE 手設定（首戰機制）", padding=5)
+        frame_ae_caster.grid(row=2, column=0, sticky="ew", pady=5)
+
+        # 技能選項
+        skill_options = [""] + ALL_AOE_SKILLS
+        order_options = ["關閉", "1", "2", "3", "4", "5", "6"]
+        level_options = ["關閉", "LV2", "LV3", "LV4", "LV5"]
+
+        # AE 手 1
+        ttk.Label(frame_ae_caster, text="AE 手 1:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(frame_ae_caster, text="順序").grid(row=0, column=1, sticky=tk.W)
+        self.ae_caster_1_order_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_1_order_var,
+            values=order_options, state="readonly", width=5
+        )
+        self.ae_caster_1_order_combo.grid(row=0, column=2, padx=2, sticky=tk.W)
+        self.ae_caster_1_order_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_ae_caster, text="技能").grid(row=0, column=3, padx=(10, 0), sticky=tk.W)
+        self.ae_caster_1_skill_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_1_skill_var,
+            values=skill_options, state="readonly", width=15
+        )
+        self.ae_caster_1_skill_combo.grid(row=0, column=4, padx=2, sticky=tk.W)
+        self.ae_caster_1_skill_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_ae_caster, text="等級").grid(row=0, column=5, padx=(10, 0), sticky=tk.W)
+        self.ae_caster_1_level_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_1_level_var,
+            values=level_options, state="readonly", width=5
+        )
+        self.ae_caster_1_level_combo.grid(row=0, column=6, padx=2, sticky=tk.W)
+        self.ae_caster_1_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        # AE 手 2
+        ttk.Label(frame_ae_caster, text="AE 手 2:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        ttk.Label(frame_ae_caster, text="順序").grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_order_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_2_order_var,
+            values=order_options, state="readonly", width=5
+        )
+        self.ae_caster_2_order_combo.grid(row=1, column=2, padx=2, sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_order_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_ae_caster, text="技能").grid(row=1, column=3, padx=(10, 0), sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_skill_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_2_skill_var,
+            values=skill_options, state="readonly", width=15
+        )
+        self.ae_caster_2_skill_combo.grid(row=1, column=4, padx=2, sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_skill_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_ae_caster, text="等級").grid(row=1, column=5, padx=(10, 0), sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_level_combo = ttk.Combobox(
+            frame_ae_caster, textvariable=self.ae_caster_2_level_var,
+            values=level_options, state="readonly", width=5
+        )
+        self.ae_caster_2_level_combo.grid(row=1, column=6, padx=2, sticky=tk.W, pady=(5, 0))
+        self.ae_caster_2_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
     def _create_advanced_tab(self, vcmd_non_neg, checkcommand):
         """進階設定分頁：旅店休息、善惡調整、凱旋、因果"""
         tab = self.tab_advanced

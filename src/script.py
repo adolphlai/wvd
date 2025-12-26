@@ -169,6 +169,13 @@ CONFIG_VAR_LIST = [
             ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
             ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
             ["auto_upgrade_skill_level_var", tk.StringVar, "_AUTO_UPGRADE_SKILL_LEVEL", "LV5"],  # 選項: 關閉, LV2, LV3, LV4, LV5
+            # AE 手設定
+            ["ae_caster_1_order_var", tk.StringVar, "_AE_CASTER_1_ORDER", "關閉"],  # AE 手 1 順序：關閉/1~6
+            ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # AE 手 1 技能
+            ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # AE 手 1 技能等級：關閉/LV2~LV5
+            ["ae_caster_2_order_var", tk.StringVar, "_AE_CASTER_2_ORDER", "關閉"],  # AE 手 2 順序：關閉/1~6
+            ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # AE 手 2 技能
+            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # AE 手 2 技能等級：關閉/LV2~LV5
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
@@ -235,6 +242,8 @@ class RuntimeContext:
     _FIRST_COMBAT_AFTER_INN = 0  # 从村庄返回地城后前N次战斗标志（计数器）
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
     _FORCE_AOE_CURRENT_COMBAT = False  # 当前战斗是否持续使用全体技能
+    _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
+    _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
@@ -2023,13 +2032,14 @@ def Factory():
             Sleep(1)
             scn = ScreenShot()
             # 檢測是否選中 LV1，如果是則自動點擊目標等級升級
-            # 等級座標對照表（Y 座標固定 1256）
+            # 等級座標對照表（X 座標固定，Y 座標從 lv1_selected 偵測位置取得）
             SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
             target_level = setting._AUTO_UPGRADE_SKILL_LEVEL
             if target_level != "關閉" and target_level in SKILL_LEVEL_X:
-                if CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
+                lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
+                if lv1_pos:
                     logger.info(f"[戰鬥] 檢測到 LV1 技能，自動點擊 {target_level} 升級")
-                    Press([SKILL_LEVEL_X[target_level], 1256])
+                    Press([SKILL_LEVEL_X[target_level], lv1_pos[1]])  # X 固定，Y 動態
                     Sleep(1)  # 等待介面更新
                     scn = ScreenShot()
             ok_pos = CheckIf(scn,'OK')
@@ -2107,7 +2117,144 @@ def Factory():
             Sleep(1)
             return (is_success_aoe)
 
+        def get_ae_caster_type(action_count):
+            """判斷當前行動是否為 AE 手
+            Returns:
+                0: 非 AE 手
+                1: AE 手 1
+                2: AE 手 2
+            """
+            order1 = setting._AE_CASTER_1_ORDER
+            order2 = setting._AE_CASTER_2_ORDER
+            # 計算當前是第幾個角色（1~6）
+            position = ((action_count - 1) % 6) + 1
+            if order1 != "關閉" and position == int(order1):
+                return 1
+            if order2 != "關閉" and position == int(order2):
+                return 2
+            return 0
+
+        def use_ae_caster_skill(caster_type):
+            """AE 手使用指定 AOE 技能
+            Args:
+                caster_type: 1 或 2，對應 AE 手 1 或 AE 手 2
+            Returns:
+                bool: 是否成功使用技能
+            """
+            if caster_type == 1:
+                skill = setting._AE_CASTER_1_SKILL
+                level = setting._AE_CASTER_1_LEVEL
+            else:
+                skill = setting._AE_CASTER_2_SKILL
+                level = setting._AE_CASTER_2_LEVEL
+
+            if not skill:
+                logger.info(f"[AE 手 {caster_type}] 未設定技能")
+                return False
+
+            # 打斷自動戰鬥
+            logger.info(f"[AE 手 {caster_type}] 打斷自動戰鬥...")
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.5)
+
+            scn = ScreenShot()
+            skill_path = 'spellskill/' + skill
+            if Press(CheckIf(scn, skill_path)):
+                logger.info(f"[AE 手 {caster_type}] 使用技能: {skill}")
+                Sleep(1)
+                scn = ScreenShot()
+
+                # 如果設定了技能等級，自動升級
+                SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
+                if level != "關閉" and level in SKILL_LEVEL_X:
+                    lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
+                    if lv1_pos:
+                        logger.info(f"[AE 手 {caster_type}] 升級技能到 {level}")
+                        Press([SKILL_LEVEL_X[level], lv1_pos[1]])
+                        Sleep(1)
+                        scn = ScreenShot()
+
+                # 點擊 OK 確認
+                ok_pos = CheckIf(scn, 'OK')
+                if ok_pos:
+                    logger.info(f"[AE 手 {caster_type}] 點擊 OK 確認")
+                    Press(ok_pos)
+                    Sleep(2)
+                return True
+
+            logger.info(f"[AE 手 {caster_type}] 找不到技能: {skill}")
+            return False
+
+        def use_normal_attack():
+            """使用普攻"""
+            scn = ScreenShot()
+            if Press(CheckIf(scn, 'spellskill/attack')):
+                logger.info("[AE 手] 使用普攻")
+                Sleep(0.5)
+                # 點擊敵人位置
+                Press([450, 750])
+                Sleep(0.5)
+                return True
+            return False
+
+        def enable_auto_combat():
+            """開啟自動戰鬥"""
+            logger.info("[AE 手] 開啟自動戰鬥")
+            scn = ScreenShot()
+            if not Press(CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])):
+                Press(CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]]))
+            Sleep(2)
+
         nonlocal runtimeContext
+
+        # 每次進入 StateCombat 增加行動計數器
+        runtimeContext._COMBAT_ACTION_COUNT += 1
+        logger.info(f"[戰鬥] 行動次數: {runtimeContext._COMBAT_ACTION_COUNT}")
+
+        # === AE 手機制 ===
+        # 檢查是否啟用 AE 手功能
+        ae_enabled = setting._AE_CASTER_1_ORDER != "關閉"
+        is_first_combat = (runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 or
+                          runtimeContext._FIRST_COMBAT_AFTER_INN > 0)
+
+        if ae_enabled and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
+            action_count = runtimeContext._COMBAT_ACTION_COUNT
+            caster_type = get_ae_caster_type(action_count)
+
+            if is_first_combat:
+                # 第一戰
+                if action_count <= 6:
+                    # 第一輪
+                    if caster_type > 0:
+                        # AE 手第一輪使用普攻（為了讓遊戲記住「重複上一次動作」）
+                        logger.info(f"[AE 手 {caster_type}] 第一戰第一輪，使用普攻")
+                        use_normal_attack()
+                        return
+                    else:
+                        # 非 AE 手使用單體技能
+                        logger.info("[非 AE 手] 第一戰第一輪，使用單體技能")
+                        screen = ScreenShot()
+                        if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 手"):
+                            return
+                else:
+                    # 第二輪以後
+                    if caster_type > 0:
+                        # AE 手第二輪使用 AOE → 開自動
+                        logger.info(f"[AE 手 {caster_type}] 第一戰第二輪，使用 AOE")
+                        if use_ae_caster_skill(caster_type):
+                            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                            enable_auto_combat()
+                            return
+            else:
+                # 第二戰及以後（如果第一戰沒觸發 AOE）
+                if caster_type > 0:
+                    logger.info(f"[AE 手 {caster_type}] 後續戰鬥，使用 AOE")
+                    if use_ae_caster_skill(caster_type):
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                        enable_auto_combat()
+                        return
+
         if runtimeContext._TIME_COMBAT==0:
             runtimeContext._TIME_COMBAT = time.time()
 
@@ -2613,6 +2760,7 @@ def Factory():
                         runtimeContext._ENOUGH_AOE = False
                     runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = False  # 重置强力单体技能模式
                     runtimeContext._FORCE_AOE_CURRENT_COMBAT = False  # 重置全体技能模式
+                    runtimeContext._COMBAT_ACTION_COUNT = 0  # 重置行動計數器
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
                         spend_on_chest = 0
@@ -3197,6 +3345,8 @@ def Factory():
                     runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
                     runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
                     runtimeContext._GOHOME_IN_PROGRESS = False  # 重置回城标志
+                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False  # 重置 AE 手觸發標記
+                    runtimeContext._COMBAT_ACTION_COUNT = 0  # 重置行動計數器
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
                     # 注意: _FIRST_COMBAT_AFTER_RESTART 只在 restartGame 中重置
                     targetInfoList = quest._TARGETINFOLIST.copy()
