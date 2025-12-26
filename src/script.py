@@ -2145,9 +2145,11 @@ def Factory():
             for _ in range(3):
                 Press([1, 1])
                 Sleep(0.5)
+            Sleep(1)  # 等待技能欄顯示
 
             scn = ScreenShot()
             skill_path = 'spellskill/' + skill
+            logger.info(f"[AE 手 {caster_type}] 搜尋技能: {skill_path}")
             if Press(CheckIf(scn, skill_path)):
                 logger.info(f"[AE 手 {caster_type}] 使用技能: {skill}")
                 Sleep(1)
@@ -2205,6 +2207,9 @@ def Factory():
         ae_enabled = setting._AE_CASTER_1_ORDER != "關閉"
         is_first_combat = (runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 or
                           runtimeContext._FIRST_COMBAT_AFTER_INN > 0)
+
+        if ae_enabled:
+            logger.info(f"[AE 手] RESTART={runtimeContext._FIRST_COMBAT_AFTER_RESTART}, INN={runtimeContext._FIRST_COMBAT_AFTER_INN}, is_first={is_first_combat}")
 
         if ae_enabled and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
             action_count = runtimeContext._COMBAT_ACTION_COUNT
