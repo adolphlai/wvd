@@ -1519,7 +1519,12 @@ def Factory():
                         if click_count > 100:  # 防止無限迴圈（最多 10 秒）
                             logger.warning("[黑屏偵測] 黑屏持續過久，中斷點擊")
                             break
-                    logger.info(f"[黑屏偵測] 黑屏結束，共點擊 {click_count} 次打斷")
+                    # 黑屏結束後額外點擊，確保打斷過渡期的自動戰鬥
+                    logger.info(f"[黑屏偵測] 黑屏結束，額外點擊確保打斷...")
+                    for i in range(10):
+                        Press([1, 1])
+                        Sleep(0.1)
+                    logger.info(f"[黑屏偵測] 完成，共點擊 {click_count + 10} 次打斷")
                     continue  # 重新開始狀態識別迴圈
 
             if TryPressRetry(screen):
@@ -2025,9 +2030,12 @@ def Factory():
                 if CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
                     logger.info(f"[戰鬥] 檢測到 LV1 技能，自動點擊 {target_level} 升級")
                     Press([SKILL_LEVEL_X[target_level], 1256])
-                    Sleep(0.5)
+                    Sleep(1)  # 等待介面更新
                     scn = ScreenShot()
-            if Press(CheckIf(scn,'OK')):
+            ok_pos = CheckIf(scn,'OK')
+            if ok_pos:
+                logger.info(f"[戰鬥] 找到 OK 按鈕，點擊確認")
+                Press(ok_pos)
                 is_success_aoe = True
                 Sleep(2)
                 scn = ScreenShot()
