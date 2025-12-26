@@ -2116,6 +2116,7 @@ def Factory():
             order2 = setting._AE_CASTER_2_ORDER
             # 計算當前是第幾個角色（1~6）
             position = ((action_count - 1) % 6) + 1
+            logger.info(f"[AE 手] action={action_count}, position={position}, order1={order1}, order2={order2}")
             if order1 != "關閉" and position == int(order1):
                 return 1
             if order2 != "關閉" and position == int(order2):
