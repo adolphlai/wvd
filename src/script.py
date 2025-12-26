@@ -228,6 +228,7 @@ class RuntimeContext:
     _CRASHCOUNTER = 0
     _IMPORTANTINFO = ""
     _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
+    _DUNGEON_CONFIRMED = False  # 已確認進入地城（偵測到地城狀態後設為 True）
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
     _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
@@ -1172,6 +1173,7 @@ def Factory():
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重启后待打开地图，跳过Resume优化
+        runtimeContext._DUNGEON_CONFIRMED = False  # 重启后重置地城確認標記
 
         if not skipScreenShot:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # 格式：20230825_153045
@@ -1495,7 +1497,8 @@ def Factory():
 
             # [黑屏偵測] 首戰打斷自動戰鬥
             # 當偵測到黑屏且需要首戰強制技能時，提前開始點擊打斷
-            if IsScreenBlack(screen):
+            # 必須已確認進入地城才啟用，避免重啟時誤判
+            if runtimeContext._DUNGEON_CONFIRMED and IsScreenBlack(screen):
                 # 檢查是否需要首戰打斷
                 need_first_combat_interrupt = (
                     (runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and
@@ -1511,8 +1514,9 @@ def Factory():
                     while IsScreenBlack(ScreenShot()):
                         Press([1, 1])
                         click_count += 1
+                        logger.info(f"[黑屏偵測] 點擊打斷 #{click_count}")
                         Sleep(0.1)  # 快速點擊
-                        if click_count > 50:  # 防止無限迴圈（最多 5 秒）
+                        if click_count > 100:  # 防止無限迴圈（最多 10 秒）
                             logger.warning("[黑屏偵測] 黑屏持續過久，中斷點擊")
                             break
                     logger.info(f"[黑屏偵測] 黑屏結束，共點擊 {click_count} 次打斷")
@@ -1570,6 +1574,10 @@ def Factory():
                     if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
                         logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
                         continue
+                    # 確認已進入地城（用於黑屏偵測）
+                    if not runtimeContext._DUNGEON_CONFIRMED:
+                        runtimeContext._DUNGEON_CONFIRMED = True
+                        logger.info("[狀態識別] 已確認進入地城")
                     return State.Dungeon, state, screen
 
             if CheckIf(screen,'someonedead'):
@@ -3175,6 +3183,7 @@ def Factory():
                     state = State.Dungeon
                 case State.Dungeon:
                     runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
+                    runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
                     runtimeContext._GOHOME_IN_PROGRESS = False  # 重置回城标志
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
                     # 注意: _FIRST_COMBAT_AFTER_RESTART 只在 restartGame 中重置
