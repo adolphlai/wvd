@@ -1497,8 +1497,8 @@ def Factory():
 
             # [黑屏偵測] 首戰打斷自動戰鬥
             # 當偵測到黑屏且需要首戰強制技能時，提前開始點擊打斷
-            # 必須已確認進入地城才啟用，避免重啟時誤判
-            if runtimeContext._DUNGEON_CONFIRMED and IsScreenBlack(screen):
+            # 條件：已確認進入地城 + 還沒遇到過戰鬥或寶箱（避免 chest_auto 返回地城時誤判）
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._MEET_CHEST_OR_COMBAT and IsScreenBlack(screen):
                 # 檢查是否需要首戰打斷
                 need_first_combat_interrupt = (
                     (runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and
