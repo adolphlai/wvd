@@ -2105,10 +2105,13 @@ def Factory():
         if runtimeContext._FORCE_AOE_CURRENT_COMBAT:
             if useForcedAOESkill(screen, doubleConfirmCastSpell, "全体技能模式"):
                 return
-            # 如果没找到技能，继续正常流程
+            # AOE 找不到，嘗試單體技能
+            if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "全体技能找不到，改用强力单体"):
+                return
+            # 如果都没找到，继续正常流程
 
         # 如果当前战斗需要强制使用强力单体技能
-        if runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+        elif runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
             if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "强力单体技能模式"):
                 return
             # 如果没找到技能，继续正常流程
