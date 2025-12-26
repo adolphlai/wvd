@@ -2108,13 +2108,17 @@ def Factory():
             # AOE 找不到，嘗試單體技能
             if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "全体技能找不到，改用强力单体"):
                 return
-            # 如果都没找到，继续正常流程
+            # 都找不到，跳過自動戰鬥，讓下個角色繼續嘗試
+            logger.info("当前角色无可用技能，等待下个角色")
+            return
 
         # 如果当前战斗需要强制使用强力单体技能
         elif runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
             if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "强力单体技能模式"):
                 return
-            # 如果没找到技能，继续正常流程
+            # 找不到，跳過自動戰鬥，讓下個角色繼續嘗試
+            logger.info("当前角色无可用技能，等待下个角色")
+            return
 
         if (setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE):
             # 只點擊一次，避免兩個都匹配時連續點擊導致開啟後又關閉
