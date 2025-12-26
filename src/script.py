@@ -1959,6 +1959,9 @@ def Factory():
                         logger.warning("[戰鬥] 未找到 LV1 技能按鈕")
                     Sleep(1)
             elif pos:=(CheckIf(scn,'next')):
+                # 多點幾個位置，覆蓋不同大小的敵人
+                Press([pos[0]-15+random.randint(0,30),pos[1]+100+random.randint(0,20)])
+                Sleep(0.2)
                 Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
                 Sleep(1)
                 scn = ScreenShot()
