@@ -1542,7 +1542,17 @@ def Factory():
                         return State.Inn,DungeonState.Quit, screen
                     else:
                         logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
-                        return State.EoT,DungeonState.Quit, screen
+                        # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
+                        for info in quest._EOT:
+                            if info[1] == "intoWorldMap":
+                                logger.info(f"跳過 intoWorldMap 步驟")
+                                continue
+                            else:
+                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                                if info[0] == "press":
+                                    Press(pos)
+                        Sleep(2)
+                        return State.Dungeon, None, ScreenShot()
 
             if pos:=CheckIf(screen,"openworldmap"):
                 if runtimeContext._MEET_CHEST_OR_COMBAT:
@@ -1550,7 +1560,17 @@ def Factory():
                     return IdentifyState()
                 else:
                     logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
-                    return State.EoT,DungeonState.Quit, screen
+                    # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
+                    for info in quest._EOT:
+                        if info[1] == "intoWorldMap":
+                            logger.info(f"跳過 intoWorldMap 步驟")
+                            continue
+                        else:
+                            pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                            if info[0] == "press":
+                                Press(pos)
+                    Sleep(2)
+                    return State.Dungeon, None, ScreenShot()
 
             if CheckIf(screen,"RoyalCityLuknalia"):
                 FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
@@ -1863,6 +1883,11 @@ def Factory():
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
+        else:
+            # 不啟用整理背包時，退出角色選擇畫面
+            logger.info("退出角色選擇畫面")
+            PressReturn()
+            Sleep(2)
     def StateEoT():
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
