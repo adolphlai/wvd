@@ -848,7 +848,25 @@ def Factory():
         
         # 預設只返回原始目標
         return [target_name]
-    
+
+    def IsScreenBlack(screen, threshold=15):
+        """檢測螢幕是否全黑（或接近全黑）
+
+        用於偵測戰鬥過場的黑屏，以便提前打斷自動戰鬥。
+
+        Args:
+            screen: 截圖圖片 (OpenCV BGR 格式)
+            threshold: 平均亮度閾值，低於此值視為黑屏 (預設 15)
+
+        Returns:
+            bool: 是否為黑屏
+        """
+        mean_brightness = np.mean(screen)
+        is_black = mean_brightness < threshold
+        if is_black:
+            logger.debug(f"[黑屏偵測] 平均亮度: {mean_brightness:.2f} < {threshold}，判定為黑屏")
+        return is_black
+
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
         # 檢查是否需要多模板匹配
         templates_to_try = get_multi_templates(shortPathOfTarget)
@@ -1474,6 +1492,31 @@ def Factory():
 
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
+
+            # [黑屏偵測] 首戰打斷自動戰鬥
+            # 當偵測到黑屏且需要首戰強制技能時，提前開始點擊打斷
+            if IsScreenBlack(screen):
+                # 檢查是否需要首戰打斷
+                need_first_combat_interrupt = (
+                    (runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and
+                     (setting._FORCE_PHYSICAL_AFTER_INN or setting._FORCE_AOE_AFTER_INN)) or
+                    (runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and
+                     (setting._FORCE_PHYSICAL_FIRST_COMBAT or setting._FORCE_AOE_FIRST_COMBAT))
+                )
+
+                if need_first_combat_interrupt:
+                    logger.info("[黑屏偵測] 偵測到戰鬥過場黑屏，開始提前打斷自動戰鬥...")
+                    click_count = 0
+                    # 在黑屏期間持續點擊打斷
+                    while IsScreenBlack(ScreenShot()):
+                        Press([1, 1])
+                        click_count += 1
+                        Sleep(0.1)  # 快速點擊
+                        if click_count > 50:  # 防止無限迴圈（最多 5 秒）
+                            logger.warning("[黑屏偵測] 黑屏持續過久，中斷點擊")
+                            break
+                    logger.info(f"[黑屏偵測] 黑屏結束，共點擊 {click_count} 次打斷")
+                    continue  # 重新開始狀態識別迴圈
 
             if TryPressRetry(screen):
                     Sleep(2)
