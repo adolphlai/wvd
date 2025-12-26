@@ -140,6 +140,28 @@ class SummaryLogFilter(logging.Filter):
             return True
             
         return False
+
+class LogLevelFilter(logging.Filter):
+    """動態過濾日誌級別的 Filter，根據 checkbox 狀態決定是否顯示"""
+    def __init__(self):
+        super().__init__()
+        # 預設顯示狀態: DEBUG=False, INFO=True, WARNING=True, ERROR=True
+        self.show_debug = False
+        self.show_info = True
+        self.show_warning = True
+        self.show_error = True
+    
+    def filter(self, record):
+        level = record.levelno
+        if level == logging.DEBUG:
+            return self.show_debug
+        elif level == logging.INFO:
+            return self.show_info
+        elif level == logging.WARNING:
+            return self.show_warning
+        elif level >= logging.ERROR:  # ERROR 和 CRITICAL
+            return self.show_error
+        return True  # 其他級別預設顯示
 ############################################
 def ResourcePath(relative_path):
     """ 获取资源的绝对路径，适用于开发环境和 PyInstaller 打包环境 """

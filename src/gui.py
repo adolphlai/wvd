@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('600x550')  # 适中的窗口大小
+        self.geometry('720x550')  # 加寬視窗以容納日誌過濾器
         
         self.title(self.TITLE)
 
@@ -103,17 +103,54 @@ class ConfigPanelApp(tk.Toplevel):
             self.karma_adjust_var.set(config['_KARMAADJUST'])
 
     def create_widgets(self):
-        # === 日志显示区域（右侧）===
-        scrolled_text_formatter = logging.Formatter('%(message)s')
-        self.log_display = scrolledtext.ScrolledText(self, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff',bd=2,relief=tk.FLAT, width = 34, height = 30)
-        self.log_display.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # === 右側容器 (包含過濾器 + LOG 顯示區域) ===
+        right_frame = ttk.Frame(self)
+        right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E), padx=5, pady=5)
+        
+        # === 日志过滤器 checkbox ===
+        log_filter_frame = ttk.Frame(right_frame)
+        log_filter_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(log_filter_frame, text="日誌過濾:").pack(side=tk.LEFT, padx=(5, 2))
+        
+        # 創建 filter 實例（用於動態過濾）
+        self.log_level_filter = LogLevelFilter()
+        
+        # checkbox 變數
+        self.show_debug_var = tk.BooleanVar(value=False)
+        self.show_info_var = tk.BooleanVar(value=True)
+        self.show_warning_var = tk.BooleanVar(value=True)
+        self.show_error_var = tk.BooleanVar(value=True)
+        
+        def update_log_filter():
+            """更新 filter 的顯示狀態"""
+            self.log_level_filter.show_debug = self.show_debug_var.get()
+            self.log_level_filter.show_info = self.show_info_var.get()
+            self.log_level_filter.show_warning = self.show_warning_var.get()
+            self.log_level_filter.show_error = self.show_error_var.get()
+        
+        ttk.Checkbutton(log_filter_frame, text="DEBUG", variable=self.show_debug_var,
+                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(log_filter_frame, text="INFO", variable=self.show_info_var,
+                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(log_filter_frame, text="WARN", variable=self.show_warning_var,
+                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(log_filter_frame, text="ERROR", variable=self.show_error_var,
+                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
+
+        # === 日志显示区域 ===
+        scrolled_text_formatter = logging.Formatter('%(levelname)s: %(message)s')
+        self.log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff', bd=2, relief=tk.FLAT, width=34, height=28)
+        self.log_display.pack(fill=tk.BOTH, expand=True)
         self.scrolled_text_handler = ScrolledTextHandler(self.log_display)
-        self.scrolled_text_handler.setLevel(logging.INFO)
+        self.scrolled_text_handler.setLevel(logging.DEBUG)  # 降低 level 讓 DEBUG 訊息能通過
         self.scrolled_text_handler.setFormatter(scrolled_text_formatter)
+        self.scrolled_text_handler.addFilter(self.log_level_filter)  # 添加動態過濾器
         logger.addHandler(self.scrolled_text_handler)
 
-        self.summary_log_display = scrolledtext.ScrolledText(self, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4",bd=2, width = 34, )
-        self.summary_log_display.grid(row=1, column=1, pady=5)
+        # === 摘要顯示區域 ===
+        self.summary_log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4", bd=2, width=34)
+        self.summary_log_display.pack(fill=tk.X, pady=(5, 0))
         self.summary_text_handler = ScrolledTextHandler(self.summary_log_display)
         self.summary_text_handler.setLevel(logging.INFO)
         self.summary_text_handler.setFormatter(scrolled_text_formatter)
