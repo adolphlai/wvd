@@ -165,6 +165,7 @@ CONFIG_VAR_LIST = [
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             ["force_physical_first_combat_var", tk.BooleanVar, "_FORCE_PHYSICAL_FIRST_COMBAT", True],
             ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
+            ["auto_upgrade_skill_level_var", tk.BooleanVar, "_AUTO_UPGRADE_SKILL_LEVEL", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
@@ -1935,6 +1936,20 @@ def Factory():
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
+            # 檢測是否選中 LV1，如果是則自動升級到最高等級
+            if setting._AUTO_UPGRADE_SKILL_LEVEL and CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
+                logger.info("[戰鬥] 檢測到 LV1 技能，嘗試升級到最高等級")
+                # LV5 到 LV2 的座標，從高到低嘗試
+                lv_coords = [(625, 1256), (502, 1256), (377, 1256), (253, 1256)]  # LV5, LV4, LV3, LV2
+                for coord in lv_coords:
+                    Press(coord)
+                    Sleep(0.3)
+                    scn = ScreenShot()
+                    # 如果不再是 LV1，說明成功升級了
+                    if not CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
+                        logger.info("[戰鬥] 技能等級已升級")
+                        break
+                scn = ScreenShot()
             if Press(CheckIf(scn,'OK')):
                 is_success_aoe = True
                 Sleep(2)

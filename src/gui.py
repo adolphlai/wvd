@@ -449,6 +449,17 @@ class ConfigPanelApp(tk.Toplevel):
             ))
             getattr(self, buttonName).grid(row=btn_row, column=btn_col, padx=10, pady=5, sticky=tk.W)
 
+        # --- 技能等級設定 ---
+        frame_skill_level = ttk.LabelFrame(tab, text="技能等級", padding=5)
+        frame_skill_level.grid(row=1, column=0, sticky="ew", pady=5)
+
+        self.auto_upgrade_skill_level_check = ttk.Checkbutton(
+            frame_skill_level, text="自動使用最高等級技能",
+            variable=self.auto_upgrade_skill_level_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.auto_upgrade_skill_level_check.grid(row=0, column=0, sticky=tk.W)
+
     def _create_advanced_tab(self, vcmd_non_neg, checkcommand):
         """進階設定分頁：旅店休息、善惡調整、凱旋、因果"""
         tab = self.tab_advanced
