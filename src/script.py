@@ -1947,9 +1947,12 @@ def Factory():
                 Sleep(2)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    # SP/MP 不足，關閉提示後普攻
+                    # SP/MP 不足，關閉提示後點擊 attack 普攻
                     logger.info("[戰鬥] SP/MP 不足，改用普攻")
                     Press(CheckIf(scn,'notenough_close'))
+                    Sleep(0.5)
+                    scn = ScreenShot()
+                    Press(CheckIf(scn, 'spellskill/attack'))
                     Sleep(1)
             elif pos:=(CheckIf(scn,'next')):
                 # 多點幾個位置，覆蓋不同大小的敵人
@@ -1959,9 +1962,12 @@ def Factory():
                 Sleep(1)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    # SP/MP 不足，關閉提示後普攻
+                    # SP/MP 不足，關閉提示後點擊 attack 普攻
                     logger.info("[戰鬥] SP/MP 不足，改用普攻")
                     Press(CheckIf(scn,'notenough_close'))
+                    Sleep(0.5)
+                    scn = ScreenShot()
+                    Press(CheckIf(scn, 'spellskill/attack'))
                     Sleep(1)
             else:
                 Press([150,750])
