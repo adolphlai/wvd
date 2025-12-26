@@ -500,21 +500,9 @@ class ConfigPanelApp(tk.Toplevel):
             ))
             getattr(self, buttonName).grid(row=btn_row, column=btn_col, padx=10, pady=5, sticky=tk.W)
 
-        # --- 技能等級設定 ---
-        frame_skill_level = ttk.LabelFrame(tab, text="技能等級", padding=5)
-        frame_skill_level.grid(row=1, column=0, sticky="ew", pady=5)
-
-        ttk.Label(frame_skill_level, text="自動升級技能等級:").grid(row=0, column=0, sticky=tk.W)
-        self.auto_upgrade_skill_level_combo = ttk.Combobox(
-            frame_skill_level, textvariable=self.auto_upgrade_skill_level_var,
-            values=["關閉", "LV2", "LV3", "LV4", "LV5"], state="readonly", width=8
-        )
-        self.auto_upgrade_skill_level_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
-        self.auto_upgrade_skill_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
-
         # --- AE 手設定 ---
         frame_ae_caster = ttk.LabelFrame(tab, text="AE 手設定（首戰機制）", padding=5)
-        frame_ae_caster.grid(row=2, column=0, sticky="ew", pady=5)
+        frame_ae_caster.grid(row=1, column=0, sticky="ew", pady=5)
 
         # 技能選項
         skill_options = [""] + ALL_AOE_SKILLS
