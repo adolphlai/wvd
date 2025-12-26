@@ -1150,7 +1150,7 @@ def Factory():
         runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重启后都会增加5次尝试次数, 以避免不同电脑导致的反复重启问题.
         runtimeContext._TIME_CHEST = 0
         runtimeContext._TIME_COMBAT = 0 # 因为重启了, 所以清空战斗和宝箱计时器.
-        runtimeContext._FIRST_COMBAT_AFTER_RESTART = 2  # 重启后重置战斗计数器
+        runtimeContext._FIRST_COMBAT_AFTER_RESTART = 1  # 重启后重置战斗计数器
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重启后待打开地图，跳过Resume优化
@@ -3122,8 +3122,8 @@ def Factory():
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
-                    # 无论是否休息，只要从村庄进入地城，都设置返回后前2次战斗标志
-                    runtimeContext._FIRST_COMBAT_AFTER_INN = 2
+                    # 无论是否休息，只要从村庄进入地城，都设置返回后首次战斗标志
+                    runtimeContext._FIRST_COMBAT_AFTER_INN = 1
                     state = State.EoT
                 case State.EoT:
                     RestartableSequenceExecution(
