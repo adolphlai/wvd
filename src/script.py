@@ -25,10 +25,11 @@ except ImportError:
 
 class ScrcpyStreamManager:
     """pyscrcpy 串流管理器"""
-    
-    def __init__(self, max_fps=60, max_size=1600):
+
+    def __init__(self, max_fps=60, max_size=1600, bitrate=32000000):
         self.max_fps = max_fps
         self.max_size = max_size
+        self.bitrate = bitrate  # 比特率，預設 32Mbps（提高圖像質量）
         self.client = None
         self.latest_frame = None
         self.frame_count = 0
@@ -51,10 +52,11 @@ class ScrcpyStreamManager:
             return True
         
         try:
-            logger.info(f"啟動 pyscrcpy 串流 (max_fps={self.max_fps}, max_size={self.max_size})")
+            logger.info(f"啟動 pyscrcpy 串流 (max_fps={self.max_fps}, max_size={self.max_size}, bitrate={self.bitrate})")
             self.client = ScrcpyClient(
                 max_fps=self.max_fps,
                 max_size=self.max_size,
+                bitrate=self.bitrate,
             )
             self.client.on_frame(self._on_frame)
             self.client.start(threaded=True)
@@ -80,7 +82,8 @@ class ScrcpyStreamManager:
         """獲取最新幀"""
         try:
             if self.client and self.client.last_frame is not None:
-                return self.client.last_frame.copy()
+                frame = self.client.last_frame.copy()
+                return frame
         except Exception as e:
             # 串流可能已斷開
             logger.warning(f"pyscrcpy 獲取幀失敗: {e}，標記為不可用")
@@ -1495,13 +1498,22 @@ def Factory():
             identifyConfig = [
                 ('combatActive',  DungeonState.Combat),
                 ('combatActive_2',DungeonState.Combat),
+                ('combatActive_3',DungeonState.Combat),
+                ('combatActive_4',DungeonState.Combat),
                 ('dungFlag',      DungeonState.Dungeon),
                 ('chestFlag',     DungeonState.Chest),
                 ('whowillopenit', DungeonState.Chest),
                 ('mapFlag',       DungeonState.Map),
                 ]
+
             for pattern, state in identifyConfig:
-                if CheckIf(screen, pattern):
+                # combatActive 系列使用較低閾值（串流品質問題）
+                if pattern.startswith('combatActive'):
+                    result = CheckIf(screen, pattern, threshold=0.70)
+                else:
+                    result = CheckIf(screen, pattern)
+                if result:
+                    logger.info(f"[狀態識別] 匹配成功: {pattern} -> {state}")
                     # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
                     if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
                         logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
@@ -2359,10 +2371,10 @@ def Factory():
                 return DungeonState.Combat
             
             TryPressRetry(scn)
-    def StateDungeon(targetInfoList : list[TargetInfo]):
+    def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
-        dungState = None
+        dungState = initial_dungState
         shouldRecover = False
         waitTimer = time.time()
         needRecoverBecauseCombat = False
@@ -2520,6 +2532,11 @@ def Factory():
                                     break
                             Sleep(2)
                     ########### 防止转圈 (from upstream 1.9.27)
+                    # 例外：當目標包含 chest_auto 時，跳過防止轉圈機制
+                    has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
+                    if has_chest_auto:
+                        logger.debug("目標包含 chest_auto，跳過防止轉圈機制")
+                        runtimeContext._STEPAFTERRESTART = True  # 標記為已處理，避免後續執行
                     if not runtimeContext._STEPAFTERRESTART:
                         # 重啟後：前後左右移動
                         if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0:
@@ -2554,12 +2571,17 @@ def Factory():
 
                         runtimeContext._STEPAFTERRESTART = True
                     # 第一次进入地城时，无条件打开地图（不检查能见度）
-                    if runtimeContext._FIRST_DUNGEON_ENTRY:
+                    # 例外：chest_auto 跳過此機制
+                    if runtimeContext._FIRST_DUNGEON_ENTRY and not has_chest_auto:
                         logger.info("第一次进入地城，打开地图")
                         Sleep(1)
                         Press([777,150])
                         dungState = DungeonState.Map
                         runtimeContext._FIRST_DUNGEON_ENTRY = False  # 标记为已进入过
+                    elif runtimeContext._FIRST_DUNGEON_ENTRY and has_chest_auto:
+                        logger.debug("chest_auto 模式：跳過第一次進入地城打開地圖，直接進入 Map 狀態")
+                        runtimeContext._FIRST_DUNGEON_ENTRY = False
+                        dungState = DungeonState.Map  # 仍需進入 Map 狀態以處理 chest_auto 邏輯
                     # 重启后：跳过Resume优化，直接尝试打开地图
                     elif runtimeContext._RESTART_OPEN_MAP_PENDING:
                         logger.info("重启后：跳过Resume优化，尝试打开地图")
@@ -2919,6 +2941,7 @@ def Factory():
     def DungeonFarm():
         nonlocal runtimeContext
         state = None
+        initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
         while 1:
             logger.info("======================")
             Sleep(1)
@@ -2929,8 +2952,8 @@ def Factory():
             match state:
                 case None:
                     def _identifyState():
-                        nonlocal state
-                        state=IdentifyState()[0]
+                        nonlocal state, initial_dungState
+                        state, initial_dungState, _ = IdentifyState()
                     RestartableSequenceExecution(
                         lambda: _identifyState()
                         )
@@ -2977,9 +3000,12 @@ def Factory():
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
                     # 注意: _FIRST_COMBAT_AFTER_RESTART 只在 restartGame 中重置
                     targetInfoList = quest._TARGETINFOLIST.copy()
+                    # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
+                    _initial = initial_dungState
                     RestartableSequenceExecution(
-                        lambda: StateDungeon(targetInfoList)
+                        lambda: StateDungeon(targetInfoList, _initial)
                         )
+                    initial_dungState = None  # 使用後清除
                     state = None
         setting._FINISHINGCALLBACK()
     def QuestFarm():
