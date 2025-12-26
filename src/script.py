@@ -137,7 +137,7 @@ CC_SKILLS = ["KANTIOS"]
 SECRET_AOE_SKILLS = ["SAoLABADIOS","SAoLAERLIK","SAoLAFOROS"]
 FULL_AOE_SKILLS = ["LAERLIK", "LAMIGAL","LAZELOS", "LACONES", "LAFOROS","LAHALITO", "LAFERU", "千恋万花"]
 ROW_AOE_SKILLS = ["maerlik", "mahalito", "mamigal","mazelos","maferu", "macones","maforos","终焉之刻"]
-PHYSICAL_SKILLS = ["unendingdeaths","全力一击","tzalik","居合","精密攻击","锁腹刺","破甲","星光裂","迟钝连携击","强袭","重装一击","眩晕打击","幻影狩猎"]
+PHYSICAL_SKILLS = ["unendingdeaths","動靜斬","地裂斬","全力一击","tzalik","居合","精密攻击","锁腹刺","破甲","星光裂","迟钝连携击","强袭","重装一击","眩晕打击","幻影狩猎"]
 
 ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS +  PHYSICAL_SKILLS
 ALL_SKILLS = [s for s in ALL_SKILLS if s in list(set(ALL_SKILLS))]
@@ -1460,6 +1460,10 @@ def Factory():
         nonlocal setting # 修改因果
         counter = 0
         while 1:
+            # [串流優化] 節流延遲，避免檢測太快導致遊戲來不及響應
+            if PYSCRCPY_AVAILABLE:
+                Sleep(0.5)  # 串流模式下每次檢測間隔 500ms
+            
             screen = ScreenShot()
             logger.info(f'状态机检查中...(第{counter+1}次)')
 
@@ -1581,11 +1585,24 @@ def Factory():
                     RiseAgainReset(reason = 'combat')
                     return IdentifyState()
                 if CheckIf(screen, 'worldmapflag'):
+                    logger.info("检测到世界地图, 尝试缩放并返回城市...")
                     for _ in range(3):
                         Press([100,1500])
                         Sleep(0.5)
                     Press([250,1500])
-                    # 这里不需要continue或者递归 直接继续进行就行
+                    Sleep(1)
+                    # [關鍵操作] 強制使用 ADB 截圖，避免串流幀延遲
+                    scn = _ScreenShot_ADB()
+                    if pos:=CheckIf(scn, 'Deepsnow'):
+                        logger.info(f"点击 Deepsnow 返回城市 (位置: {pos})")
+                        Press(pos)
+                        Sleep(2)
+                        return IdentifyState()
+                    else:
+                        logger.info("找不到 Deepsnow, 尝试关闭世界地图")
+                        PressReturn()
+                        Sleep(1)
+                        return IdentifyState()
                 if Press(CheckIf(screen, 'sandman_recover')):
                     return IdentifyState()
                 if (CheckIf(screen,'cursedWheel_timeLeap')):
@@ -1889,7 +1906,7 @@ def Factory():
         logger.info("未找到可用的强力单体技能")
         return False
     def StateCombat():
-        def doubleConfirmCastSpell():
+        def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
@@ -1898,18 +1915,46 @@ def Factory():
                 Sleep(2)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
+                    logger.info("[戰鬥] SP/MP 不足，改用 LV1 技能")
                     Press(CheckIf(scn,'notenough_close'))
-                    Press(CheckIf(ScreenShot(),'spellskill/lv1'))
-                    Press(CheckIf(scn,'OK'))
+                    Sleep(1)
+                    # 步驟4: 重新點擊技能打開面板
+                    if skill_name:
+                        scn_adb = _ScreenShot_ADB()
+                        Press(CheckIf(scn_adb, 'spellskill/'+skill_name))
+                        Sleep(0.5)
+                    # 步驟5: 找 lv1 按鈕
+                    scn_adb = _ScreenShot_ADB()
+                    if Press(CheckIf(scn_adb,'spellskill/lv1')):
+                        logger.info("[戰鬥] 成功點擊 LV1 技能")
+                        Sleep(0.5)
+                        # 步驟6: 按 OK
+                        Press(CheckIf(_ScreenShot_ADB(),'OK'))
+                    else:
+                        logger.warning("[戰鬥] 未找到 LV1 技能按鈕")
                     Sleep(1)
             elif pos:=(CheckIf(scn,'next')):
                 Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
                 Sleep(1)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
+                    logger.info("[戰鬥] SP/MP 不足，改用 LV1 技能")
                     Press(CheckIf(scn,'notenough_close'))
-                    Press(CheckIf(ScreenShot(),'spellskill/lv1'))
-                    Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
+                    Sleep(1)
+                    # 步驟4: 重新點擊技能打開面板
+                    if skill_name:
+                        scn_adb = _ScreenShot_ADB()
+                        Press(CheckIf(scn_adb, 'spellskill/'+skill_name))
+                        Sleep(0.5)
+                    # 步驟5: 找 lv1 按鈕
+                    scn_adb = _ScreenShot_ADB()
+                    if Press(CheckIf(scn_adb,'spellskill/lv1')):
+                        logger.info("[戰鬥] 成功點擊 LV1 技能")
+                        Sleep(0.5)
+                        # 單體技能需要選擇目標
+                        Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
+                    else:
+                        logger.warning("[戰鬥] 未找到 LV1 技能按鈕")
                     Sleep(1)
             else:
                 Press([150,750])
@@ -2006,7 +2051,7 @@ def Factory():
                     continue
                 elif Press((CheckIf(screen, 'spellskill/'+skillspell))):
                     logger.info(f"使用技能 {skillspell}")
-                    castAndPressOK = doubleConfirmCastSpell()
+                    castAndPressOK = doubleConfirmCastSpell(skill_name=skillspell)
                     castSpellSkill = True
                     if castAndPressOK and setting._AOE_ONCE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
                         runtimeContext._AOE_CAST_TIME += 1
