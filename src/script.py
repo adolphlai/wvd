@@ -138,6 +138,7 @@ SECRET_AOE_SKILLS = ["SAoLABADIOS","SAoLAERLIK","SAoLAFOROS"]
 FULL_AOE_SKILLS = ["LAERLIK", "LAMIGAL","LAZELOS", "LACONES", "LAFOROS","LAHALITO", "LAFERU", "千恋万花"]
 ROW_AOE_SKILLS = ["maerlik", "mahalito", "mamigal","mazelos","maferu", "macones","maforos","终焉之刻"]
 PHYSICAL_SKILLS = ["unendingdeaths","動靜斬","地裂斬","全力一击","tzalik","居合","精密攻击","锁腹刺","破甲","星光裂","迟钝连携击","强袭","重装一击","眩晕打击","幻影狩猎"]
+ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
 
 ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS +  PHYSICAL_SKILLS
 ALL_SKILLS = [s for s in ALL_SKILLS if s in list(set(ALL_SKILLS))]
@@ -165,6 +166,8 @@ CONFIG_VAR_LIST = [
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             ["force_physical_first_combat_var", tk.BooleanVar, "_FORCE_PHYSICAL_FIRST_COMBAT", True],
             ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
+            ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
+            ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
             ["auto_upgrade_skill_level_var", tk.BooleanVar, "_AUTO_UPGRADE_SKILL_LEVEL", True],
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
@@ -230,6 +233,7 @@ class RuntimeContext:
     _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
     _FIRST_COMBAT_AFTER_INN = 0  # 从村庄返回地城后前N次战斗标志（计数器）
     _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
+    _FORCE_AOE_CURRENT_COMBAT = False  # 当前战斗是否持续使用全体技能
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
@@ -1931,6 +1935,32 @@ def Factory():
                 return True
         logger.info("未找到可用的强力单体技能")
         return False
+    def useForcedAOESkill(screen, doubleConfirmCastSpell_func, reason=""):
+        """
+        强制使用全体技能
+        Args:
+            screen: 当前截图
+            doubleConfirmCastSpell_func: 确认施法的函数
+            reason: 触发原因（用于日志）
+        Returns:
+            bool: 是否成功使用了技能
+        """
+        logger.info(f"{reason}，强制使用全体技能")
+
+        # 先打断自动战斗（点击画面空白处）
+        logger.info("点击打断自动战斗...")
+        for _ in range(3):
+            Press([1, 1])
+            Sleep(0.5)
+        scn = ScreenShot()
+
+        for skillspell in ALL_AOE_SKILLS:
+            if Press(CheckIf(scn, 'spellskill/'+skillspell)):
+                logger.info(f"强制使用全体技能: {skillspell}")
+                doubleConfirmCastSpell_func()
+                return True
+        logger.info("未找到可用的全体技能")
+        return False
     def StateCombat():
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
@@ -2047,24 +2077,36 @@ def Factory():
 
                     return
 
-        # 重启后前N次战斗，开启整场战斗强制使用强力单体技能模式
-        # 只有在新战斗开始时（_FORCE_PHYSICAL_CURRENT_COMBAT 为 False）才倒数
-        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+        # 重启后前N次战斗，开启整场战斗强制使用强力单体技能或全体技能模式
+        # 只有在新战斗开始时才倒数
+        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT and not runtimeContext._FORCE_AOE_CURRENT_COMBAT:
             combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_RESTART  # 2->第1次, 1->第2次
             runtimeContext._FIRST_COMBAT_AFTER_RESTART -= 1
-            if setting._FORCE_PHYSICAL_FIRST_COMBAT:
+            if setting._FORCE_AOE_FIRST_COMBAT:
+                logger.info(f"重启后第 {combat_number} 次战斗，开启全体技能模式（整场战斗）")
+                runtimeContext._FORCE_AOE_CURRENT_COMBAT = True
+            elif setting._FORCE_PHYSICAL_FIRST_COMBAT:
                 logger.info(f"重启后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
-        
-        # 从村庄返回后前N次战斗，开启整场战斗强制使用强力单体技能模式
-        # 同样只在新战斗开始时（_FORCE_PHYSICAL_CURRENT_COMBAT 为 False）才倒数
-        if runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
+
+        # 从村庄返回后前N次战斗，开启整场战斗强制使用强力单体技能或全体技能模式
+        # 同样只在新战斗开始时才倒数
+        if runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT and not runtimeContext._FORCE_AOE_CURRENT_COMBAT:
             combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_INN  # 2->第1次, 1->第2次
             runtimeContext._FIRST_COMBAT_AFTER_INN -= 1
-            if setting._FORCE_PHYSICAL_AFTER_INN:
+            if setting._FORCE_AOE_AFTER_INN:
+                logger.info(f"返回后第 {combat_number} 次战斗，开启全体技能模式（整场战斗）")
+                runtimeContext._FORCE_AOE_CURRENT_COMBAT = True
+            elif setting._FORCE_PHYSICAL_AFTER_INN:
                 logger.info(f"返回后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
                 runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
-        
+
+        # 如果当前战斗需要强制使用全体技能
+        if runtimeContext._FORCE_AOE_CURRENT_COMBAT:
+            if useForcedAOESkill(screen, doubleConfirmCastSpell, "全体技能模式"):
+                return
+            # 如果没找到技能，继续正常流程
+
         # 如果当前战斗需要强制使用强力单体技能
         if runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
             if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "强力单体技能模式"):
@@ -2500,6 +2542,7 @@ def Factory():
                     if setting._AOE_ONCE:
                         runtimeContext._ENOUGH_AOE = False
                     runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = False  # 重置强力单体技能模式
+                    runtimeContext._FORCE_AOE_CURRENT_COMBAT = False  # 重置全体技能模式
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
                         spend_on_chest = 0

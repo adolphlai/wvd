@@ -403,6 +403,20 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.force_physical_after_inn_check.grid(row=1, column=0, sticky=tk.W)
 
+        self.force_aoe_first_combat_check = ttk.Checkbutton(
+            frame_force, text="重啟後首戰使用全體技能",
+            variable=self.force_aoe_first_combat_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_aoe_first_combat_check.grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
+
+        self.force_aoe_after_inn_check = ttk.Checkbutton(
+            frame_force, text="返回後首戰使用全體技能",
+            variable=self.force_aoe_after_inn_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.force_aoe_after_inn_check.grid(row=1, column=1, sticky=tk.W, padx=(20, 0))
+
         # --- AOE 設定 ---
         row += 1
         frame_aoe = ttk.LabelFrame(tab, text="AOE 設定", padding=5)
