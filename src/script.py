@@ -1932,24 +1932,14 @@ def Factory():
         logger.info("未找到可用的强力单体技能")
         return False
     def StateCombat():
-        # 技能等級座標 (LV1~LV5)
-        SKILL_LV_COORDS = {
-            1: [125, 1256],
-            2: [253, 1256],
-            3: [377, 1256],
-            4: [502, 1256],
-            5: [625, 1256],
-        }
-        current_skill_lv = [5]  # 用 list 包裝以便在內部函數修改
-
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
-            # 檢測是否選中 LV1，如果是則自動點擊最高等級升級
+            # 檢測是否選中 LV1，如果是則自動點擊 LV5 升級
             if setting._AUTO_UPGRADE_SKILL_LEVEL and CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
-                logger.info(f"[戰鬥] 檢測到 LV1 技能，自動點擊 LV{current_skill_lv[0]} 升級")
-                Press(SKILL_LV_COORDS[current_skill_lv[0]])
+                logger.info("[戰鬥] 檢測到 LV1 技能，自動點擊 LV5 升級")
+                Press([625, 1256])  # LV5 座標
                 Sleep(0.5)
                 scn = ScreenShot()
             if Press(CheckIf(scn,'OK')):
@@ -1957,18 +1947,9 @@ def Factory():
                 Sleep(2)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    # 降一級再試
-                    if current_skill_lv[0] > 1:
-                        current_skill_lv[0] -= 1
-                        logger.info(f"[戰鬥] SP/MP 不足，降級到 LV{current_skill_lv[0]}")
-                        Press(CheckIf(scn,'notenough_close'))
-                        Sleep(0.5)
-                        Press(SKILL_LV_COORDS[current_skill_lv[0]])
-                        Sleep(0.5)
-                        Press(CheckIf(ScreenShot(),'OK'))
-                    else:
-                        logger.info("[戰鬥] SP/MP 不足，已是 LV1")
-                        Press(CheckIf(scn,'notenough_close'))
+                    # SP/MP 不足，關閉提示後普攻
+                    logger.info("[戰鬥] SP/MP 不足，改用普攻")
+                    Press(CheckIf(scn,'notenough_close'))
                     Sleep(1)
             elif pos:=(CheckIf(scn,'next')):
                 # 多點幾個位置，覆蓋不同大小的敵人
@@ -1978,21 +1959,9 @@ def Factory():
                 Sleep(1)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
-                    # 降一級再試
-                    if current_skill_lv[0] > 1:
-                        current_skill_lv[0] -= 1
-                        logger.info(f"[戰鬥] SP/MP 不足，降級到 LV{current_skill_lv[0]}")
-                        Press(CheckIf(scn,'notenough_close'))
-                        Sleep(0.5)
-                        Press(SKILL_LV_COORDS[current_skill_lv[0]])
-                        Sleep(0.5)
-                        # 單體技能需要選擇目標
-                        scn = ScreenShot()
-                        if pos2:=CheckIf(scn,'next'):
-                            Press([pos2[0]-15+random.randint(0,30),pos2[1]+150+random.randint(0,30)])
-                    else:
-                        logger.info("[戰鬥] SP/MP 不足，已是 LV1")
-                        Press(CheckIf(scn,'notenough_close'))
+                    # SP/MP 不足，關閉提示後普攻
+                    logger.info("[戰鬥] SP/MP 不足，改用普攻")
+                    Press(CheckIf(scn,'notenough_close'))
                     Sleep(1)
             else:
                 Press([150,750])
