@@ -168,7 +168,7 @@ CONFIG_VAR_LIST = [
             ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
             ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
             ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
-            ["auto_upgrade_skill_level_var", tk.BooleanVar, "_AUTO_UPGRADE_SKILL_LEVEL", True],
+            ["auto_upgrade_skill_level_var", tk.StringVar, "_AUTO_UPGRADE_SKILL_LEVEL", "LV5"],  # 選項: 關閉, LV2, LV3, LV4, LV5
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
@@ -2017,12 +2017,16 @@ def Factory():
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
-            # 檢測是否選中 LV1，如果是則自動點擊 LV5 升級
-            if setting._AUTO_UPGRADE_SKILL_LEVEL and CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
-                logger.info("[戰鬥] 檢測到 LV1 技能，自動點擊 LV5 升級")
-                Press([625, 1256])  # LV5 座標
-                Sleep(0.5)
-                scn = ScreenShot()
+            # 檢測是否選中 LV1，如果是則自動點擊目標等級升級
+            # 等級座標對照表（Y 座標固定 1256）
+            SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
+            target_level = setting._AUTO_UPGRADE_SKILL_LEVEL
+            if target_level != "關閉" and target_level in SKILL_LEVEL_X:
+                if CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]]):
+                    logger.info(f"[戰鬥] 檢測到 LV1 技能，自動點擊 {target_level} 升級")
+                    Press([SKILL_LEVEL_X[target_level], 1256])
+                    Sleep(0.5)
+                    scn = ScreenShot()
             if Press(CheckIf(scn,'OK')):
                 is_success_aoe = True
                 Sleep(2)

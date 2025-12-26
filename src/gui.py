@@ -504,12 +504,13 @@ class ConfigPanelApp(tk.Toplevel):
         frame_skill_level = ttk.LabelFrame(tab, text="技能等級", padding=5)
         frame_skill_level.grid(row=1, column=0, sticky="ew", pady=5)
 
-        self.auto_upgrade_skill_level_check = ttk.Checkbutton(
-            frame_skill_level, text="自動使用最高等級技能",
-            variable=self.auto_upgrade_skill_level_var, command=self.save_config,
-            style="Custom.TCheckbutton"
+        ttk.Label(frame_skill_level, text="自動升級技能等級:").grid(row=0, column=0, sticky=tk.W)
+        self.auto_upgrade_skill_level_combo = ttk.Combobox(
+            frame_skill_level, textvariable=self.auto_upgrade_skill_level_var,
+            values=["關閉", "LV2", "LV3", "LV4", "LV5"], state="readonly", width=8
         )
-        self.auto_upgrade_skill_level_check.grid(row=0, column=0, sticky=tk.W)
+        self.auto_upgrade_skill_level_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
+        self.auto_upgrade_skill_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
 
     def _create_advanced_tab(self, vcmd_non_neg, checkcommand):
         """進階設定分頁：旅店休息、善惡調整、凱旋、因果"""
