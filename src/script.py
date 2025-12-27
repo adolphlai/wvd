@@ -877,7 +877,7 @@ def Factory():
             logger.debug(f"[黑屏偵測] 平均亮度: {mean_brightness:.2f} < {threshold}，判定為黑屏")
         return is_black
 
-    def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
+    def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.70):
         # 檢查是否需要多模板匹配
         templates_to_try = get_multi_templates(shortPathOfTarget)
         
@@ -933,7 +933,7 @@ def Factory():
         screenshot = screenImage
         result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
 
-        threshold = 0.8
+        threshold = 0.7
         ys, xs = np.where(result >= threshold)
         h, w = template.shape[:2]
         rectangles = list([])
@@ -956,7 +956,7 @@ def Factory():
         screenshot = screenImage
         result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
 
-        threshold = 0.80
+        threshold = 0.70
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
         logger.debug(f"搜索到疑似{shortPathOfTarget}, 匹配程度:{max_val*100:.2f}%")
         if max_val >= threshold:
@@ -990,7 +990,7 @@ def Factory():
             template = LoadTemplateImage(f"cursor_{i}")
         
             result = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.80
+            threshold = 0.70
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             logger.debug(f"目标格搜素{position}, 匹配程度:{max_val*100:.2f}%")
@@ -1008,7 +1008,7 @@ def Factory():
             # 验证楼层
             template = LoadTemplateImage(targetInfo.target)
             result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.80
+            threshold = 0.70
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             logger.debug(f"搜索楼层标识{targetInfo.target}, 匹配程度:{max_val*100:.2f}%")
@@ -1020,7 +1020,7 @@ def Factory():
         else: #equal: targetInfo.target IN stair_img
             template = LoadTemplateImage(targetInfo.target)
             result = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.80
+            threshold = 0.70
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             logger.debug(f"搜索楼梯{targetInfo.target}, 匹配程度:{max_val*100:.2f}%")
@@ -1058,7 +1058,7 @@ def Factory():
             return {"found": False, "match_val": 0, "pos": None, "error": str(e)}
         
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        threshold = 0.80
+        threshold = 0.70
         
         pos = None
         if max_val >= threshold:
@@ -1079,7 +1079,7 @@ def Factory():
         
         result = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        threshold = 0.80
+        threshold = 0.70
         pos=[position[0]+max_loc[0] - cropped.shape[1]//2, position[1]+max_loc[1] -cropped.shape[0]//2]
 
         if max_val > threshold:
@@ -1227,7 +1227,7 @@ def Factory():
                     return
                 continue
     ##################################################################
-    def getCursorCoordinates(input, threshold=0.8):
+    def getCursorCoordinates(input, threshold=0.7):
         """在本地图片中查找模板位置"""
         template = LoadTemplateImage('cursor')
         if template is None:
@@ -1580,11 +1580,7 @@ def Factory():
                 ]
 
             for pattern, state in identifyConfig:
-                # combatActive 系列使用較低閾值（串流品質問題）
-                if pattern.startswith('combatActive'):
-                    result = CheckIf(screen, pattern, threshold=0.70)
-                else:
-                    result = CheckIf(screen, pattern)
+                result = CheckIf(screen, pattern)
                 if result:
                     logger.info(f"[狀態識別] 匹配成功: {pattern} -> {state}")
                     # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
@@ -2751,11 +2747,10 @@ def Factory():
                 return None
             if CheckIf(scn,'dungFlag'):
                 return DungeonState.Dungeon
-            # 使用較低閾值（0.70）檢測戰鬥狀態，與 IdentifyState 保持一致
-            if (CheckIf(scn,'combatActive', threshold=0.70) or 
-                CheckIf(scn,'combatActive_2', threshold=0.70) or
-                CheckIf(scn,'combatActive_3', threshold=0.70) or
-                CheckIf(scn,'combatActive_4', threshold=0.70)):
+            if (CheckIf(scn,'combatActive') or 
+                CheckIf(scn,'combatActive_2') or
+                CheckIf(scn,'combatActive_3') or
+                CheckIf(scn,'combatActive_4')):
                 return DungeonState.Combat
             
             TryPressRetry(scn)
@@ -4286,7 +4281,7 @@ def TestFactory():
     def PressReturn():
         DeviceShell("input keyevent KEYCODE_BACK")
     
-    def CheckIf(screenImage, shortPathOfTarget, roi=None, outputMatchResult=False, threshold=0.80):
+    def CheckIf(screenImage, shortPathOfTarget, roi=None, outputMatchResult=False, threshold=0.70):
         template = LoadTemplateImage(shortPathOfTarget)
         if template is None:
             return None
@@ -4544,7 +4539,7 @@ def TestFactory():
             return {"found": False, "match_val": 0, "pos": None, "error": str(e)}
         
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        threshold = 0.80
+        threshold = 0.70
         
         logger.info(f"小地圖樓層偵測 {floorImage}: 匹配度 {max_val*100:.2f}%")
         
