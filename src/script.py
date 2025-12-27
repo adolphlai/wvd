@@ -165,12 +165,10 @@ CONFIG_VAR_LIST = [
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             # AE 手設定
-            ["ae_caster_1_order_var", tk.StringVar, "_AE_CASTER_1_ORDER", "關閉"],  # AE 手 1 順序：關閉/1~6
-            ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # AE 手 1 技能
-            ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # AE 手 1 技能等級：關閉/LV2~LV5
-            ["ae_caster_2_order_var", tk.StringVar, "_AE_CASTER_2_ORDER", "關閉"],  # AE 手 2 順序：關閉/1~6
-            ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # AE 手 2 技能
-            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # AE 手 2 技能等級：關閉/LV2~LV5
+            ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # 順序 1 技能
+            ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # 順序 1 技能等級：關閉/LV2~LV5
+            ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # 順序 2 技能
+            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級：關閉/LV2~LV5
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
@@ -235,6 +233,7 @@ class RuntimeContext:
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
     _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
+    _COMBAT_BATTLE_COUNT = 0  # 當前第幾戰 (1=第一戰, 2=第二戰...)
     _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
     _AE_CASTER_FIRST_ATTACK_DONE = False  # AE 手是否已完成首次普攻
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
@@ -1503,7 +1502,7 @@ def Factory():
             is_black = IsScreenBlack(screen)
             if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and is_black:
                 # 檢查是否需要首戰打斷（AE 手機制）
-                need_first_combat_interrupt = (setting._AE_CASTER_1_ORDER != "關閉")
+                need_first_combat_interrupt = bool(setting._AE_CASTER_1_SKILL)
 
                 if need_first_combat_interrupt:
                     logger.info("[黑屏偵測] 偵測到戰鬥過場黑屏，開始提前打斷自動戰鬥...")
@@ -1612,6 +1611,7 @@ def Factory():
                                     Press(pos)
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
                         return State.Dungeon, None, ScreenShot()
 
             if pos:=CheckIf(screen,"openworldmap"):
@@ -1631,6 +1631,7 @@ def Factory():
                                 Press(pos)
                     Sleep(2)
                     reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
+                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
                     return State.Dungeon, None, ScreenShot()
 
             if CheckIf(screen,"RoyalCityLuknalia"):
@@ -2018,25 +2019,26 @@ def Factory():
 
     # === AE 手獨立函數 ===
     def get_ae_caster_type(action_count, setting):
-        """判斷當前行動是否為 AE 手
+        """判斷當前行動是否為設定的順序
         Args:
             action_count: 當前行動次數
             setting: 設定物件
         Returns:
-            0: 非 AE 單位
-            1: AE 手 1
-            2: AE 手 2
+            0: 非設定順序
+            1~6: 對應順序（如果該順序有設定技能）
         """
-        order1 = setting._AE_CASTER_1_ORDER
-        order2 = setting._AE_CASTER_2_ORDER
-
         # 計算當前是第幾個角色（1~6）
         position = ((action_count - 1) % 6) + 1
-        logger.info(f"[單位] action={action_count}, position={position}, order1={order1}, order2={order2}")
-        if order1 != "關閉" and position == int(order1):
-            return 1
-        if order2 != "關閉" and position == int(order2):
-            return 2
+        
+        # 檢查該順序是否有設定技能
+        count = setting._AE_CASTER_COUNT
+        if position <= count:
+            skill = getattr(setting, f"_AE_CASTER_{position}_SKILL", "")
+            if skill:  # 有設定技能
+                logger.info(f"[技能施放] action={action_count}, position={position}, skill={skill}")
+                return position
+        
+        logger.info(f"[技能施放] action={action_count}, position={position}, 非設定順序")
         return 0
 
     def use_normal_attack():
@@ -2070,12 +2072,9 @@ def Factory():
         Returns:
             bool: 是否成功使用技能
         """
-        if caster_type == 1:
-            skill = setting._AE_CASTER_1_SKILL
-            level = setting._AE_CASTER_1_LEVEL
-        else:
-            skill = setting._AE_CASTER_2_SKILL
-            level = setting._AE_CASTER_2_LEVEL
+        # 根據順序取得技能和等級設定
+        skill = getattr(setting, f"_AE_CASTER_{caster_type}_SKILL", "")
+        level = getattr(setting, f"_AE_CASTER_{caster_type}_LEVEL", "關閉")
 
         if not skill:
             logger.info(f"[單位 {caster_type}] 未設定技能")
@@ -2136,8 +2135,9 @@ def Factory():
         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
+        runtimeContext._COMBAT_BATTLE_COUNT = 0
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
-        logger.info("[單位] 重置旗標")
+        logger.info("[技能施放] 重置旗標")
 
     def StateCombat():
         def doubleConfirmCastSpell(skill_name=None):
@@ -2221,6 +2221,12 @@ def Factory():
 
         nonlocal runtimeContext
 
+        # 新戰鬥開始時，增加戰鬥計數器並重置首次普攻標誌
+        if runtimeContext._COMBAT_ACTION_COUNT == 0:
+            runtimeContext._COMBAT_BATTLE_COUNT += 1
+            runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False  # 每戰重置
+            logger.info(f"[技能施放] 第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰開始")
+
         # 每次進入 StateCombat 增加行動計數器
         runtimeContext._COMBAT_ACTION_COUNT += 1
         logger.info(f"[戰鬥] 行動次數: {runtimeContext._COMBAT_ACTION_COUNT}")
@@ -2238,8 +2244,16 @@ def Factory():
 
         # === AE 手機制 ===
         # 檢查是否啟用 AE 手功能，並判斷觸發間隔
-        ae_enabled = setting._AE_CASTER_1_ORDER != "關閉"
+        ae_enabled = bool(setting._AE_CASTER_1_SKILL)
         ae_interval_match = ((runtimeContext._COUNTERDUNG-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
+
+        # 第 3 戰開始，直接開自動戰鬥
+        if ae_enabled and ae_interval_match and runtimeContext._COMBAT_BATTLE_COUNT > 2:
+            if not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
+                logger.info(f"[技能施放] 第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰，開啟自動戰鬥")
+                runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                enable_auto_combat()
+                return
 
         if ae_enabled and ae_interval_match and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
             action_count = runtimeContext._COMBAT_ACTION_COUNT
@@ -2309,7 +2323,7 @@ def Factory():
                     return
 
         # AE 手啟用時，必須等 AOE 觸發後才能開啟系統自動戰鬥
-        ae_caster_enabled = setting._AE_CASTER_1_ORDER != "關閉" or setting._AE_CASTER_2_ORDER != "關閉"
+        ae_caster_enabled = bool(setting._AE_CASTER_1_SKILL) or bool(setting._AE_CASTER_2_SKILL)
         ae_logic_complete = not ae_caster_enabled or runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
 
         if ae_logic_complete and ((setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE)):
