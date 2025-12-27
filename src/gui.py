@@ -504,13 +504,6 @@ class ConfigPanelApp(tk.Toplevel):
         frame_ae_caster = ttk.LabelFrame(tab, text="AE 手設定（首戰機制）", padding=5)
         frame_ae_caster.grid(row=1, column=0, sticky="ew", pady=5)
 
-        # 先制設定
-        ttk.Checkbutton(
-            frame_ae_caster, text="隊伍有先制角色",
-            variable=self.has_preemptive_var,
-            command=self.save_config
-        ).grid(row=0, column=0, columnspan=3, sticky=tk.W)
-
         # 技能選項（attack = 普攻）
         skill_options = ["", "attack"] + ALL_AOE_SKILLS
         order_options = ["關閉", "1", "2", "3", "4", "5", "6"]
