@@ -2268,6 +2268,18 @@ def Factory():
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
         for wait_count in range(10):  # 最多等待 5 秒
             screen = ScreenShot()
+            
+            # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
+            if runtimeContext._COMBAT_ACTION_COUNT > 0 and IsScreenBlack(screen):
+                logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
+                # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
+                runtimeContext._COMBAT_ACTION_COUNT = 0
+                # 等待黑屏結束
+                while IsScreenBlack(ScreenShot()):
+                    Sleep(0.1)
+                # 黑屏結束後，回到 StateCombat 開頭重新計數
+                return
+            
             if CheckIf(screen, 'flee'):
                 break
             logger.info(f"[戰鬥] 等待 flee 出現... ({wait_count + 1}/10)")
