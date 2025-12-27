@@ -3430,8 +3430,8 @@ def Factory():
                     runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
                     runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
                     runtimeContext._GOHOME_IN_PROGRESS = False  # 重置回城标志
-                    # 只有在新地城開始時才重置 AE 手旗標（不是從地城內的戰鬥/寶箱狀態進入）
-                    if initial_dungState not in [DungeonState.Combat, DungeonState.Chest]:
+                    # 只有在新地城開始時才重置 AE 手旗標（不是從地城內的狀態進入）
+                    if initial_dungState not in [DungeonState.Combat, DungeonState.Chest, DungeonState.Dungeon, DungeonState.Map]:
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
                     # 注意：不重置 _STEPAFTERRESTART，只有 restartGame 才會設為 False
                     targetInfoList = quest._TARGETINFOLIST.copy()
