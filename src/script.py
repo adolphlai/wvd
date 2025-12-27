@@ -2302,7 +2302,11 @@ def Factory():
         # === AE 手機制 ===
         # 檢查是否啟用 AE 手功能，並判斷觸發間隔
         ae_enabled = bool(setting._AE_CASTER_1_SKILL)
-        ae_interval_match = ((runtimeContext._COUNTERDUNG-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
+        # Fix: Handle _COUNTERDUNG=0 on first run and ensure interval=0 always matches
+        eff_counter = runtimeContext._COUNTERDUNG if runtimeContext._COUNTERDUNG > 0 else 1
+        ae_interval_match = ((eff_counter-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
+        if setting._AE_CASTER_INTERVAL == 0:
+            ae_interval_match = True
 
         if ae_enabled and ae_interval_match:
             battle_num = runtimeContext._COMBAT_BATTLE_COUNT
@@ -2404,7 +2408,7 @@ def Factory():
             # 只點擊一次，避免兩個都匹配時連續點擊導致開啟後又關閉
             if not Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]])):
                 Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
-            Sleep(5)
+            Sleep(5) # Increased sleep duration
             return
 
         if not CheckIf(screen,'flee'):
@@ -2431,11 +2435,15 @@ def Factory():
                         logger.info(f"已释放全体AOE ({runtimeContext._AOE_CAST_TIME}/{setting._AOE_TIME})")
                     break
             if not castSpellSkill:
+                # 使用 use_normal_attack 取代原本的 combatClose 判斷與點擊
+                # User request: "你不要弄那個普攻 他會卡住"
+                # 改回只點擊空白處，或者乾脆不做事 (防止卡住戰鬥流程)
+                logger.warning("[戰鬥] 無可用技能且 Fallback 被呼叫，嘗試點擊空白處取消選單")
                 Press(CheckIf(ScreenShot(),'combatClose'))
                 Press([850,1100])
                 Sleep(0.5)
                 Press([850,1100])
-                Sleep(3)
+                Sleep(3) # Increased sleep duration
     def StateMap_FindSwipeClick(targetInfo : TargetInfo):
         ### return = None: 视为没找到, 大约等于目标点结束.
         ### return = [x,y]: 视为找到, [x,y]是坐标.
