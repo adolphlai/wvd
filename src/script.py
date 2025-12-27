@@ -171,6 +171,7 @@ CONFIG_VAR_LIST = [
             ["ae_caster_2_order_var", tk.StringVar, "_AE_CASTER_2_ORDER", "關閉"],  # AE 手 2 順序：關閉/1~6
             ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # AE 手 2 技能
             ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # AE 手 2 技能等級：關閉/LV2~LV5
+            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
@@ -2236,10 +2237,11 @@ def Factory():
             return
 
         # === AE 手機制 ===
-        # 檢查是否啟用 AE 手功能
+        # 檢查是否啟用 AE 手功能，並判斷觸發間隔
         ae_enabled = setting._AE_CASTER_1_ORDER != "關閉"
+        ae_interval_match = ((runtimeContext._COUNTERDUNG-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
 
-        if ae_enabled and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
+        if ae_enabled and ae_interval_match and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
             action_count = runtimeContext._COMBAT_ACTION_COUNT
             caster_type = get_ae_caster_type(action_count, setting)
 

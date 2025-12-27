@@ -206,7 +206,7 @@ class ConfigPanelApp(tk.Toplevel):
         # =============================================
         # Tab 3: 技能设定
         # =============================================
-        self._create_skills_tab()
+        self._create_skills_tab(vcmd_non_neg)
 
         # =============================================
         # Tab 4: 进阶设定
@@ -449,7 +449,7 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.auto_after_aoe_check.grid(row=1, column=0, sticky=tk.W)
 
-    def _create_skills_tab(self):
+    def _create_skills_tab(self, vcmd_non_neg):
         """技能設定分頁：6個技能按鈕組"""
         tab = self.tab_skills
 
@@ -470,6 +470,15 @@ class ConfigPanelApp(tk.Toplevel):
         # --- 技能施放設定 ---
         frame_ae_caster = ttk.LabelFrame(tab, text="技能施放設定", padding=5)
         frame_ae_caster.grid(row=1, column=0, sticky="ew", pady=5)
+
+        # 間隔設定（row=0）
+        ttk.Label(frame_ae_caster, text="間隔:").grid(row=0, column=0, sticky=tk.W)
+        self.ae_caster_interval_entry = ttk.Entry(
+            frame_ae_caster, textvariable=self.ae_caster_interval_var,
+            validate="key", validatecommand=(vcmd_non_neg, '%P'), width=5
+        )
+        self.ae_caster_interval_entry.grid(row=0, column=1, padx=2, sticky=tk.W)
+        ttk.Button(frame_ae_caster, text="儲存", command=self.save_config, width=4).grid(row=0, column=2, padx=2)
 
         # 技能選項（attack = 普攻）
         skill_options = ["", "attack"] + ALL_AOE_SKILLS
