@@ -2271,7 +2271,7 @@ def Factory():
 
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
         logger.info("[戰鬥] 等待 flee 出現...")
-        for wait_count in range(10):  # 最多等待 5 秒
+        for wait_count in range(30):  # 最多等待 15 秒
             screen = ScreenShot()
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
@@ -2290,7 +2290,7 @@ def Factory():
                 break
             Sleep(0.5)
         else:
-            logger.warning("[戰鬥] flee 等待超時，共等待 10 次，跳過本次行動")
+            logger.warning("[戰鬥] flee 等待超時，共等待 30 次，跳過本次行動")
             return
 
         if not runtimeContext._COMBATSPD:
