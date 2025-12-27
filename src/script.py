@@ -1501,8 +1501,9 @@ def Factory():
             if PYSCRCPY_AVAILABLE:
                 Sleep(0.5)  # 串流模式下每次檢測間隔 500ms
             
+            state_check_start = time.time()
             screen = ScreenShot()
-            logger.info(f'状态机检查中...(第{counter+1}次)')
+            logger.debug(f'状态机检查中...(第{counter+1}次)')
 
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
@@ -1522,13 +1523,11 @@ def Factory():
                     while IsScreenBlack(ScreenShot()):
                         Press([1, 1])
                         click_count += 1
-                        logger.info(f"[黑屏偵測] 點擊打斷 #{click_count}")
                         Sleep(0.1)  # 快速點擊
                         if click_count > 100:  # 防止無限迴圈（最多 10 秒）
                             logger.warning("[黑屏偵測] 黑屏持續過久，中斷點擊")
                             break
                     # 黑屏結束後額外點擊，確保打斷過渡期的自動戰鬥
-                    logger.info(f"[黑屏偵測] 黑屏結束，額外點擊確保打斷...")
                     for i in range(10):
                         Press([1, 1])
                         Sleep(0.1)
@@ -1582,7 +1581,8 @@ def Factory():
                 else:
                     result = CheckIf(screen, pattern)
                 if result:
-                    logger.info(f"[狀態識別] 匹配成功: {pattern} -> {state}")
+                    elapsed_ms = (time.time() - state_check_start) * 1000
+                    logger.debug(f"[狀態識別] 匹配成功: {pattern} -> {state} (耗時 {elapsed_ms:.0f} ms)")
                     # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
                     if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
                         logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
@@ -1793,6 +1793,8 @@ def Factory():
                 Sleep(0.25)
                 Press([1,1])
 
+            elapsed_ms = (time.time() - state_check_start) * 1000
+            logger.debug(f"[狀態識別] 本輪未匹配 (耗時 {elapsed_ms:.0f} ms)")
             Sleep(1)
             counter += 1
         return None, None, screen
@@ -2268,6 +2270,7 @@ def Factory():
         logger.info(f"[戰鬥] 行動次數: {runtimeContext._COMBAT_ACTION_COUNT}")
 
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
+        logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(10):  # 最多等待 5 秒
             screen = ScreenShot()
             
@@ -2283,11 +2286,11 @@ def Factory():
                 return
             
             if CheckIf(screen, 'flee'):
+                logger.info(f"[戰鬥] flee 出現，等待 {wait_count + 1} 次")
                 break
-            logger.info(f"[戰鬥] 等待 flee 出現... ({wait_count + 1}/10)")
             Sleep(0.5)
         else:
-            logger.warning("[戰鬥] flee 等待超時，跳過本次行動")
+            logger.warning("[戰鬥] flee 等待超時，共等待 10 次，跳過本次行動")
             return
 
         if not runtimeContext._COMBATSPD:
@@ -2806,6 +2809,8 @@ def Factory():
         nonlocal runtimeContext
         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True
         while 1:
+            state_handle_start = time.time()
+            state_handle_name = dungState
             logger.info("----------------------")
             if setting._FORCESTOPING.is_set():
                 logger.info("即将停止脚本...")
@@ -2816,6 +2821,8 @@ def Factory():
                 case None:
                     s, dungState,scn = IdentifyState()
                     if (s == State.Inn) or (dungState == DungeonState.Quit):
+                        elapsed_ms = (time.time() - state_handle_start) * 1000
+                        logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
                     gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
                     if result:
@@ -2829,6 +2836,8 @@ def Factory():
                         logger.info("由于战斗用时过久, 在state:None中重启.")
                         restartGame()
                 case DungeonState.Quit:
+                    elapsed_ms = (time.time() - state_handle_start) * 1000
+                    logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                     break
                 case DungeonState.Dungeon:
                     Press([1,1])
@@ -3272,11 +3281,20 @@ def Factory():
                             if not Press(CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])):
                                 logger.warning("無法找到自動寶箱按鈕，跳過此目標")
                                 dungState = None
+                                elapsed_ms = (time.time() - state_handle_start) * 1000
+                                logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                                 continue
                         Sleep(0.5)
                         # 等待移動完成
+                        chest_auto_start = time.time()
+                        CHEST_AUTO_TIMEOUT = 60  # 60秒超時
                         while True:
                             Sleep(3)
+                            # 超時檢查（防止原地旋轉BUG）
+                            elapsed = time.time() - chest_auto_start
+                            if elapsed > CHEST_AUTO_TIMEOUT:
+                                logger.error(f"chest_auto 移動超時（{elapsed:.1f}秒），疑似卡住，準備重啟遊戲")
+                                restartGame()
                             _, dungState, screen = IdentifyState()
                             if dungState != DungeonState.Dungeon:
                                 logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
@@ -3292,6 +3310,8 @@ def Factory():
                                         targetInfoList.pop(0)
                                     break
                                 lastscreen = screen
+                        elapsed_ms = (time.time() - state_handle_start) * 1000
+                        logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         continue
 
                     dungState, newTargetInfoList = StateSearch(waitTimer,targetInfoList)
@@ -3307,6 +3327,8 @@ def Factory():
 
                     if (targetInfoList==None) or (targetInfoList == []):
                         logger.info("地下城目标完成. 地下城状态结束.(仅限任务模式.)")
+                        elapsed_ms = (time.time() - state_handle_start) * 1000
+                        logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
 
                     if (newTargetInfoList != targetInfoList):
@@ -3322,8 +3344,13 @@ def Factory():
                     dungState = StateChest()
                 case DungeonState.Combat:
                     needRecoverBecauseCombat =True
+                    combat_start = time.time()
                     StateCombat()
+                    combat_elapsed_ms = (time.time() - combat_start) * 1000
+                    logger.debug(f"[耗時] 戰鬥狀態處理 (耗時 {combat_elapsed_ms:.0f} ms)")
                     dungState = None
+            elapsed_ms = (time.time() - state_handle_start) * 1000
+            logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
     def StateAcceptRequest(request: str, pressbias:list = [0,0]):
         FindCoordsOrElseExecuteFallbackAndWait('Inn',[1,1],1)
         StateInn()
