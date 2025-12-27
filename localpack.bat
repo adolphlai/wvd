@@ -56,6 +56,11 @@ py -3.11 -m PyInstaller --onedir --noconsole --noconfirm ^
     --hidden-import=loguru ^
     --collect-all=pyscrcpy ^
     --collect-all=adbutils ^
+    --exclude-module=torch ^
+    --exclude-module=torchvision ^
+    --exclude-module=torchaudio ^
+    --exclude-module=tensorflow ^
+    --exclude-module=keras ^
     src/main.py -n wvd
 
 if errorlevel 1 (

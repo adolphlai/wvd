@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('800x550')  # 加寬視窗以容納日誌過濾器
+        self.geometry('750x550')  # 加寬視窗以容納日誌過濾器
         
         self.title(self.TITLE)
 
@@ -235,42 +235,6 @@ class ConfigPanelApp(tk.Toplevel):
         # =============================================
         self._create_test_tab()
 
-        # === 启动/停止按钮区域 ===
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-
-        start_frame = ttk.Frame(self)
-        start_frame.grid(row=1, column=0, sticky="nsew")
-        start_frame.columnconfigure(0, weight=1)
-        start_frame.rowconfigure(1, weight=1)
-
-        ttk.Separator(start_frame, orient='horizontal').grid(row=0, column=0, columnspan=3, sticky="ew", padx=10)
-
-        button_frame = ttk.Frame(start_frame)
-        button_frame.grid(row=1, column=0, columnspan=3, pady=5, sticky="nsew")
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
-        button_frame.columnconfigure(2, weight=1)
-
-        label1 = ttk.Label(button_frame, text="",  anchor='center')
-        label1.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
-
-        label3 = ttk.Label(button_frame, text="",  anchor='center')
-        label3.grid(row=0, column=2, sticky='nsew', padx=5, pady=5)
-
-        s = ttk.Style()
-        s.configure('start.TButton', font=('微软雅黑', 15), padding = (0,5))
-        def btn_command():
-            self.save_config()
-            self.toggle_start_stop()
-        self.start_stop_btn = ttk.Button(
-            button_frame,
-            text="腳本, 啟動!",
-            command=btn_command,
-            style='start.TButton',
-        )
-        self.start_stop_btn.grid(row=0, column=1, sticky='nsew', padx=5, pady= 26)
-
         # === 更新提示区域（默认隐藏）===
         self.update_sep = ttk.Separator(self.main_frame, orient='horizontal')
         self.update_sep.grid(row=1, column=0, columnspan=3, sticky='ew', pady=10)
@@ -393,6 +357,30 @@ class ConfigPanelApp(tk.Toplevel):
             self.who_will_open_it_var.set(open_chest_reverse_mapping[self.who_will_open_text_var.get()])
             self.save_config()
         self.who_will_open_combobox.bind("<<ComboboxSelected>>", handle_open_chest_selection)
+
+        # --- 啟動/停止按鈕 ---
+        row += 1
+        ttk.Separator(tab, orient='horizontal').grid(row=row, column=0, sticky="ew", pady=10)
+        
+        row += 1
+        button_frame = ttk.Frame(tab)
+        button_frame.grid(row=row, column=0, sticky="ew", pady=5)
+        button_frame.columnconfigure(0, weight=1)
+
+        s = ttk.Style()
+        s.configure('start.TButton', font=('微软雅黑', 15), padding=(0, 5))
+        
+        def btn_command():
+            self.save_config()
+            self.toggle_start_stop()
+        
+        self.start_stop_btn = ttk.Button(
+            button_frame,
+            text="腳本, 啟動!",
+            command=btn_command,
+            style='start.TButton',
+        )
+        self.start_stop_btn.grid(row=0, column=0, sticky='ew', padx=5, pady=10)
 
     def _create_battle_tab(self):
         """戰鬥設定分頁：自動戰鬥、恢復、強力技能、AOE"""
@@ -940,22 +928,13 @@ class ConfigPanelApp(tk.Toplevel):
                 from threading import Event
                 setting._FORCESTOPING = Event()
                 
-                # 使用 TestFactory 取得截圖功能
-                from script import init_adb, restart_pyscrcpy_stream, get_pyscrcpy_frame
+                # 使用 TestFactory 來連接並取得截圖
+                test_func = TestFactory()
                 
-                self.screenshot_status_var.set("正在連接 ADB...")
-                port = setting._ADB_PORT
-                init_adb(setting._EMU_PATH, port)
+                self.screenshot_status_var.set("正在連接並擷取...")
                 
-                self.screenshot_status_var.set("正在啟動串流...")
-                restart_pyscrcpy_stream()
-                
-                # 等待串流穩定
-                import time
-                time.sleep(1)
-                
-                self.screenshot_status_var.set("正在擷取...")
-                frame = get_pyscrcpy_frame()
+                # 呼叫 test factory 取得截圖
+                frame = test_func(setting, "screenshot")
                 
                 if frame is None:
                     self.screenshot_status_var.set("❌ 無法取得串流畫面")
@@ -966,7 +945,7 @@ class ConfigPanelApp(tk.Toplevel):
                 os.makedirs(save_dir, exist_ok=True)
                 save_path = os.path.join(save_dir, f"{filename}.png")
                 
-                # 轉換 BGR 儲存
+                # 儲存 (frame 是 BGR 格式)
                 cv2.imwrite(save_path, frame)
                 
                 abs_path = os.path.abspath(save_path)

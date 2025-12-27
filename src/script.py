@@ -2290,6 +2290,15 @@ def Factory():
             logger.warning("[戰鬥] flee 等待超時，跳過本次行動")
             return
 
+        if not runtimeContext._COMBATSPD:
+            # 檢查並啟用 2 倍速 (使用較低閾值以適應串流)
+            if Press(CheckIf(screen, 'combatSpd', threshold=0.70)):
+                runtimeContext._COMBATSPD = True
+                logger.info("[戰鬥] 啟用 2 倍速")
+                Sleep(0.5)
+                # 點擊後重新截圖，以免影響後續判斷
+                screen = ScreenShot()
+
         # === AE 手機制 ===
         # 檢查是否啟用 AE 手功能，並判斷觸發間隔
         ae_enabled = bool(setting._AE_CASTER_1_SKILL)
@@ -2362,10 +2371,7 @@ def Factory():
             runtimeContext._TIME_COMBAT = time.time()
 
         screen = ScreenShot()
-        if not runtimeContext._COMBATSPD:
-            if Press(CheckIf(screen,'combatSpd')):
-                runtimeContext._COMBATSPD = True
-                Sleep(1)
+        # combatSpd 檢查已移至 StateCombat 開頭
 
         spellsequence = runtimeContext._ACTIVESPELLSEQUENCE
         if spellsequence != None:
@@ -4674,6 +4680,19 @@ def TestFactory():
                 stair_coords = kwargs.get('stair_coords', [294, 239])
                 swipe_dir = kwargs.get('swipe_dir', '右上')
                 TestMinimapStairDetection(floor_image, stair_coords, swipe_dir)
+            elif test_type == "screenshot":
+                # 嘗試使用串流截圖
+                global _scrcpy_stream
+                if _scrcpy_stream and _scrcpy_stream.is_available():
+                    logger.info("使用串流方式截圖")
+                    frame = _scrcpy_stream.get_frame()
+                    if frame is not None:
+                        return frame
+                    else:
+                        logger.warning("串流截圖失敗，改用 ADB 截圖")
+                # 退回到 ADB 截圖
+                logger.info("使用 ADB 方式截圖")
+                return ScreenShot()
 
             logger.info("測試完成")
         except Exception as e:
