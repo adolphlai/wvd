@@ -1122,7 +1122,9 @@ def Factory():
                 scn = ScreenShot()
                 if isinstance(targetPattern, (list, tuple)):
                     for pattern in targetPattern:
-                        p = CheckIf(scn,pattern)
+                        # combatActive* 使用較低閾值，避免 74% 匹配無法觸發
+                        thresh = 0.70 if pattern.startswith('combatActive') else 0.80
+                        p = CheckIf(scn, pattern, threshold=thresh)
                         if p:
                             return p
                 else:
