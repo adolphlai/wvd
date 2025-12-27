@@ -240,7 +240,7 @@ class RuntimeContext:
     _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
     _DUNGEON_CONFIRMED = False  # 已確認進入地城（偵測到地城狀態後設為 True）
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
-    _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
+    _STEPAFTERRESTART = True  # 重启后左右平移标志，False=需要執行防轉圈，True=已執行或無需執行
     _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
     _COMBAT_BATTLE_COUNT = 0  # 當前第幾戰 (1=第一戰, 2=第二戰...)
     _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
