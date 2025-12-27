@@ -2966,8 +2966,16 @@ def Factory():
                     ########### 防止转圈 (from upstream 1.9.27)
                     has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
                     if not runtimeContext._STEPAFTERRESTART:
-                        # 防止轉圈：左右平移一次
-                        logger.info("防止转圈: 左右平移一次")
+                        # 防止轉圈：前後左右平移一次（僅重啟後執行）
+                        logger.info("防止转圈: 前後左右平移一次")
+
+                        # 前平移
+                        Press([450,636])
+                        Sleep(1)
+
+                        # 後平移
+                        Press([450,1265])
+                        Sleep(1)
 
                         # 左平移
                         Press([27,950])
@@ -3425,7 +3433,7 @@ def Factory():
                     # 只有在新地城開始時才重置 AE 手旗標（不是從地城內的戰鬥/寶箱狀態進入）
                     if initial_dungState not in [DungeonState.Combat, DungeonState.Chest]:
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
-                    runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
+                    # 注意：不重置 _STEPAFTERRESTART，只有 restartGame 才會設為 False
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
                     _initial = initial_dungState
