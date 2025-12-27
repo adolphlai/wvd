@@ -169,7 +169,6 @@ CONFIG_VAR_LIST = [
             ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
             ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
             # AE 手設定
-            ["has_preemptive_var", tk.BooleanVar, "_HAS_PREEMPTIVE", False],  # 隊伍有先制角色
             ["ae_caster_1_order_var", tk.StringVar, "_AE_CASTER_1_ORDER", "關閉"],  # AE 手 1 順序：關閉/1~6
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # AE 手 1 技能
             ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # AE 手 1 技能等級：關閉/LV2~LV5
@@ -1506,11 +1505,11 @@ def Factory():
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
 
-            # [黑屏偵測] 首戰打斷自動戰鬥
-            # 當偵測到黑屏且需要首戰強制技能時，提前開始點擊打斷
-            # 條件：已確認進入地城 + 還沒遇到過戰鬥或寶箱（避免 chest_auto 返回地城時誤判）
+            # [黑屏偵測] 首戰/二戰打斷自動戰鬥
+            # 當偵測到黑屏且 AE 手尚未觸發 AOE 時，提前開始點擊打斷
+            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0（區分進入/離開戰鬥黑屏）
             is_black = IsScreenBlack(screen)
-            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._MEET_CHEST_OR_COMBAT and is_black:
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and is_black:
                 # 檢查是否需要首戰打斷
                 need_first_combat_interrupt = (
                     (setting._AE_CASTER_1_ORDER != "關閉") or  # AE 手機制需要打斷
@@ -2026,7 +2025,7 @@ def Factory():
         scn = ScreenShot()
 
         for skillspell in ALL_AOE_SKILLS:
-            if Press(CheckIf(scn, 'spellskill/'+skillspell)):
+            if Press(CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)):
                 logger.info(f"强制使用全体技能: {skillspell}")
                 doubleConfirmCastSpell_func()
                 return True
@@ -2040,25 +2039,16 @@ def Factory():
             action_count: 當前行動次數
             setting: 設定物件
         Returns:
-            0: 非 AE 手（或先制攻擊）
+            0: 非 AE 手
             1: AE 手 1
             2: AE 手 2
         """
         order1 = setting._AE_CASTER_1_ORDER
         order2 = setting._AE_CASTER_2_ORDER
 
-        # 如果有先制，扣掉第一次攻擊
-        offset = 1 if setting._HAS_PREEMPTIVE else 0
-        adjusted = action_count - offset
-
-        # 如果是先制攻擊（調整後 <= 0），跳過不處理
-        if adjusted <= 0:
-            logger.info(f"[AE 手] action={action_count}, 先制攻擊，跳過")
-            return 0
-
         # 計算當前是第幾個角色（1~6）
-        position = ((adjusted - 1) % 6) + 1
-        logger.info(f"[AE 手] action={action_count}, adjusted={adjusted}, position={position}, order1={order1}, order2={order2}")
+        position = ((action_count - 1) % 6) + 1
+        logger.info(f"[AE 手] action={action_count}, position={position}, order1={order1}, order2={order2}")
         if order1 != "關閉" and position == int(order1):
             return 1
         if order2 != "關閉" and position == int(order2):
@@ -2162,6 +2152,7 @@ def Factory():
         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
+        runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
         logger.info("[AE 手] 重置旗標")
 
     def StateCombat():
@@ -2250,6 +2241,17 @@ def Factory():
         runtimeContext._COMBAT_ACTION_COUNT += 1
         logger.info(f"[戰鬥] 行動次數: {runtimeContext._COMBAT_ACTION_COUNT}")
 
+        # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
+        for wait_count in range(10):  # 最多等待 5 秒
+            screen = ScreenShot()
+            if CheckIf(screen, 'flee'):
+                break
+            logger.info(f"[戰鬥] 等待 flee 出現... ({wait_count + 1}/10)")
+            Sleep(0.5)
+        else:
+            logger.warning("[戰鬥] flee 等待超時，跳過本次行動")
+            return
+
         # === AE 手機制 ===
         # 檢查是否啟用 AE 手功能
         ae_enabled = setting._AE_CASTER_1_ORDER != "關閉"
@@ -2258,16 +2260,7 @@ def Factory():
             action_count = runtimeContext._COMBAT_ACTION_COUNT
             caster_type = get_ae_caster_type(action_count, setting)
 
-            # 計算調整後的 action_count（考慮先制）
-            offset = 1 if setting._HAS_PREEMPTIVE else 0
-            adjusted_count = action_count - offset
-
-            logger.info(f"[AE 手] action={action_count}, adjusted={adjusted_count}, caster_type={caster_type}, first_attack_done={runtimeContext._AE_CASTER_FIRST_ATTACK_DONE}")
-
-            if adjusted_count <= 0:
-                # 先制攻擊，跳過不處理，讓遊戲自動進行
-                logger.info("[AE 手] 先制攻擊，跳過")
-                return
+            logger.info(f"[AE 手] action={action_count}, caster_type={caster_type}, first_attack_done={runtimeContext._AE_CASTER_FIRST_ATTACK_DONE}")
 
             if not runtimeContext._AE_CASTER_FIRST_ATTACK_DONE:
                 # 首次普攻階段（第一場戰鬥第一輪）
@@ -3271,9 +3264,6 @@ def Factory():
                             _, dungState, screen = IdentifyState()
                             if dungState != DungeonState.Dungeon:
                                 logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
-                                # 進入戰鬥時延遲，等待先制攻擊完成
-                                if dungState == DungeonState.Combat:
-                                    Sleep(3)
                                 break
                             elif lastscreen is not None:
                                 gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
