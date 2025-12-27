@@ -165,11 +165,20 @@ CONFIG_VAR_LIST = [
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             # AE 手設定
+            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 1],  # 單位數量：1~6
+            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # 順序 1 技能
             ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # 順序 1 技能等級：關閉/LV2~LV5
             ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # 順序 2 技能
             ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級：關閉/LV2~LV5
-            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
+            ["ae_caster_3_skill_var", tk.StringVar, "_AE_CASTER_3_SKILL", ""],      # 順序 3 技能
+            ["ae_caster_3_level_var", tk.StringVar, "_AE_CASTER_3_LEVEL", "關閉"],  # 順序 3 技能等級
+            ["ae_caster_4_skill_var", tk.StringVar, "_AE_CASTER_4_SKILL", ""],      # 順序 4 技能
+            ["ae_caster_4_level_var", tk.StringVar, "_AE_CASTER_4_LEVEL", "關閉"],  # 順序 4 技能等級
+            ["ae_caster_5_skill_var", tk.StringVar, "_AE_CASTER_5_SKILL", ""],      # 順序 5 技能
+            ["ae_caster_5_level_var", tk.StringVar, "_AE_CASTER_5_LEVEL", "關閉"],  # 順序 5 技能等級
+            ["ae_caster_6_skill_var", tk.StringVar, "_AE_CASTER_6_SKILL", ""],      # 順序 6 技能
+            ["ae_caster_6_level_var", tk.StringVar, "_AE_CASTER_6_LEVEL", "關閉"],  # 順序 6 技能等級
             ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
             ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
             ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
@@ -2110,12 +2119,37 @@ def Factory():
                     Sleep(1)
                     scn = ScreenShot()
 
-            # 點擊 OK 確認
-            ok_pos = CheckIf(scn, 'OK')
-            if ok_pos:
-                logger.info(f"[單位 {caster_type}] 點擊 OK 確認")
-                Press(ok_pos)
-                Sleep(2)
+            # 判斷技能類型
+            is_single_target = skill not in ALL_AOE_SKILLS
+            
+            if is_single_target:
+                # 單體技能：直接點擊目標敵人（不需要 OK）
+                logger.info(f"[單位 {caster_type}] 單體技能，點擊目標敵人")
+                # 找 next 按鈕位置作為參考
+                next_pos = CheckIf(scn, 'next')
+                if next_pos:
+                    # 點擊相對於 next 的目標位置
+                    target_x = next_pos[0] - 15
+                    target_y1 = next_pos[1] + 100
+                    target_y2 = next_pos[1] + 150
+                    logger.info(f"[單位 {caster_type}] 點擊目標位置: ({target_x}, {target_y1}) 和 ({target_x}, {target_y2})")
+                    Press([target_x, target_y1])
+                    Sleep(0.2)
+                    Press([target_x, target_y2])
+                else:
+                    # 如果找不到 next，使用固定座標
+                    logger.info(f"[單位 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
+                    Press([450, 750])
+                    Sleep(0.2)
+                    Press([450, 800])
+                Sleep(1)
+            else:
+                # AOE 技能：可能需要點擊 OK 確認
+                ok_pos = CheckIf(scn, 'OK')
+                if ok_pos:
+                    logger.info(f"[單位 {caster_type}] 點擊 OK 確認")
+                    Press(ok_pos)
+                    Sleep(1)
             return True
 
         logger.info(f"[單位 {caster_type}] 找不到技能: {skill}")
@@ -2247,47 +2281,67 @@ def Factory():
         ae_enabled = bool(setting._AE_CASTER_1_SKILL)
         ae_interval_match = ((runtimeContext._COUNTERDUNG-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
 
-        # 第 3 戰開始，直接開自動戰鬥
-        if ae_enabled and ae_interval_match and runtimeContext._COMBAT_BATTLE_COUNT > 2:
-            if not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
-                logger.info(f"[技能施放] 第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰，開啟自動戰鬥")
-                runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
-                enable_auto_combat()
-                return
-
-        if ae_enabled and ae_interval_match and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
+        if ae_enabled and ae_interval_match:
+            battle_num = runtimeContext._COMBAT_BATTLE_COUNT
             action_count = runtimeContext._COMBAT_ACTION_COUNT
-            caster_type = get_ae_caster_type(action_count, setting)
-
-            logger.info(f"[單位] action={action_count}, caster_type={caster_type}, first_attack_done={runtimeContext._AE_CASTER_FIRST_ATTACK_DONE}")
-
-            if not runtimeContext._AE_CASTER_FIRST_ATTACK_DONE:
-                # 首次普攻階段（第一場戰鬥第一輪）
-                if caster_type > 0:
-                    # AE 手使用普攻（讓遊戲記住「重複上一次動作」）
-                    logger.info(f"[單位 {caster_type}] 首次普攻")
+            position = ((action_count - 1) % 6) + 1  # 當前角色順序 (1~6)
+            
+            # 取得該順序的設定
+            skill = ""
+            level = "關閉"
+            if position <= setting._AE_CASTER_COUNT:
+                skill = getattr(setting, f"_AE_CASTER_{position}_SKILL", "")
+                level = getattr(setting, f"_AE_CASTER_{position}_LEVEL", "關閉")
+            
+            is_aoe = skill in ALL_AOE_SKILLS
+            is_single = skill and skill not in ALL_AOE_SKILLS and skill != "attack"
+            is_attack = skill == "attack"
+            is_unconfigured = not skill
+            
+            logger.info(f"[技能施放] 第{battle_num}戰, action={action_count}, position={position}, skill={skill or '未設定'}, is_aoe={is_aoe}")
+            
+            if battle_num > 2:
+                # === 第 3 戰以後：開自動戰鬥 ===
+                if not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
+                    logger.info(f"[技能施放] 第 {battle_num} 戰，開啟自動戰鬥")
+                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                    enable_auto_combat()
+                return
+            elif battle_num == 1:
+                # === 第一戰 ===
+                if is_aoe:
+                    # AOE 技能單位：使用普攻
+                    logger.info(f"[順序 {position}] 第一戰，AOE 單位使用普攻")
                     use_normal_attack()
-                    runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = True
+                    return
+                elif is_single or is_attack:
+                    # 單體技能/普攻 單位：使用設定的技能
+                    logger.info(f"[順序 {position}] 第一戰，使用技能: {skill}")
+                    use_ae_caster_skill(position, setting)
                     return
                 else:
-                    # 非 AE 單位使用單體技能
-                    logger.info("[非 AE 單位] 首戰，使用單體技能")
+                    # 未設定：使用優先順序單體技能
+                    logger.info(f"[順序 {position}] 第一戰，未設定，使用優先順序單體技能")
                     screen = ScreenShot()
-                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 單位")
+                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, f"順序{position}")
                     return
-            else:
-                # 已完成首次普攻，AE 手使用 AOE → 開自動
-                if caster_type > 0:
-                    logger.info(f"[單位 {caster_type}] 使用 AOE")
-                    if use_ae_caster_skill(caster_type, setting):
-                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
-                        enable_auto_combat()
-                        return
+            elif battle_num == 2:
+                # === 第二戰 ===
+                if is_aoe:
+                    # AOE 技能單位：使用 AOE 技能
+                    logger.info(f"[順序 {position}] 第二戰，使用 AOE: {skill}")
+                    use_ae_caster_skill(position, setting)
+                    return
+                elif is_single or is_attack:
+                    # 單體技能/普攻 單位：使用設定的技能
+                    logger.info(f"[順序 {position}] 第二戰，使用技能: {skill}")
+                    use_ae_caster_skill(position, setting)
+                    return
                 else:
-                    # 非 AE 單位使用單體技能
-                    logger.info("[非 AE 單位] 使用單體技能")
+                    # 未設定：使用優先順序單體技能
+                    logger.info(f"[順序 {position}] 第二戰，未設定，使用優先順序單體技能")
                     screen = ScreenShot()
-                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 單位")
+                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, f"順序{position}")
                     return
 
         if runtimeContext._TIME_COMBAT==0:
