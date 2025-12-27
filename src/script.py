@@ -2964,11 +2964,7 @@ def Factory():
                                     break
                             Sleep(2)
                     ########### 防止转圈 (from upstream 1.9.27)
-                    # 例外：當目標包含 chest_auto 時，跳過防止轉圈機制
                     has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
-                    if has_chest_auto:
-                        logger.debug("目標包含 chest_auto，跳過防止轉圈機制")
-                        runtimeContext._STEPAFTERRESTART = True  # 標記為已處理，避免後續執行
                     if not runtimeContext._STEPAFTERRESTART:
                         # 防止轉圈：左右平移一次
                         logger.info("防止转圈: 左右平移一次")
