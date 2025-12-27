@@ -421,39 +421,6 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.enable_resume_optimization_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
 
-        # --- 強力技能模式 ---
-        row += 1
-        frame_force = ttk.LabelFrame(tab, text="強力技能模式", padding=5)
-        frame_force.grid(row=row, column=0, sticky="ew", pady=5)
-
-        self.force_physical_first_combat_check = ttk.Checkbutton(
-            frame_force, text="重啟後首戰使用強力技能",
-            variable=self.force_physical_first_combat_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_physical_first_combat_check.grid(row=0, column=0, sticky=tk.W)
-
-        self.force_physical_after_inn_check = ttk.Checkbutton(
-            frame_force, text="返回後首戰使用強力技能",
-            variable=self.force_physical_after_inn_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_physical_after_inn_check.grid(row=1, column=0, sticky=tk.W)
-
-        self.force_aoe_first_combat_check = ttk.Checkbutton(
-            frame_force, text="重啟後首戰使用全體技能",
-            variable=self.force_aoe_first_combat_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_aoe_first_combat_check.grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
-
-        self.force_aoe_after_inn_check = ttk.Checkbutton(
-            frame_force, text="返回後首戰使用全體技能",
-            variable=self.force_aoe_after_inn_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.force_aoe_after_inn_check.grid(row=1, column=1, sticky=tk.W, padx=(20, 0))
-
         # --- AOE 設定 ---
         row += 1
         frame_aoe = ttk.LabelFrame(tab, text="AOE 設定", padding=5)
@@ -500,8 +467,8 @@ class ConfigPanelApp(tk.Toplevel):
             ))
             getattr(self, buttonName).grid(row=btn_row, column=btn_col, padx=10, pady=5, sticky=tk.W)
 
-        # --- AE 手設定 ---
-        frame_ae_caster = ttk.LabelFrame(tab, text="AE 手設定（首戰機制）", padding=5)
+        # --- 技能施放設定 ---
+        frame_ae_caster = ttk.LabelFrame(tab, text="技能施放設定", padding=5)
         frame_ae_caster.grid(row=1, column=0, sticky="ew", pady=5)
 
         # 技能選項（attack = 普攻）
@@ -509,8 +476,8 @@ class ConfigPanelApp(tk.Toplevel):
         order_options = ["關閉", "1", "2", "3", "4", "5", "6"]
         level_options = ["關閉", "LV2", "LV3", "LV4", "LV5"]
 
-        # AE 手 1
-        ttk.Label(frame_ae_caster, text="AE 手 1:").grid(row=1, column=0, sticky=tk.W)
+        # 單位 1
+        ttk.Label(frame_ae_caster, text="單位 1:").grid(row=1, column=0, sticky=tk.W)
         ttk.Label(frame_ae_caster, text="順序").grid(row=1, column=1, sticky=tk.W)
         self.ae_caster_1_order_combo = ttk.Combobox(
             frame_ae_caster, textvariable=self.ae_caster_1_order_var,
@@ -535,8 +502,8 @@ class ConfigPanelApp(tk.Toplevel):
         self.ae_caster_1_level_combo.grid(row=1, column=6, padx=2, sticky=tk.W)
         self.ae_caster_1_level_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
 
-        # AE 手 2
-        ttk.Label(frame_ae_caster, text="AE 手 2:").grid(row=2, column=0, sticky=tk.W, pady=(5, 0))
+        # 單位 2
+        ttk.Label(frame_ae_caster, text="單位 2:").grid(row=2, column=0, sticky=tk.W, pady=(5, 0))
         ttk.Label(frame_ae_caster, text="順序").grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
         self.ae_caster_2_order_combo = ttk.Combobox(
             frame_ae_caster, textvariable=self.ae_caster_2_order_var,
@@ -992,8 +959,6 @@ class ConfigPanelApp(tk.Toplevel):
             self.skip_recover_check,
             self.skip_chest_recover_check,
             self.enable_resume_optimization_check,
-            self.force_physical_first_combat_check,
-            self.force_physical_after_inn_check,
             self.active_rest_check,
             self.rest_intervel_entry,
             self.button_save_rest_intervel,

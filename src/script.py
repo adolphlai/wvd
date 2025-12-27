@@ -164,10 +164,6 @@ CONFIG_VAR_LIST = [
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
-            ["force_physical_first_combat_var", tk.BooleanVar, "_FORCE_PHYSICAL_FIRST_COMBAT", True],
-            ["force_physical_after_inn_var", tk.BooleanVar, "_FORCE_PHYSICAL_AFTER_INN", True],
-            ["force_aoe_first_combat_var", tk.BooleanVar, "_FORCE_AOE_FIRST_COMBAT", False],
-            ["force_aoe_after_inn_var", tk.BooleanVar, "_FORCE_AOE_AFTER_INN", False],
             # AE 手設定
             ["ae_caster_1_order_var", tk.StringVar, "_AE_CASTER_1_ORDER", "關閉"],  # AE 手 1 順序：關閉/1~6
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # AE 手 1 技能
@@ -237,10 +233,6 @@ class RuntimeContext:
     _DUNGEON_CONFIRMED = False  # 已確認進入地城（偵測到地城狀態後設為 True）
     _GOHOME_IN_PROGRESS = False  # 正在回城标志，战斗/宝箱后继续回城
     _STEPAFTERRESTART = False  # 重启后左右平移标志，防止原地转圈
-    _FIRST_COMBAT_AFTER_RESTART = 0  # 重启后前N次战斗标志（计数器），只在restartGame中设为2
-    _FIRST_COMBAT_AFTER_INN = 0  # 从村庄返回地城后前N次战斗标志（计数器）
-    _FORCE_PHYSICAL_CURRENT_COMBAT = False  # 当前战斗是否持续使用强力单体技能
-    _FORCE_AOE_CURRENT_COMBAT = False  # 当前战斗是否持续使用全体技能
     _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
     _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
     _AE_CASTER_FIRST_ATTACK_DONE = False  # AE 手是否已完成首次普攻
@@ -1178,7 +1170,6 @@ def Factory():
         runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重启后都会增加5次尝试次数, 以避免不同电脑导致的反复重启问题.
         runtimeContext._TIME_CHEST = 0
         runtimeContext._TIME_COMBAT = 0 # 因为重启了, 所以清空战斗和宝箱计时器.
-        runtimeContext._FIRST_COMBAT_AFTER_RESTART = 1  # 重启后重置战斗计数器
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重启后待打开地图，跳过Resume优化
@@ -1510,14 +1501,8 @@ def Factory():
             # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0（區分進入/離開戰鬥黑屏）
             is_black = IsScreenBlack(screen)
             if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and is_black:
-                # 檢查是否需要首戰打斷
-                need_first_combat_interrupt = (
-                    (setting._AE_CASTER_1_ORDER != "關閉") or  # AE 手機制需要打斷
-                    (runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and
-                     (setting._FORCE_PHYSICAL_AFTER_INN or setting._FORCE_AOE_AFTER_INN)) or
-                    (runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and
-                     (setting._FORCE_PHYSICAL_FIRST_COMBAT or setting._FORCE_AOE_FIRST_COMBAT))
-                )
+                # 檢查是否需要首戰打斷（AE 手機制）
+                need_first_combat_interrupt = (setting._AE_CASTER_1_ORDER != "關閉")
 
                 if need_first_combat_interrupt:
                     logger.info("[黑屏偵測] 偵測到戰鬥過場黑屏，開始提前打斷自動戰鬥...")
@@ -1978,9 +1963,7 @@ def Factory():
         Press(CheckIf(ScreenShot(), 'GotoDung'))
     def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
-        强制使用强力单体技能
-        注意：此函数由调用者决定何时调用（通过 _FORCE_PHYSICAL_CURRENT_COMBAT 标志）
-              函数本身不再检查开关设定，信任调用者的判断
+        强制使用强力单体技能（用於 AE 手非 AE 角色）
         Args:
             screen: 当前截图
             doubleConfirmCastSpell_func: 确认施法的函数
@@ -2039,7 +2022,7 @@ def Factory():
             action_count: 當前行動次數
             setting: 設定物件
         Returns:
-            0: 非 AE 手
+            0: 非 AE 單位
             1: AE 手 1
             2: AE 手 2
         """
@@ -2048,7 +2031,7 @@ def Factory():
 
         # 計算當前是第幾個角色（1~6）
         position = ((action_count - 1) % 6) + 1
-        logger.info(f"[AE 手] action={action_count}, position={position}, order1={order1}, order2={order2}")
+        logger.info(f"[單位] action={action_count}, position={position}, order1={order1}, order2={order2}")
         if order1 != "關閉" and position == int(order1):
             return 1
         if order2 != "關閉" and position == int(order2):
@@ -2059,7 +2042,7 @@ def Factory():
         """使用普攻"""
         scn = ScreenShot()
         if Press(CheckIf(scn, 'spellskill/attack')):
-            logger.info("[AE 手] 使用普攻")
+            logger.info("[單位] 使用普攻")
             Sleep(0.5)
             # 點擊六個點位選擇敵人
             Press([150,750])
@@ -2094,16 +2077,16 @@ def Factory():
             level = setting._AE_CASTER_2_LEVEL
 
         if not skill:
-            logger.info(f"[AE 手 {caster_type}] 未設定技能")
+            logger.info(f"[單位 {caster_type}] 未設定技能")
             return False
 
         # 如果是普攻，使用普攻邏輯
         if skill == "attack":
-            logger.info(f"[AE 手 {caster_type}] 使用普攻")
+            logger.info(f"[單位 {caster_type}] 使用普攻")
             return use_normal_attack()
 
         # 打斷自動戰鬥
-        logger.info(f"[AE 手 {caster_type}] 打斷自動戰鬥...")
+        logger.info(f"[單位 {caster_type}] 打斷自動戰鬥...")
         for _ in range(3):
             Press([1, 1])
             Sleep(0.5)
@@ -2111,9 +2094,9 @@ def Factory():
 
         scn = ScreenShot()
         skill_path = 'spellskill/' + skill
-        logger.info(f"[AE 手 {caster_type}] 搜尋技能: {skill_path}")
+        logger.info(f"[單位 {caster_type}] 搜尋技能: {skill_path}")
         if Press(CheckIf(scn, skill_path)):
-            logger.info(f"[AE 手 {caster_type}] 使用技能: {skill}")
+            logger.info(f"[單位 {caster_type}] 使用技能: {skill}")
             Sleep(1)
             scn = ScreenShot()
 
@@ -2122,7 +2105,7 @@ def Factory():
             if level != "關閉" and level in SKILL_LEVEL_X:
                 lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
                 if lv1_pos:
-                    logger.info(f"[AE 手 {caster_type}] 升級技能到 {level}")
+                    logger.info(f"[單位 {caster_type}] 升級技能到 {level}")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
                     Sleep(1)
                     scn = ScreenShot()
@@ -2130,17 +2113,17 @@ def Factory():
             # 點擊 OK 確認
             ok_pos = CheckIf(scn, 'OK')
             if ok_pos:
-                logger.info(f"[AE 手 {caster_type}] 點擊 OK 確認")
+                logger.info(f"[單位 {caster_type}] 點擊 OK 確認")
                 Press(ok_pos)
                 Sleep(2)
             return True
 
-        logger.info(f"[AE 手 {caster_type}] 找不到技能: {skill}")
+        logger.info(f"[單位 {caster_type}] 找不到技能: {skill}")
         return False
 
     def enable_auto_combat():
         """開啟自動戰鬥"""
-        logger.info("[AE 手] 開啟自動戰鬥")
+        logger.info("[單位] 開啟自動戰鬥")
         scn = ScreenShot()
         if not Press(CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])):
             Press(CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]]))
@@ -2153,7 +2136,7 @@ def Factory():
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
-        logger.info("[AE 手] 重置旗標")
+        logger.info("[單位] 重置旗標")
 
     def StateCombat():
         def doubleConfirmCastSpell(skill_name=None):
@@ -2260,35 +2243,35 @@ def Factory():
             action_count = runtimeContext._COMBAT_ACTION_COUNT
             caster_type = get_ae_caster_type(action_count, setting)
 
-            logger.info(f"[AE 手] action={action_count}, caster_type={caster_type}, first_attack_done={runtimeContext._AE_CASTER_FIRST_ATTACK_DONE}")
+            logger.info(f"[單位] action={action_count}, caster_type={caster_type}, first_attack_done={runtimeContext._AE_CASTER_FIRST_ATTACK_DONE}")
 
             if not runtimeContext._AE_CASTER_FIRST_ATTACK_DONE:
                 # 首次普攻階段（第一場戰鬥第一輪）
                 if caster_type > 0:
                     # AE 手使用普攻（讓遊戲記住「重複上一次動作」）
-                    logger.info(f"[AE 手 {caster_type}] 首次普攻")
+                    logger.info(f"[單位 {caster_type}] 首次普攻")
                     use_normal_attack()
                     runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = True
                     return
                 else:
-                    # 非 AE 手使用單體技能
-                    logger.info("[非 AE 手] 首戰，使用單體技能")
+                    # 非 AE 單位使用單體技能
+                    logger.info("[非 AE 單位] 首戰，使用單體技能")
                     screen = ScreenShot()
-                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 手")
+                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 單位")
                     return
             else:
                 # 已完成首次普攻，AE 手使用 AOE → 開自動
                 if caster_type > 0:
-                    logger.info(f"[AE 手 {caster_type}] 使用 AOE")
+                    logger.info(f"[單位 {caster_type}] 使用 AOE")
                     if use_ae_caster_skill(caster_type, setting):
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
                         enable_auto_combat()
                         return
                 else:
-                    # 非 AE 手使用單體技能
-                    logger.info("[非 AE 手] 使用單體技能")
+                    # 非 AE 單位使用單體技能
+                    logger.info("[非 AE 單位] 使用單體技能")
                     screen = ScreenShot()
-                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 手")
+                    useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "非 AE 單位")
                     return
 
         if runtimeContext._TIME_COMBAT==0:
@@ -2322,49 +2305,6 @@ def Factory():
                         doubleConfirmCastSpell()
 
                     return
-
-        # 重启后前N次战斗，开启整场战斗强制使用强力单体技能或全体技能模式
-        # 只有在新战斗开始时才倒数
-        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT and not runtimeContext._FORCE_AOE_CURRENT_COMBAT:
-            combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_RESTART  # 2->第1次, 1->第2次
-            runtimeContext._FIRST_COMBAT_AFTER_RESTART -= 1
-            if setting._FORCE_AOE_FIRST_COMBAT:
-                logger.info(f"重启后第 {combat_number} 次战斗，开启全体技能模式（整场战斗）")
-                runtimeContext._FORCE_AOE_CURRENT_COMBAT = True
-            elif setting._FORCE_PHYSICAL_FIRST_COMBAT:
-                logger.info(f"重启后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
-                runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
-
-        # 从村庄返回后前N次战斗，开启整场战斗强制使用强力单体技能或全体技能模式
-        # 同样只在新战斗开始时才倒数
-        if runtimeContext._FIRST_COMBAT_AFTER_INN > 0 and not runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT and not runtimeContext._FORCE_AOE_CURRENT_COMBAT:
-            combat_number = 3 - runtimeContext._FIRST_COMBAT_AFTER_INN  # 2->第1次, 1->第2次
-            runtimeContext._FIRST_COMBAT_AFTER_INN -= 1
-            if setting._FORCE_AOE_AFTER_INN:
-                logger.info(f"返回后第 {combat_number} 次战斗，开启全体技能模式（整场战斗）")
-                runtimeContext._FORCE_AOE_CURRENT_COMBAT = True
-            elif setting._FORCE_PHYSICAL_AFTER_INN:
-                logger.info(f"返回后第 {combat_number} 次战斗，开启强力单体技能模式（整场战斗）")
-                runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = True
-
-        # 如果当前战斗需要强制使用全体技能
-        if runtimeContext._FORCE_AOE_CURRENT_COMBAT:
-            if useForcedAOESkill(screen, doubleConfirmCastSpell, "全体技能模式"):
-                return
-            # AOE 找不到，嘗試單體技能
-            if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "全体技能找不到，改用强力单体"):
-                return
-            # 都找不到，跳過自動戰鬥，讓下個角色繼續嘗試
-            logger.info("当前角色无可用技能，等待下个角色")
-            return
-
-        # 如果当前战斗需要强制使用强力单体技能
-        elif runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT:
-            if useForcedPhysicalSkill(screen, doubleConfirmCastSpell, "强力单体技能模式"):
-                return
-            # 找不到，跳過自動戰鬥，讓下個角色繼續嘗試
-            logger.info("当前角色无可用技能，等待下个角色")
-            return
 
         # AE 手啟用時，必須等 AOE 觸發後才能開啟系統自動戰鬥
         ae_caster_enabled = setting._AE_CASTER_1_ORDER != "關閉" or setting._AE_CASTER_2_ORDER != "關閉"
@@ -2798,8 +2738,6 @@ def Factory():
                     # 战斗结束了, 我们将一些设置复位
                     if setting._AOE_ONCE:
                         runtimeContext._ENOUGH_AOE = False
-                    runtimeContext._FORCE_PHYSICAL_CURRENT_COMBAT = False  # 重置强力单体技能模式
-                    runtimeContext._FORCE_AOE_CURRENT_COMBAT = False  # 重置全体技能模式
                     runtimeContext._COMBAT_ACTION_COUNT = 0  # 重置行動計數器
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
@@ -2925,36 +2863,16 @@ def Factory():
                         logger.debug("目標包含 chest_auto，跳過防止轉圈機制")
                         runtimeContext._STEPAFTERRESTART = True  # 標記為已處理，避免後續執行
                     if not runtimeContext._STEPAFTERRESTART:
-                        # 重啟後：前後左右移動
-                        if runtimeContext._FIRST_COMBAT_AFTER_RESTART > 0:
-                            logger.info("防止转圈（重啟後）: 前後左右移動測試")
+                        # 防止轉圈：左右平移一次
+                        logger.info("防止转圈: 左右平移一次")
 
-                            # 前進（向上）
-                            DeviceShell("input swipe 440 950 440 750")
-                            Sleep(1)
+                        # 左平移
+                        Press([27,950])
+                        Sleep(1)
 
-                            # 後退（向下）
-                            DeviceShell("input swipe 440 950 440 1150")
-                            Sleep(1)
-
-                            # 左平移
-                            Press([27,950])
-                            Sleep(1)
-
-                            # 右平移
-                            Press([853,950])
-                            Sleep(1)
-                        else:
-                            # 第一次進入：只左右移動
-                            logger.info("防止转圈: 左右平移一次")
-
-                            # 左平移
-                            Press([27,950])
-                            Sleep(1)
-
-                            # 右平移
-                            Press([853,950])
-                            Sleep(1)
+                        # 右平移
+                        Press([853,950])
+                        Sleep(1)
 
                         runtimeContext._STEPAFTERRESTART = True
                     # 第一次进入地城时，无条件打开地图（不检查能见度）
@@ -3373,8 +3291,6 @@ def Factory():
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
-                    # 无论是否休息，只要从村庄进入地城，都设置返回后首次战斗标志
-                    runtimeContext._FIRST_COMBAT_AFTER_INN = 1
                     state = State.EoT
                 case State.EoT:
                     RestartableSequenceExecution(
@@ -3389,7 +3305,6 @@ def Factory():
                     if initial_dungState not in [DungeonState.Combat, DungeonState.Chest]:
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
                     runtimeContext._STEPAFTERRESTART = False  # 重置防止转圈标志
-                    # 注意: _FIRST_COMBAT_AFTER_RESTART 只在 restartGame 中重置
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
                     _initial = initial_dungState
