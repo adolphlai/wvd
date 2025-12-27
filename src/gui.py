@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('720x550')  # 加寬視窗以容納日誌過濾器
+        self.geometry('800x550')  # 加寬視窗以容納日誌過濾器
         
         self.title(self.TITLE)
 
@@ -511,8 +511,8 @@ class ConfigPanelApp(tk.Toplevel):
             command=self.save_config
         ).grid(row=0, column=0, columnspan=3, sticky=tk.W)
 
-        # 技能選項
-        skill_options = [""] + ALL_AOE_SKILLS
+        # 技能選項（attack = 普攻）
+        skill_options = ["", "attack"] + ALL_AOE_SKILLS
         order_options = ["關閉", "1", "2", "3", "4", "5", "6"]
         level_options = ["關閉", "LV2", "LV3", "LV4", "LV5"]
 

@@ -1,6 +1,6 @@
 ---
 name: 戰鬥流程邏輯
-description: 說明戰鬥狀態的處理流程，包含技能釋放順序、自動戰鬥、AOE 邏輯、強力單體技能等。當使用者詢問戰鬥邏輯、技能設定、或修改 StateCombat 相關程式碼時，應啟用此技能。
+description: 說明戰鬥狀態的處理流程，包含技能釋放順序、自動戰鬥、AOE 邏輯、強力單體技能、普攻（attack）、敵人座標、AE 手機制等。當使用者詢問戰鬥邏輯、技能設定、普攻、AE 手、或修改 StateCombat 相關程式碼時，應啟用此技能。
 ---
 
 # 戰鬥流程邏輯
@@ -46,3 +46,66 @@ PHYSICAL_SKILLS = ["unendingdeaths","全力一击","tzalik","居合","精密攻�
 ```
 
 如需新增技能，編輯此列表並確保圖片存在於 `resources/images/spellskill/`。
+
+## AE 手機制
+
+### 概念
+利用遊戲的「重複上一次動作」機制，讓指定角色（AE 手）在第一輪使用普攻，第二輪使用 AOE 後開啟自動戰鬥。
+
+### 相關參數
+
+| 參數 | 說明 |
+|------|------|
+| `_AE_CASTER_1_ORDER` | AE 手 1 的出手順序（1~6 或「關閉」）|
+| `_AE_CASTER_1_SKILL` | AE 手 1 的技能（可選 attack 普攻）|
+| `_AE_CASTER_1_LEVEL` | AE 手 1 的技能等級 |
+| `_AE_CASTER_2_ORDER` | AE 手 2 的出手順序 |
+| `_AE_CASTER_2_SKILL` | AE 手 2 的技能 |
+| `_AE_CASTER_2_LEVEL` | AE 手 2 的技能等級 |
+| `_HAS_PREEMPTIVE` | 隊伍有先制角色（調整 action 計數）|
+| `_AOE_TRIGGERED_THIS_DUNGEON` | 本次地城是否已觸發 AOE |
+| `_COMBAT_ACTION_COUNT` | 戰鬥行動計數器 |
+
+### 相關函數
+
+| 函數 | 位置 | 說明 |
+|------|------|------|
+| `get_ae_caster_type()` | StateCombat 內 | 判斷當前行動是否為 AE 手 |
+| `use_ae_caster_skill()` | StateCombat 內 | AE 手使用指定技能（含普攻判斷）|
+| `use_normal_attack()` | StateCombat 內 | 使用普攻 |
+| `enable_auto_combat()` | StateCombat 內 | 開啟自動戰鬥 |
+
+### GUI 位置
+- 技能選項：`gui.py` 的 `skill_options = ["", "attack"] + ALL_AOE_SKILLS`
+- AE 手設定區塊：`_create_skills_tab()` 函數
+
+## 普攻（attack）
+
+### 使用方式
+在 AE 手技能選項中選擇 `attack`，或在代碼中呼叫 `use_normal_attack()`。
+
+### 敵人座標
+點擊普攻按鈕後，需點擊六個敵人位置：
+
+```python
+Press([150,750])
+Press([300,750])
+Press([450,750])
+Press([550,750])
+Press([650,750])
+Press([750,750])
+```
+
+### 代碼邏輯
+```python
+def use_normal_attack():
+    scn = ScreenShot()
+    if Press(CheckIf(scn, 'spellskill/attack')):
+        Sleep(0.5)
+        # 點擊六個點位選擇敵人
+        for pos in [[150,750], [300,750], [450,750], [550,750], [650,750], [750,750]]:
+            Press(pos)
+            Sleep(0.1)
+        return True
+    return False
+```
