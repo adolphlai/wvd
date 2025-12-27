@@ -731,6 +731,29 @@ class ConfigPanelApp(tk.Toplevel):
 
         ttk.Label(frame_minimap, text="流程：開地圖→滑動→點樓梯→監控小地圖", foreground="gray").grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
 
+        # --- 串流截圖功能 ---
+        row += 1
+        frame_screenshot = ttk.LabelFrame(tab, text="串流截圖", padding=5)
+        frame_screenshot.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
+
+        ttk.Label(frame_screenshot, text="檔名:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        self.screenshot_filename_var = tk.StringVar(value="screenshot")
+        self.screenshot_filename_entry = ttk.Entry(frame_screenshot, textvariable=self.screenshot_filename_var, width=20)
+        self.screenshot_filename_entry.grid(row=0, column=1, padx=5)
+        ttk.Label(frame_screenshot, text=".png").grid(row=0, column=2, sticky=tk.W)
+
+        self.screenshot_btn = ttk.Button(
+            frame_screenshot,
+            text="擷取截圖",
+            command=self._capture_streaming_screenshot
+        )
+        self.screenshot_btn.grid(row=0, column=3, padx=10, pady=5)
+
+        self.screenshot_status_var = tk.StringVar(value="")
+        ttk.Label(frame_screenshot, textvariable=self.screenshot_status_var, foreground="green").grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=2)
+        
+        ttk.Label(frame_screenshot, text="※ 使用串流方式截圖，儲存至 resources/images/", foreground="gray").grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=2)
+
         row += 1
         ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試小地圖偵測：請確保遊戲在地城中\n3. 不需要啟動主任務",
                   foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
@@ -889,6 +912,74 @@ class ConfigPanelApp(tk.Toplevel):
                 self.test_minimap_stair_btn.config(state="normal")
 
         thread = threading.Thread(target=run_test, daemon=True)
+        thread.start()
+
+    def _capture_streaming_screenshot(self):
+        """使用串流方式擷取截圖並儲存到 resources/images/"""
+        import threading
+        import cv2
+        import os
+
+        # 禁用按鈕防止重複點擊
+        self.screenshot_btn.config(state="disabled")
+        self.screenshot_status_var.set("正在連接...")
+
+        def run_capture():
+            try:
+                filename = self.screenshot_filename_var.get().strip()
+                if not filename:
+                    filename = "screenshot"
+                
+                # 初始化設定
+                setting = FarmConfig()
+                config = LoadConfigFromFile()
+                for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
+                    setattr(setting, var_config_name, config.get(var_config_name, var_default_value))
+                
+                # 設置停止信號
+                from threading import Event
+                setting._FORCESTOPING = Event()
+                
+                # 使用 TestFactory 取得截圖功能
+                from script import init_adb, restart_pyscrcpy_stream, get_pyscrcpy_frame
+                
+                self.screenshot_status_var.set("正在連接 ADB...")
+                port = setting._ADB_PORT
+                init_adb(setting._EMU_PATH, port)
+                
+                self.screenshot_status_var.set("正在啟動串流...")
+                restart_pyscrcpy_stream()
+                
+                # 等待串流穩定
+                import time
+                time.sleep(1)
+                
+                self.screenshot_status_var.set("正在擷取...")
+                frame = get_pyscrcpy_frame()
+                
+                if frame is None:
+                    self.screenshot_status_var.set("❌ 無法取得串流畫面")
+                    return
+                
+                # 儲存到 resources/images/
+                save_dir = os.path.join(os.path.dirname(__file__), "..", "resources", "images")
+                os.makedirs(save_dir, exist_ok=True)
+                save_path = os.path.join(save_dir, f"{filename}.png")
+                
+                # 轉換 BGR 儲存
+                cv2.imwrite(save_path, frame)
+                
+                abs_path = os.path.abspath(save_path)
+                self.screenshot_status_var.set(f"✓ 已儲存: {filename}.png")
+                logger.info(f"串流截圖已儲存: {abs_path}")
+                
+            except Exception as e:
+                logger.error(f"串流截圖失敗: {e}")
+                self.screenshot_status_var.set(f"❌ 失敗: {e}")
+            finally:
+                self.screenshot_btn.config(state="normal")
+
+        thread = threading.Thread(target=run_capture, daemon=True)
         thread.start()
 
     def update_active_rest_state(self):
