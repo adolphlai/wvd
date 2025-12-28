@@ -2201,16 +2201,21 @@ def Factory():
                 # 單體技能：直接點擊目標敵人（不需要 OK）
                 logger.info(f"[順序 {caster_type}] 單體技能，點擊目標敵人")
                 # 找 next 按鈕位置作為參考
-                next_pos = CheckIf(scn, 'next')
+                next_pos = CheckIf(scn, 'next', threshold=0.70)
                 if next_pos:
-                    # 點擊相對於 next 的目標位置
-                    target_x = next_pos[0] - 15
+                    # 點擊 4 個目標位置（覆蓋更多可能的敵人位置）
+                    target_x1 = next_pos[0] - 15  # X 軸偏移 -15
+                    target_x2 = next_pos[0]       # X 軸不偏移
                     target_y1 = next_pos[1] + 100
-                    target_y2 = next_pos[1] + 150
-                    logger.info(f"[順序 {caster_type}] 點擊目標位置: ({target_x}, {target_y1}) 和 ({target_x}, {target_y2})")
-                    Press([target_x, target_y1])
-                    Sleep(0.2)
-                    Press([target_x, target_y2])
+                    target_y2 = next_pos[1] + 170
+                    logger.info(f"[順序 {caster_type}] 點擊 4 個目標位置")
+                    Press([target_x1, target_y1])
+                    Sleep(0.1)
+                    Press([target_x1, target_y2])
+                    Sleep(0.1)
+                    Press([target_x2, target_y1])
+                    Sleep(0.1)
+                    Press([target_x2, target_y2])
                 else:
                     # 如果找不到 next，使用固定座標
                     logger.info(f"[順序 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
@@ -2576,32 +2581,21 @@ def Factory():
         moving_start_time = time.time()
         MOVING_TIMEOUT = 60  # 60秒超时
         
-        # 輪詢參數（替代固定 Sleep(3)）
+        # 輪詢參數
         POLL_INTERVAL = 0.3  # 每 0.3 秒檢查一次
-        MAX_POLL_COUNT = 10  # 最多檢查 10 次 = 3 秒
+        
+        # 連續靜止參數（唯一檢查點）
+        # 10 秒 ÷ 0.3 秒 ≈ 33 次
+        STILL_REQUIRED = 33  # 連續 33 次靜止（約 10 秒）才判定停止
+        still_count = 0
 
         logger.info("面具男, 移动.")
         while 1:
-            # 輪詢式等待：檢查畫面變化，發現靜止就提前進入下一步
-            poll_screen = None
-            for poll_i in range(MAX_POLL_COUNT):
-                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                    return None
-                time.sleep(POLL_INTERVAL)
-                poll_screen = ScreenShot()
-                
-                # 如果有上一幀，比較畫面變化
-                if lastscreen is not None:
-                    gray_poll = cv2.cvtColor(poll_screen, cv2.COLOR_BGR2GRAY)
-                    gray_last = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
-                    diff = cv2.absdiff(gray_poll, gray_last).mean() / 255
-                    
-                    if diff < 0.05:  # 畫面幾乎靜止，可能已停止移動
-                        logger.debug(f"輪詢 {poll_i+1}/{MAX_POLL_COUNT}: 畫面靜止 (diff={diff:.3f})，提前進入狀態檢查")
-                        break
-                    else:
-                        logger.debug(f"輪詢 {poll_i+1}/{MAX_POLL_COUNT}: 畫面變化中 (diff={diff:.3f})")
-                        lastscreen = poll_screen  # 更新參考幀
+            # 等待一個輪詢週期
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return None
+            time.sleep(POLL_INTERVAL)
+            poll_screen = ScreenShot()
 
             # 检查移动是否超时
             elapsed = time.time() - moving_start_time
@@ -2654,6 +2648,16 @@ def Factory():
                 mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
                 logger.debug(f"移动停止检查:{mean_diff:.2f}")
                 if mean_diff < 0.1:
+                    still_count += 1
+                    logger.debug(f"畫面靜止，連續靜止 {still_count}/{STILL_REQUIRED}")
+                    
+                    if still_count < STILL_REQUIRED:
+                        # 還沒達到連續靜止次數，繼續等待
+                        lastscreen = screen
+                        continue
+                    
+                    # 達到連續靜止次數（約 10 秒），進入 Resume/退出判斷
+                    logger.info(f"連續 {STILL_REQUIRED} 次靜止（約 {STILL_REQUIRED * POLL_INTERVAL:.1f} 秒），判定停止")
                     # 画面静止，检查Resume按钮（如果启用了Resume优化）
                     if setting._ENABLE_RESUME_OPTIMIZATION:
                         # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
@@ -2686,6 +2690,7 @@ def Factory():
                                     logger.info("StateMoving: 未检测到routenotfound")
                                 
                                 lastscreen = None  # 重置lastscreen以重新开始检测
+                                still_count = 0  # 重置靜止計數
                                 continue  # 继续循环，不退出
                             else:
                                 # Resume点击多次仍然静止 = 可能卡住，执行回城
@@ -2705,6 +2710,9 @@ def Factory():
                         break
                 else:
                     # 画面在移动，重置连续计数器
+                    if still_count > 0:
+                        logger.debug(f"畫面恢復變化，重置靜止計數（之前: {still_count}）")
+                        still_count = 0
                     if resume_consecutive_count > 0:
                         logger.debug(f"画面恢复移动，重置Resume计数器（之前: {resume_consecutive_count}）")
                         resume_consecutive_count = 0
@@ -2760,20 +2768,24 @@ def Factory():
                 Press([138,1432]) # automove
                 result_state = StateMoving_CheckFrozen()
                 
-                # harken 成功後彈出當前目標，切換到下一個目標
-                if target == 'harken':
-                    targetInfoList.pop(0)
-                    logger.info(f"哈肯目標完成，切換到下一個目標")
-                
-                # minimap_stair 成功後彈出當前目標（由 StateMoving_CheckFrozen 清除 flag）
-                if target == 'minimap_stair' and not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
-                    targetInfoList.pop(0)
-                    logger.info(f"小地圖樓梯目標完成，切換到下一個目標")
-                
-                # position 和 stair 目標點擊移動後彈出（避免重複處理）
-                if target == 'position' or (target.startswith('stair') and target != 'minimap_stair'):
-                    targetInfoList.pop(0)
-                    logger.info(f"目標 {target} 已點擊並移動，切換到下一個目標")
+                # 只有在非戰鬥/寶箱狀態下才移除目標（防止被打斷後誤判完成）
+                if result_state is None or result_state == DungeonState.Map or result_state == DungeonState.Dungeon:
+                    # harken 成功後彈出當前目標，切換到下一個目標
+                    if target == 'harken':
+                        targetInfoList.pop(0)
+                        logger.info(f"哈肯目標完成，切換到下一個目標")
+                    
+                    # minimap_stair 成功後彈出當前目標（由 StateMoving_CheckFrozen 清除 flag）
+                    if target == 'minimap_stair' and not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
+                        targetInfoList.pop(0)
+                        logger.info(f"小地圖樓梯目標完成，切換到下一個目標")
+                    
+                    # position 和 stair 目標點擊移動後彈出（避免重複處理）
+                    if target == 'position' or (target.startswith('stair') and target != 'minimap_stair'):
+                        targetInfoList.pop(0)
+                        logger.info(f"目標 {target} 已點擊並移動，切換到下一個目標")
+                else:
+                    logger.info(f"移動中途遇到 {result_state}，保留當前目標 {target} 待戰鬥/寶箱結束後繼續")
                 
                 # 如果启用了Resume优化且成功到达(返回None)，返回Dungeon状态避免重新打开地图
                 if setting._ENABLE_RESUME_OPTIMIZATION and result_state is None:
@@ -3398,6 +3410,7 @@ def Factory():
                             _, dungState, screen = IdentifyState()
                             if dungState != DungeonState.Dungeon:
                                 logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
+                                # chest_auto 遇到 Combat/Chest 只是途中事件，不 pop，處理完會回來繼續
                                 break
                             elif lastscreen is not None:
                                 gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
