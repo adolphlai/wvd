@@ -1518,9 +1518,9 @@ def Factory():
 
             # [黑屏偵測] 首戰/二戰打斷自動戰鬥
             # 當偵測到黑屏且 AE 手尚未觸發 AOE 時，提前開始點擊打斷
-            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0（區分進入/離開戰鬥黑屏）
+            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）
             is_black = IsScreenBlack(screen)
-            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and is_black:
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and is_black:
                 # 檢查是否需要首戰打斷（AE 手機制）
                 need_first_combat_interrupt = bool(setting._AE_CASTER_1_SKILL)
 
