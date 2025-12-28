@@ -1100,6 +1100,11 @@ def Factory():
             DeviceShell(f"input tap {pos[0]} {pos[1]}")
             return True
         return False
+    def Swipe(start, end, duration=300):
+        if start and end:
+            DeviceShell(f"input swipe {start[0]} {start[1]} {end[0]} {end[1]} {duration}")
+            return True
+        return False
     def PressReturn():
         DeviceShell('input keyevent KEYCODE_BACK')
     def WrapImage(image,r,g,b):
@@ -2991,12 +2996,12 @@ def Factory():
                         # 防止轉圈：前後左右平移一次（僅重啟後執行）
                         logger.info("防止转圈: 前後左右平移一次")
 
-                        # 前平移
-                        Press([450,636])
+                        # 前平移 (改為上滑，前進)
+                        Swipe([450,700], [450, 500])
                         Sleep(1)
 
-                        # 後平移
-                        Press([450,1265])
+                        # 後平移 (改為下滑，後退)
+                        Swipe([450,700], [450, 900])
                         Sleep(1)
 
                         # 左平移
