@@ -1637,6 +1637,9 @@ def Factory():
                     return IdentifyState()
                 else:
                     logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
+                    # 提前重置旗標，避免進入地城過場黑屏時誤觸發首戰打斷
+                    reset_ae_caster_flags()
+                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
                     # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
                     for info in quest._EOT:
                         if info[1] == "intoWorldMap":
@@ -1647,8 +1650,6 @@ def Factory():
                             if info[0] == "press":
                                 Press(pos)
                     Sleep(2)
-                    reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
-                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
                     return State.Dungeon, None, ScreenShot()
 
             if CheckIf(screen,"RoyalCityLuknalia"):
@@ -2340,10 +2341,11 @@ def Factory():
             
             if battle_num > 2:
                 # === 第 3 戰以後：開自動戰鬥 ===
-                if not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON:
-                    logger.info(f"[技能施放] 第 {battle_num} 戰，開啟自動戰鬥")
-                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
-                    enable_auto_combat()
+                # 即使之前觸發過，如果流程再次進入此處（表示 flee 仍存在），則再次嘗試開啟
+                logger.info(f"[技能施放] 第 {battle_num} 戰，嘗試開啟自動戰鬥")
+                runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                enable_auto_combat()
+                Sleep(3)  # 等待遊戲反應，避免快速循環
                 return
             elif battle_num == 1:
                 # === 第一戰 ===
@@ -2833,17 +2835,19 @@ def Factory():
                         elapsed_ms = (time.time() - state_handle_start) * 1000
                         logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
-                    gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
-                    if result:
-                        logger.info("由于画面卡死, 在state:None中重启.")
-                        restartGame()
-                    MAXTIMEOUT = 400
-                    if (runtimeContext._TIME_CHEST != 0 ) and (time.time()-runtimeContext._TIME_CHEST > MAXTIMEOUT):
-                        logger.info("由于宝箱用时过久, 在state:None中重启.")
-                        restartGame()
-                    if (runtimeContext._TIME_COMBAT != 0) and (time.time()-runtimeContext._TIME_COMBAT > MAXTIMEOUT):
-                        logger.info("由于战斗用时过久, 在state:None中重启.")
-                        restartGame()
+                    # 只有在 IdentifyState 沒有識別到狀態時才執行卡死檢測
+                    if dungState is None:
+                        gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
+                        if result:
+                            logger.info("由于画面卡死, 在state:None中重启.")
+                            restartGame()
+                        MAXTIMEOUT = 400
+                        if (runtimeContext._TIME_CHEST != 0 ) and (time.time()-runtimeContext._TIME_CHEST > MAXTIMEOUT):
+                            logger.info("由于宝箱用时过久, 在state:None中重启.")
+                            restartGame()
+                        if (runtimeContext._TIME_COMBAT != 0) and (time.time()-runtimeContext._TIME_COMBAT > MAXTIMEOUT):
+                            logger.info("由于战斗用时过久, 在state:None中重启.")
+                            restartGame()
                 case DungeonState.Quit:
                     elapsed_ms = (time.time() - state_handle_start) * 1000
                     logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
