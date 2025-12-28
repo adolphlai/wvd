@@ -1563,11 +1563,9 @@ def Factory():
                 # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
                 logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
 
-            identifyConfig = [
-                ('combatActive',  DungeonState.Combat),
-                ('combatActive_2',DungeonState.Combat),
-                ('combatActive_3',DungeonState.Combat),
-                ('combatActive_4',DungeonState.Combat),
+            # 動態掃描 combatActive 系列圖片
+            combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
+            identifyConfig = combat_active_config + [
                 ('dungFlag',      DungeonState.Dungeon),
                 ('chestFlag',     DungeonState.Chest),
                 ('whowillopenit', DungeonState.Chest),
@@ -2748,7 +2746,7 @@ def Factory():
 
         while 1:
             FindCoordsOrElseExecuteFallbackAndWait(
-                ['dungFlag','combatActive', 'combatActive_2','chestOpening','whowillopenit','RiseAgain'],
+                ['dungFlag'] + get_combat_active_templates() + ['chestOpening','whowillopenit','RiseAgain'],
                 [[1,1],[1,1],'chestFlag'],
                 1)
             scn = ScreenShot()
@@ -2784,7 +2782,7 @@ def Factory():
                 if setting._SMARTDISARMCHEST:
                     ChestOpen()
                 FindCoordsOrElseExecuteFallbackAndWait(
-                    ['dungFlag','combatActive','combatActive_2','chestFlag','RiseAgain'], # 如果这个fallback重启了, 战斗箱子会直接消失, 固有箱子会是chestFlag
+                    ['dungFlag'] + get_combat_active_templates() + ['chestFlag','RiseAgain'], # 如果这个fallback重启了, 战斗箱子会直接消失, 固有箱子会是chestFlag
                     [disarm,disarm,disarm,disarm,disarm,disarm,disarm,disarm],
                     1)
             
@@ -2793,7 +2791,8 @@ def Factory():
                 return None
             if CheckIf(scn,'dungFlag'):
                 return DungeonState.Dungeon
-            if CheckIf(scn,'combatActive') or CheckIf(scn,'combatActive_2'):
+            # 使用動態掃描的 combatActive 圖片列表（與 IdentifyState 保持一致）
+            if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
                 return DungeonState.Combat
             
             TryPressRetry(scn)
@@ -2895,14 +2894,20 @@ def Factory():
                         counter_trychar = -1
                         while 1:
                             counter_trychar += 1
-                            if CheckIf(ScreenShot(),'dungflag') and (counter_trychar <=20):
+                            dunflag_result = CheckIf(ScreenShot(),'dungflag')
+                            logger.debug(f"[圖片偵測] dungflag: {dunflag_result}")
+                            if dunflag_result and (counter_trychar <=20):
                                 Press([36+(counter_trychar%3)*286,1425])
                                 Sleep(1)
                             else:
                                 logger.info("自动回复失败, 暂不进行回复.")
                                 break
-                            if CheckIf(scn:=ScreenShot(),'trait'):
-                                if CheckIf(scn,'story', [[676,800,220,108]]):
+                            trait_result = CheckIf(scn:=ScreenShot(),'trait')
+                            logger.debug(f"[圖片偵測] trait: {trait_result}")
+                            if trait_result:
+                                story_result = CheckIf(scn,'story', [[676,800,220,108]])
+                                logger.debug(f"[圖片偵測] story: {story_result}")
+                                if story_result:
                                     Press([725,850])
                                 else:
                                     Press([830,850])
@@ -2912,7 +2917,9 @@ def Factory():
                                     [833,843],
                                     1
                                     )
-                                if CheckIf(ScreenShot(),'recover'):
+                                recover_result = CheckIf(ScreenShot(),'recover')
+                                logger.debug(f"[圖片偵測] recover: {recover_result}")
+                                if recover_result:
                                     Press([600,1200])
                                     Sleep(1)
                                     for _ in range(5):
@@ -2945,6 +2952,7 @@ def Factory():
                                 dungState = DungeonState.Chest
                                 break
                             gohome_pos = CheckIf(ScreenShot(), 'gohome')
+                            logger.debug(f"[圖片偵測] gohome: {gohome_pos}")
                             if gohome_pos:
                                 logger.info(f"点击gohome: {gohome_pos}")
                                 Press(gohome_pos)
@@ -3005,19 +3013,24 @@ def Factory():
                         Press([777,150])
                         Sleep(1)
                         screen = ScreenShot()
-                        if CheckIf(screen, 'mapFlag'):
+                        mapFlag_result = CheckIf(screen, 'mapFlag')
+                        logger.debug(f"[圖片偵測] mapFlag: {mapFlag_result}")
+                        if mapFlag_result:
                             logger.info("重启后：成功打开地图")
                             dungState = DungeonState.Map
                             runtimeContext._RESTART_OPEN_MAP_PENDING = False
-                        elif CheckIf(screen, 'visibliityistoopoor'):
-                            # 能见度太低，无法打开地图，执行gohome
-                            logger.warning("重启后：能见度太低无法打开地图，执行gohome")
-                            runtimeContext._GOHOME_IN_PROGRESS = True
-                            runtimeContext._RESTART_OPEN_MAP_PENDING = False
                         else:
-                            # 其他情况（可能在战斗/宝箱），重新检测状态
-                            logger.info("重启后：地图未打开，重新检测状态")
-                            dungState = None
+                            visib_result = CheckIf(screen, 'visibliityistoopoor')
+                            logger.debug(f"[圖片偵測] visibliityistoopoor: {visib_result}")
+                            if visib_result:
+                                # 能见度太低，无法打开地图，执行gohome
+                                logger.warning("重启后：能见度太低无法打开地图，执行gohome")
+                                runtimeContext._GOHOME_IN_PROGRESS = True
+                                runtimeContext._RESTART_OPEN_MAP_PENDING = False
+                            else:
+                                # 其他情况（可能在战斗/宝箱），重新检测状态
+                                logger.info("重启后：地图未打开，重新检测状态")
+                                dungState = None
                     # minimap_stair 恢復監控：如果標誌仍在（戰鬥/寶箱打斷後），繼續移動並監控小地圖
                     elif runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
                         logger.info(f"minimap_stair 恢復監控: 繼續尋找樓層標識 {runtimeContext._MINIMAP_STAIR_FLOOR_TARGET}")
@@ -3025,6 +3038,7 @@ def Factory():
                         # 檢測 Resume 按鈕並繼續移動
                         screen = ScreenShot()
                         resume_pos = CheckIf(screen, 'resume')
+                        logger.debug(f"[圖片偵測] resume (minimap_stair): {resume_pos}")
                         if resume_pos:
                             logger.info(f"minimap_stair: 檢測到 Resume 按鈕，繼續移動 {resume_pos}")
                             Press(resume_pos)
@@ -3276,13 +3290,18 @@ def Factory():
                         logger.info("使用遊戲內建自動寶箱功能")
                         lastscreen = ScreenShot()
                         chest_auto_pos = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
+                        logger.info(f"[圖片偵測] chest_auto (第一次): {chest_auto_pos}")
                         if not Press(chest_auto_pos):
                             # 找不到就打開地圖面板再找
-                            Press(CheckIf(lastscreen, "mapFlag"))
+                            mapFlag_pos = CheckIf(lastscreen, "mapFlag")
+                            logger.info(f"[圖片偵測] mapFlag: {mapFlag_pos}")
+                            Press(mapFlag_pos)
                             Press([664,329])
                             Sleep(1)
                             lastscreen = ScreenShot()
-                            if not Press(CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])):
+                            chest_auto_pos_2 = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
+                            logger.info(f"[圖片偵測] chest_auto (第二次，地圖面板): {chest_auto_pos_2}")
+                            if not Press(chest_auto_pos_2):
                                 logger.warning("無法找到自動寶箱按鈕，跳過此目標")
                                 dungState = None
                                 elapsed_ms = (time.time() - state_handle_start) * 1000

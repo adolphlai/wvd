@@ -304,6 +304,29 @@ def LoadTemplateImage(shortPathOfTarget):
     logger.debug(f"加载{shortPathOfTarget}")
     pathOfTarget = ResourcePath(os.path.join(IMAGE_FOLDER + f"{shortPathOfTarget}.png"))
     return LoadImage(pathOfTarget)
+
+# 快取 combatActive 圖片列表（避免每次都掃描資料夾）
+_COMBAT_ACTIVE_TEMPLATES_CACHE = None
+
+def get_combat_active_templates():
+    """自動掃描 images 資料夾中所有 combatActive* 圖片名稱
+    Returns:
+        list: 圖片名稱列表，例如 ['combatActive', 'combatActive_2', 'combatActive_3', 'combatActive_4']
+    """
+    global _COMBAT_ACTIVE_TEMPLATES_CACHE
+    if _COMBAT_ACTIVE_TEMPLATES_CACHE is not None:
+        return _COMBAT_ACTIVE_TEMPLATES_CACHE
+    
+    import glob
+    images_path = ResourcePath(IMAGE_FOLDER)
+    pattern = os.path.join(images_path, 'combatActive*.png')
+    files = glob.glob(pattern)
+    # 提取檔名（不含副檔名和路徑）
+    templates = [os.path.splitext(os.path.basename(f))[0] for f in files]
+    templates.sort()  # 確保順序一致
+    _COMBAT_ACTIVE_TEMPLATES_CACHE = templates
+    logger.debug(f"掃描到 combatActive 圖片: {templates}")
+    return templates
 ###########################################
 class Tooltip:
     def __init__(self, widget, text):
