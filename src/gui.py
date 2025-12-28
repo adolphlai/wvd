@@ -568,7 +568,37 @@ class ConfigPanelApp(tk.Toplevel):
             text="住豪華房", command=checkcommand,
             style="Custom.TCheckbutton"
         )
-        self.active_royalsuite_rest.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
+        self.active_royalsuite_rest.grid(row=1, column=0, sticky=tk.W, pady=5)
+
+        # 自動補給選項
+        self.auto_refill_check = ttk.Checkbutton(
+            frame_rest, variable=self.auto_refill_var,
+            text="自動補給", command=checkcommand,
+            style="Custom.TCheckbutton"
+        )
+        self.auto_refill_check.grid(row=1, column=1, sticky=tk.W, pady=5)
+
+        # --- 整理背包 ---
+        row += 1
+        frame_organize = ttk.LabelFrame(tab, text="整理背包", padding=5)
+        frame_organize.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.organize_backpack_check = ttk.Checkbutton(
+            frame_organize, variable=self.organize_backpack_enabled_var,
+            text="啟用整理背包", command=self.update_organize_backpack_state,
+            style="Custom.TCheckbutton"
+        )
+        self.organize_backpack_check.grid(row=0, column=0, padx=5)
+
+        ttk.Label(frame_organize, text="人數:").grid(row=0, column=1, padx=(10, 2))
+        self.organize_backpack_count_spinbox = ttk.Spinbox(
+            frame_organize, from_=1, to=6, width=3,
+            textvariable=self.organize_backpack_count_var,
+            command=self.save_config
+        )
+        self.organize_backpack_count_spinbox.grid(row=0, column=2)
+        
+        ttk.Label(frame_organize, text="(將 Organize 資料夾內的物品放入倉庫)").grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
 
         # --- 善惡調整 ---
         row += 1
@@ -615,28 +645,6 @@ class ConfigPanelApp(tk.Toplevel):
             style="Custom.TCheckbutton"
         )
         self.active_csc.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=5)
-
-        # --- 整理背包 ---
-        row += 1
-        frame_organize = ttk.LabelFrame(tab, text="整理背包", padding=5)
-        frame_organize.grid(row=row, column=0, sticky="ew", pady=5)
-
-        self.organize_backpack_check = ttk.Checkbutton(
-            frame_organize, variable=self.organize_backpack_enabled_var,
-            text="啟用整理背包", command=self.update_organize_backpack_state,
-            style="Custom.TCheckbutton"
-        )
-        self.organize_backpack_check.grid(row=0, column=0, padx=5)
-
-        ttk.Label(frame_organize, text="人數:").grid(row=0, column=1, padx=(10, 2))
-        self.organize_backpack_count_spinbox = ttk.Spinbox(
-            frame_organize, from_=1, to=6, width=3,
-            textvariable=self.organize_backpack_count_var,
-            command=self.save_config
-        )
-        self.organize_backpack_count_spinbox.grid(row=0, column=2)
-        
-        ttk.Label(frame_organize, text="(將 Organize 資料夾內的物品放入倉庫)").grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
 
         # --- 其他進階選項 ---
         row += 1
@@ -965,9 +973,17 @@ class ConfigPanelApp(tk.Toplevel):
         if self.active_rest_var.get():
             self.rest_intervel_entry.config(state="normal")
             self.button_save_rest_intervel.config(state="normal")
+            self.active_royalsuite_rest.config(state="normal")
+            self.auto_refill_check.config(state="normal")
+            self.organize_backpack_check.config(state="normal")
+            self.update_organize_backpack_state()  # 更新整理人數狀態
         else:
             self.rest_intervel_entry.config(state="disable")
             self.button_save_rest_intervel.config(state="disable")
+            self.active_royalsuite_rest.config(state="disable")
+            self.auto_refill_check.config(state="disable")
+            self.organize_backpack_check.config(state="disable")
+            self.organize_backpack_count_spinbox.config(state="disable")
 
     def update_organize_backpack_state(self):
         if self.organize_backpack_enabled_var.get():
@@ -1064,6 +1080,12 @@ class ConfigPanelApp(tk.Toplevel):
             self.active_csc,
             self.organize_backpack_check,
             self.organize_backpack_count_spinbox,
+            self.auto_refill_check,  # 自動補給
+            # 技能施放設定
+            self.ae_caster_interval_entry,
+            self.ae_caster_count_combo,
+            *[row['skill_combo'] for row in self.ae_caster_rows],
+            *[row['level_combo'] for row in self.ae_caster_rows],
             ]
 
         if state == tk.DISABLED:
@@ -1077,6 +1099,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.update_active_rest_state()
             self.update_change_aoe_once_check()
             self.update_organize_backpack_state()
+            self._update_skill_caster_visibility(save=False)  # 恢復技能設定可見性
 
         if not self.system_auto_combat_var.get():
             widgets = [

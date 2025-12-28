@@ -196,6 +196,7 @@ CONFIG_VAR_LIST = [
             ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True],
             ["organize_backpack_enabled_var", tk.BooleanVar, "_ORGANIZE_BACKPACK_ENABLED", False],
             ["organize_backpack_count_var",  tk.IntVar,     "_ORGANIZE_BACKPACK_COUNT",   0],
+            ["auto_refill_var",              tk.BooleanVar, "_AUTO_REFILL",               True],  # 自動補給
             ]
 
 class FarmConfig:
@@ -1949,23 +1950,25 @@ def Factory():
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','royalsuite',[1,1]],2)
         FindCoordsOrElseExecuteFallbackAndWait('Stay',['OK',[299,1464]],2)
 
-        # 2. 自動補給
-        FindCoordsOrElseExecuteFallbackAndWait('refilled', ['box', 'refill', 'OK', [1, 1]], 2)
-        Press([1, 1])
-        Sleep(2)  # 等待補給動畫結束
+        # 2. 自動補給（可選）
+        if setting._AUTO_REFILL:
+            FindCoordsOrElseExecuteFallbackAndWait('refilled', ['box', 'refill', 'OK', [1, 1]], 2)
+            Press([1, 1])
+            Sleep(2)
 
-        # 3. 整理背包（如果啟用）- 補給結束後在角色選擇畫面
+        # 3. 整理背包（可選）
         if setting._ORGANIZE_BACKPACK_ENABLED and setting._ORGANIZE_BACKPACK_COUNT > 0:
             try:
                 StateOrganizeBackpack(setting._ORGANIZE_BACKPACK_COUNT)
+                # StateOrganizeBackpack 內部已有 PressReturn 離開旅館
             except Exception as e:
                 logger.error(f"整理背包失敗: {e}")
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
         else:
-            # 不啟用整理背包時，退出角色選擇畫面
-            logger.info("退出角色選擇畫面")
+            # 沒有整理背包時，在這裡離開旅館
+            logger.info("離開旅館")
             PressReturn()
             Sleep(2)
     def StateEoT():
@@ -3297,17 +3300,17 @@ def Factory():
                         logger.info("使用遊戲內建自動寶箱功能")
                         lastscreen = ScreenShot()
                         chest_auto_pos = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
-                        logger.info(f"[圖片偵測] chest_auto (第一次): {chest_auto_pos}")
+                        logger.debug(f"[chest_auto] 第一次偵測: {chest_auto_pos}")
                         if not Press(chest_auto_pos):
                             # 找不到就打開地圖面板再找
                             mapFlag_pos = CheckIf(lastscreen, "mapFlag")
-                            logger.info(f"[圖片偵測] mapFlag: {mapFlag_pos}")
+                            logger.debug(f"[chest_auto] mapFlag: {mapFlag_pos}")
                             Press(mapFlag_pos)
                             Press([664,329])
                             Sleep(1)
                             lastscreen = ScreenShot()
                             chest_auto_pos_2 = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
-                            logger.info(f"[圖片偵測] chest_auto (第二次，地圖面板): {chest_auto_pos_2}")
+                            logger.debug(f"[chest_auto] 第二次偵測(地圖面板): {chest_auto_pos_2}")
                             if not Press(chest_auto_pos_2):
                                 logger.warning("無法找到自動寶箱按鈕，跳過此目標")
                                 dungState = None
