@@ -2318,7 +2318,11 @@ def Factory():
 
         # === AE 手機制 ===
         # 檢查是否啟用 AE 手功能，並判斷觸發間隔
-        ae_enabled = bool(setting._AE_CASTER_1_SKILL)
+        ae_count = max(0, int(getattr(setting, "_AE_CASTER_COUNT", 0)))
+        ae_enabled = any(
+            getattr(setting, f"_AE_CASTER_{i}_SKILL", "")
+            for i in range(1, min(ae_count, 6) + 1)
+        )
         # Fix: Handle _COUNTERDUNG=0 on first run and ensure interval=0 always matches
         eff_counter = runtimeContext._COUNTERDUNG if runtimeContext._COUNTERDUNG > 0 else 1
         ae_interval_match = ((eff_counter-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
@@ -2419,7 +2423,10 @@ def Factory():
                     return
 
         # AE 手啟用時，必須等 AOE 觸發後才能開啟系統自動戰鬥
-        ae_caster_enabled = bool(setting._AE_CASTER_1_SKILL) or bool(setting._AE_CASTER_2_SKILL)
+        ae_caster_enabled = any(
+            getattr(setting, f"_AE_CASTER_{i}_SKILL", "")
+            for i in range(1, min(ae_count, 6) + 1)
+        )
         ae_logic_complete = not ae_caster_enabled or runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
 
         if ae_logic_complete and ((setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE)):
