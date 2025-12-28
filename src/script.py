@@ -2066,7 +2066,7 @@ def Factory():
         """使用普攻"""
         scn = ScreenShot()
         if Press(CheckIf(scn, 'spellskill/attack')):
-            logger.info("[單位] 使用普攻")
+            logger.info("[順序] 使用普攻")
             Sleep(0.5)
             # 點擊六個點位選擇敵人
             Press([150,750])
@@ -2098,16 +2098,16 @@ def Factory():
         level = getattr(setting, f"_AE_CASTER_{caster_type}_LEVEL", "關閉")
 
         if not skill:
-            logger.info(f"[單位 {caster_type}] 未設定技能")
+            logger.info(f"[順序 {caster_type}] 未設定技能")
             return False
 
         # 如果是普攻，使用普攻邏輯
         if skill == "attack":
-            logger.info(f"[單位 {caster_type}] 使用普攻")
+            logger.info(f"[順序 {caster_type}] 使用普攻")
             return use_normal_attack()
 
         # 打斷自動戰鬥
-        logger.info(f"[單位 {caster_type}] 打斷自動戰鬥...")
+        logger.info(f"[順序 {caster_type}] 打斷自動戰鬥...")
         for _ in range(3):
             Press([1, 1])
             Sleep(0.5)
@@ -2115,9 +2115,9 @@ def Factory():
 
         scn = ScreenShot()
         skill_path = 'spellskill/' + skill
-        logger.info(f"[單位 {caster_type}] 搜尋技能: {skill_path}")
+        logger.info(f"[順序 {caster_type}] 搜尋技能: {skill_path}")
         if Press(CheckIf(scn, skill_path)):
-            logger.info(f"[單位 {caster_type}] 使用技能: {skill}")
+            logger.info(f"[順序 {caster_type}] 使用技能: {skill}")
             Sleep(1)
             scn = ScreenShot()
 
@@ -2126,7 +2126,7 @@ def Factory():
             if level != "關閉" and level in SKILL_LEVEL_X:
                 lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
                 if lv1_pos:
-                    logger.info(f"[單位 {caster_type}] 升級技能到 {level}")
+                    logger.info(f"[順序 {caster_type}] 升級技能到 {level}")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
                     Sleep(1)
                     scn = ScreenShot()
@@ -2136,7 +2136,7 @@ def Factory():
             
             if is_single_target:
                 # 單體技能：直接點擊目標敵人（不需要 OK）
-                logger.info(f"[單位 {caster_type}] 單體技能，點擊目標敵人")
+                logger.info(f"[順序 {caster_type}] 單體技能，點擊目標敵人")
                 # 找 next 按鈕位置作為參考
                 next_pos = CheckIf(scn, 'next')
                 if next_pos:
@@ -2144,13 +2144,13 @@ def Factory():
                     target_x = next_pos[0] - 15
                     target_y1 = next_pos[1] + 100
                     target_y2 = next_pos[1] + 150
-                    logger.info(f"[單位 {caster_type}] 點擊目標位置: ({target_x}, {target_y1}) 和 ({target_x}, {target_y2})")
+                    logger.info(f"[順序 {caster_type}] 點擊目標位置: ({target_x}, {target_y1}) 和 ({target_x}, {target_y2})")
                     Press([target_x, target_y1])
                     Sleep(0.2)
                     Press([target_x, target_y2])
                 else:
                     # 如果找不到 next，使用固定座標
-                    logger.info(f"[單位 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
+                    logger.info(f"[順序 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
                     Press([450, 750])
                     Sleep(0.2)
                     Press([450, 800])
@@ -2159,17 +2159,17 @@ def Factory():
                 # AOE 技能：可能需要點擊 OK 確認
                 ok_pos = CheckIf(scn, 'OK')
                 if ok_pos:
-                    logger.info(f"[單位 {caster_type}] 點擊 OK 確認")
+                    logger.info(f"[順序 {caster_type}] 點擊 OK 確認")
                     Press(ok_pos)
                     Sleep(1)
             return True
 
-        logger.info(f"[單位 {caster_type}] 找不到技能: {skill}")
+        logger.info(f"[順序 {caster_type}] 找不到技能: {skill}")
         return False
 
     def enable_auto_combat():
         """開啟自動戰鬥"""
-        logger.info("[單位] 開啟自動戰鬥")
+        logger.info("[順序] 開啟自動戰鬥")
         scn = ScreenShot()
         if not Press(CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])):
             Press(CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]]))
