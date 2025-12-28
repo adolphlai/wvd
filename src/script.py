@@ -630,7 +630,7 @@ def Factory():
                 else:
                     logger.warning("pyscrcpy 串流重啟失敗，將使用傳統 ADB 截圖")
     def DeviceShell(cmdStr):
-        logger.debug(f"DeviceShell {cmdStr}")
+        logger.trace(f"[DeviceShell] {cmdStr}")
 
         while True:
             exception = None
@@ -755,10 +755,10 @@ def Factory():
                 raise RuntimeError("截圖已停止")
 
             try:
-                logger.debug(f'ScreenShot 開始截圖 (嘗試 {retry_count + 1}/{max_retries})')
+                logger.trace(f'[ScreenShot] 開始截圖 (嘗試 {retry_count + 1}/{max_retries})')
 
                 # 關鍵點：ADB screencap 調用，使用超時機制防止無限阻塞
-                logger.debug('正在調用 ADB screencap...')
+                logger.trace('[ScreenShot] 調用 ADB screencap...')
                 screenshot = None
                 exception = None
                 completed = Event()
@@ -786,23 +786,23 @@ def Factory():
                 if screenshot is None:
                     raise RuntimeError("screencap 返回 None")
 
-                logger.debug(f'ADB screencap 完成，數據大小: {len(screenshot)} bytes')
+                logger.trace(f'[ScreenShot] ADB 完成，{len(screenshot)} bytes')
 
                 screenshot_np = np.frombuffer(screenshot, dtype=np.uint8)
-                logger.debug(f'轉換為 numpy 陣列，大小: {screenshot_np.size}')
+                logger.trace(f'[ScreenShot] numpy 陣列大小: {screenshot_np.size}')
 
                 if screenshot_np.size == 0:
                     logger.error("截图数据为空！")
                     raise RuntimeError("截图数据为空")
 
-                logger.debug('正在解碼圖像...')
+                logger.trace('[ScreenShot] 解碼圖像...')
                 image = cv2.imdecode(screenshot_np, cv2.IMREAD_COLOR)
 
                 if image is None:
                     logger.error("OpenCV解码失败：图像数据损坏")
                     raise RuntimeError("图像解码失败")
 
-                logger.debug(f'圖像解碼完成，尺寸: {image.shape}')
+                logger.trace(f'[ScreenShot] 解碼完成，尺寸: {image.shape}')
 
                 if image.shape != (1600, 900, 3):  # OpenCV格式为(高, 宽, 通道)
                     if image.shape == (900, 1600, 3):
@@ -814,7 +814,7 @@ def Factory():
                         raise RuntimeError("截图尺寸异常")
 
                 #cv2.imwrite('screen.png', image)
-                logger.debug('截圖成功')
+                logger.trace('[ScreenShot] 成功')
                 # 首次使用 ADB 截圖時輸出日誌
                 if not _adb_mode_logged:
                     logger.info("[截圖模式] 使用 ADB 截圖 (~150-570ms)")
@@ -885,6 +885,7 @@ def Factory():
         best_pos = None
         best_val = 0
         best_template_name = None
+        match_details = []  # 收集匹配詳情用於摘要
         
         for template_name in templates_to_try:
             template = LoadTemplateImage(template_name)
@@ -901,7 +902,9 @@ def Factory():
 
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
             
-            logger.debug(f"搜索到疑似{template_name}, 匹配程度:{max_val*100:.2f}%")
+            # 詳細日誌放到 TRACE（只輸出到詳細文件）
+            logger.trace(f"[CheckIf] {template_name}: {max_val*100:.2f}%")
+            match_details.append(f"{template_name}:{max_val*100:.0f}%")
             
             # 記錄最佳匹配
             if max_val > best_val:
@@ -920,13 +923,17 @@ def Factory():
             cv2.imwrite("matched.png", screenshot_copy)
 
         if best_val < threshold:
-            logger.debug("匹配程度不足阈值.")
+            logger.trace(f"[CheckIf] {shortPathOfTarget} 未匹配 (最佳:{best_val*100:.0f}% < 閾值:{threshold*100:.0f}%)")
             return None
+        
+        # 匹配成功時輸出摘要到 DEBUG
         if best_val <= 0.9:
-            logger.debug(f"警告: {shortPathOfTarget}的匹配程度超过了{threshold*100:.0f}%但不足90%")
+            logger.debug(f"[CheckIf] ✓ {shortPathOfTarget}:{best_val*100:.0f}% (邊界值)")
+        else:
+            logger.debug(f"[CheckIf] ✓ {shortPathOfTarget}:{best_val*100:.0f}%")
         
         if len(templates_to_try) > 1:
-            logger.debug(f"多模板匹配: 選擇 {best_template_name} (匹配度 {best_val*100:.2f}%)")
+            logger.trace(f"[CheckIf] 多模板匹配: 選擇 {best_template_name} (匹配度 {best_val*100:.2f}%)")
 
         return best_pos
     def CheckIf_MultiRect(screenImage, shortPathOfTarget):
@@ -959,10 +966,10 @@ def Factory():
 
         threshold = 0.80
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
-        logger.debug(f"搜索到疑似{shortPathOfTarget}, 匹配程度:{max_val*100:.2f}%")
+        logger.trace(f"[CheckIf_FocusCursor] {shortPathOfTarget}: {max_val*100:.2f}%")
         if max_val >= threshold:
             if max_val<=0.9:
-                logger.debug(f"警告: {shortPathOfTarget}的匹配程度超过了80%但不足90%")
+                logger.trace(f"[CheckIf_FocusCursor] {shortPathOfTarget} 邊界值 (80-90%)")
 
             cropped = screenshot[max_loc[1]:max_loc[1]+template.shape[0], max_loc[0]:max_loc[0]+template.shape[1]]
             SIZE = 15 # size of cursor 光标就是这么大
@@ -977,7 +984,7 @@ def Factory():
             gray1 = cv2.cvtColor(midimg_scn, cv2.COLOR_BGR2GRAY)
             gray2 = cv2.cvtColor(miding_ptn, cv2.COLOR_BGR2GRAY)
             mean_diff = cv2.absdiff(gray1, gray2).mean()/255
-            logger.debug(f"中心匹配检查:{mean_diff:.2f}")
+            logger.trace(f"[CheckIf_FocusCursor] 中心匹配:{mean_diff:.2f}")
 
             if mean_diff<0.2:
                 return True
@@ -994,9 +1001,9 @@ def Factory():
             threshold = 0.80
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
-            logger.debug(f"目标格搜素{position}, 匹配程度:{max_val*100:.2f}%")
+            logger.trace(f"[CheckIf_ReachPosition] {position}: {max_val*100:.2f}%")
             if max_val > threshold:
-                logger.debug("已达到检测阈值.")
+                logger.trace("[CheckIf_ReachPosition] 已達到閞值")
                 return None 
         return position
     def CheckIf_throughStair(screenImage,targetInfo : TargetInfo):
@@ -1012,7 +1019,7 @@ def Factory():
             threshold = 0.80
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
-            logger.debug(f"搜索楼层标识{targetInfo.target}, 匹配程度:{max_val*100:.2f}%")
+            logger.trace(f"[樓層檢測] {targetInfo.target}: {max_val*100:.2f}%")
             if max_val > threshold:
                 logger.info("楼层正确, 判定为已通过")
                 return None
@@ -1024,7 +1031,7 @@ def Factory():
             threshold = 0.80
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
-            logger.debug(f"搜索楼梯{targetInfo.target}, 匹配程度:{max_val*100:.2f}%")
+            logger.trace(f"[樓梯檢測] {targetInfo.target}: {max_val*100:.2f}%")
             if max_val > threshold:
                 logger.info("判定为楼梯存在, 尚未通过.")
                 return position

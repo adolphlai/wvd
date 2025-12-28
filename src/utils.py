@@ -33,15 +33,60 @@ for filename in os.listdir(LOGS_FOLDER_NAME):
 ############################################
 LOG_FILE_PREFIX = LOGS_FOLDER_NAME + "/log"
 logger = logging.getLogger('WvDASLogger')
-#===========================================
+
+# ===========================================
+# TRACE 日誌級別（低於 DEBUG，用於超詳細記錄）
+# ===========================================
+TRACE = 5
+logging.addLevelName(TRACE, 'TRACE')
+
+def trace(self, message, *args, **kwargs):
+    """記錄 TRACE 級別日誌（超詳細，僅輸出到詳細日誌文件）"""
+    if self.isEnabledFor(TRACE):
+        self._log(TRACE, message, args, **kwargs)
+
+# 將 trace 方法添加到 Logger 類
+logging.Logger.trace = trace
+
+# ===========================================
+# 日誌文件路徑（全局變數，用於雙文件共享時間戳）
+# ===========================================
+_current_log_time = None
+
+def _get_log_time():
+    """獲取當前日誌時間戳（確保普通版和詳細版使用相同時間戳）"""
+    global _current_log_time
+    if _current_log_time is None:
+        _current_log_time = time.strftime("%y%m%d-%H%M%S")
+    return _current_log_time
+
+def reset_log_time():
+    """重置日誌時間戳（用於重新啟動日誌系統）"""
+    global _current_log_time
+    _current_log_time = None
+
+# ===========================================
 def setup_file_handler():
-    """设置文件处理器"""
+    """设置普通日誌文件处理器（DEBUG 級別以上）"""
     os.makedirs(LOGS_FOLDER_NAME, exist_ok=True)
-    current_time = time.strftime("%y%m%d-%H%M%S")
-    log_file_path = f"{LOG_FILE_PREFIX}_{current_time}.txt"
+    log_file_path = f"{LOG_FILE_PREFIX}_{_get_log_time()}.txt"
     
     file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.DEBUG)  # 只記錄 DEBUG 以上
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - [%(module)s:%(funcName)s:%(lineno)d] - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(file_formatter)
+    return file_handler
+
+def setup_verbose_file_handler():
+    """设置詳細日誌文件处理器（TRACE 級別以上，包含所有詳細記錄）"""
+    os.makedirs(LOGS_FOLDER_NAME, exist_ok=True)
+    log_file_path = f"{LOG_FILE_PREFIX}_{_get_log_time()}_verbose.txt"
+    
+    file_handler = logging.FileHandler(log_file_path, mode='a', encoding='utf-8')
+    file_handler.setLevel(TRACE)  # 記錄 TRACE 以上（包含所有）
     file_formatter = logging.Formatter(
         '%(asctime)s - %(levelname)s - [%(module)s:%(funcName)s:%(lineno)d] - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -53,17 +98,19 @@ def setup_file_handler():
 log_queue = queue.Queue(-1)
 queue_listener = None
 
-
 def StartLogListener():
-    """启动日志监听器"""
+    """启动日志监听器（雙文件輸出）"""
     global queue_listener
     if queue_listener is None:
+        reset_log_time()  # 重置時間戳，確保新日誌文件
         queue_listener = logging.handlers.QueueListener(
             log_queue,
-            setup_file_handler(),
+            setup_file_handler(),         # 普通日誌（DEBUG 以上）
+            setup_verbose_file_handler(), # 詳細日誌（TRACE 以上）
             respect_handler_level=True
         )
         queue_listener.start()
+        logger.info(f"日誌系統啟動：普通版 log_{_get_log_time()}.txt / 詳細版 log_{_get_log_time()}_verbose.txt")
 
 
 def StopLogListener():
@@ -102,9 +149,9 @@ def RegisterQueueHandler():
     
     # 创建QueueHandler并连接到全局队列
     queue_handler = logging.handlers.QueueHandler(log_queue)
-    queue_handler.setLevel(logging.DEBUG)
+    queue_handler.setLevel(TRACE)  # 設為 TRACE 以捕獲所有日誌
     
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(TRACE)  # logger 也設為 TRACE
     logger.addHandler(queue_handler)
     logger.propagate = False
 
@@ -301,7 +348,7 @@ def BuildQuestReflection():
 ###########################################
 IMAGE_FOLDER = fr'resources/images/'
 def LoadTemplateImage(shortPathOfTarget):
-    logger.debug(f"加载{shortPathOfTarget}")
+    logger.trace(f"[LoadTemplate] {shortPathOfTarget}")
     pathOfTarget = ResourcePath(os.path.join(IMAGE_FOLDER + f"{shortPathOfTarget}.png"))
     return LoadImage(pathOfTarget)
 
