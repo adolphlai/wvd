@@ -2008,6 +2008,7 @@ def Factory():
         for _ in range(3):
             Press([1, 1])
             Sleep(0.5)
+        Sleep(2)  # 增加等待时间到2秒，确保技能栏完全显示
         scn = ScreenShot()
         
         for skillspell in PHYSICAL_SKILLS:
