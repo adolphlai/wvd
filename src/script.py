@@ -2000,22 +2000,67 @@ def Factory():
         Returns:
             bool: 是否成功使用了技能
         """
-        logger.info(f"{reason}，强制使用强力单体技能")
+        logger.info(f"[強制單體] {reason}，开始执行")
+        logger.info(f"[強制單體] 当前战斗状态: battle={runtimeContext._COMBAT_BATTLE_COUNT}, action={runtimeContext._COMBAT_ACTION_COUNT}")
         
-        # 先打断自动战斗（点击画面空白处）
-        # 因为自动战斗进行中画面会变动，无法可靠检测，所以直接盲点
-        logger.info("点击打断自动战斗...")
-        for _ in range(3):
-            Press([1, 1])
-            Sleep(0.5)
+        # 先截圖檢查當前狀態
         scn = ScreenShot()
         
+        # 檢測 combatAuto 按鈕來判斷是否在手動模式
+        # 如果能看到 combatAuto 按鈕，表示目前是手動模式（技能欄應該已經顯示）
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        logger.info(f"[強制單體] 自動戰鬥按鈕偵測: combatAuto={auto_btn}, combatAuto_2={auto_btn_2}, 手動模式={is_manual_mode}")
+        
+        if is_manual_mode:
+            # 已經是手動模式，只需輕點一次確保技能欄顯示
+            logger.info("[強制單體] 已在手動模式，輕點確保技能欄顯示")
+            Press([1, 1])
+            Sleep(0.5)
+        else:
+            # 可能是自動戰鬥模式，需要打斷
+            logger.info("[強制單體] 可能在自動戰鬥模式，点击打断...")
+            for i in range(3):  # 減少到 3 次
+                Press([1, 1])
+                Sleep(0.3)
+                logger.info(f"[強制單體] 打断点击 {i+1}/3")
+            Sleep(1)  # 等待技能欄顯示
+        
+        scn = ScreenShot()
+        
+        # 偵錯：確認是否仍在戰鬥畫面
+        flee_pos = CheckIf(scn, 'flee')
+        logger.info(f"[強制單體] flee 按鈕偵測: {flee_pos}")
+        if not flee_pos:
+            logger.warning("[強制單體] 未偵測到 flee 按鈕，可能已離開戰鬥!")
+            return False
+        
+        logger.info(f"[強制單體] 开始检测技能，PHYSICAL_SKILLS列表: {PHYSICAL_SKILLS}")
+        found_skills = []
+        not_found_skills = []
         for skillspell in PHYSICAL_SKILLS:
-            if Press(CheckIf(scn, 'spellskill/'+skillspell)):
-                logger.info(f"强制使用技能: {skillspell}")
+            skill_pos = CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)
+            if skill_pos:
+                found_skills.append(skillspell)
+                logger.info(f"[強制單體] ✓ 找到技能 {skillspell} 位置: {skill_pos}")
+                Press(skill_pos)
+                logger.info(f"[強制單體] 使用技能: {skillspell}")
                 doubleConfirmCastSpell_func()
                 return True
-        logger.info("未找到可用的强力单体技能")
+            else:
+                not_found_skills.append(skillspell)
+                logger.info(f"[強制單體] ✗ 未找到: {skillspell}")
+        
+        # 保存偵錯截圖
+        import os
+        debug_dir = os.path.join(os.path.dirname(__file__), "debug_screenshots")
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_path = os.path.join(debug_dir, f"skill_not_found_pos{runtimeContext._COMBAT_ACTION_COUNT}_{int(time.time())}.png")
+        cv2.imwrite(debug_path, scn)
+        logger.warning(f"[強制單體] 未找到可用的强力单体技能! 已檢查: {len(not_found_skills)} 個技能")
+        logger.warning(f"[強制單體] 偵錯截圖已保存: {debug_path}")
         return False
     def useForcedAOESkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
@@ -2112,17 +2157,31 @@ def Factory():
             logger.info(f"[順序 {caster_type}] 使用普攻")
             return use_normal_attack()
 
-        # 打斷自動戰鬥
-        logger.info(f"[順序 {caster_type}] 打斷自動戰鬥...")
-        for _ in range(3):
+        # 偵測是否已在手動模式
+        scn = ScreenShot()
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        logger.info(f"[順序 {caster_type}] 自動戰鬥按鈕偵測: 手動模式={is_manual_mode}")
+        
+        if is_manual_mode:
+            # 已經是手動模式，只輕點一次確保技能欄顯示
+            logger.info(f"[順序 {caster_type}] 已在手動模式，輕點確保技能欄顯示")
             Press([1, 1])
             Sleep(0.5)
-        Sleep(1)  # 等待技能欄顯示
+        else:
+            # 需要打斷自動戰鬥
+            logger.info(f"[順序 {caster_type}] 打斷自動戰鬥...")
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.5)
+            Sleep(1)  # 等待技能欄顯示
 
         scn = ScreenShot()
         skill_path = 'spellskill/' + skill
         logger.info(f"[順序 {caster_type}] 搜尋技能: {skill_path}")
-        if Press(CheckIf(scn, skill_path)):
+        if Press(CheckIf(scn, skill_path, threshold=0.70)):
             logger.info(f"[順序 {caster_type}] 使用技能: {skill}")
             Sleep(1)
             scn = ScreenShot()
@@ -2160,7 +2219,8 @@ def Factory():
                     Press([450, 750])
                     Sleep(0.2)
                     Press([450, 800])
-                Sleep(1)
+                logger.info(f"[順序 {caster_type}] 等待技能動畫完成...")
+                Sleep(2)  # 增加等待時間，讓遊戲完成動畫並切換角色
             else:
                 # AOE 技能：可能需要點擊 OK 確認
                 ok_pos = CheckIf(scn, 'OK')
