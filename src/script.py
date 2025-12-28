@@ -2037,21 +2037,19 @@ def Factory():
             logger.warning("[強制單體] 未偵測到 flee 按鈕，可能已離開戰鬥!")
             return False
         
-        logger.info(f"[強制單體] 开始检测技能，PHYSICAL_SKILLS列表: {PHYSICAL_SKILLS}")
+        logger.debug(f"[強制單體] 开始检测技能，共 {len(PHYSICAL_SKILLS)} 個")
         found_skills = []
         not_found_skills = []
         for skillspell in PHYSICAL_SKILLS:
             skill_pos = CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)
             if skill_pos:
                 found_skills.append(skillspell)
-                logger.info(f"[強制單體] ✓ 找到技能 {skillspell} 位置: {skill_pos}")
-                Press(skill_pos)
                 logger.info(f"[強制單體] 使用技能: {skillspell}")
+                Press(skill_pos)
                 doubleConfirmCastSpell_func()
                 return True
             else:
                 not_found_skills.append(skillspell)
-                logger.info(f"[強制單體] ✗ 未找到: {skillspell}")
         
         # 保存偵錯截圖
         import os
