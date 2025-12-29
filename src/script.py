@@ -3519,10 +3519,30 @@ def Factory():
                                 mean_diff = cv2.absdiff(gray1, gray2).mean()/255
                                 logger.debug(f"移動停止檢查:{mean_diff:.2f}")
                                 if mean_diff < 0.05:
-                                    logger.info(f"停止移動. 誤差:{mean_diff}. 當前狀態為{dungState}.")
-                                    if dungState == DungeonState.Dungeon:
-                                        targetInfoList.pop(0)
-                                    break
+                                    # [解卡邏輯] 畫面靜止時，先嘗試左右平移解卡，若多次無效才判定為到達
+                                    MAX_TURN_ATTEMPTS = 3
+                                    if 'turn_attempt_count' not in locals():
+                                        turn_attempt_count = 0
+                                    
+                                    if turn_attempt_count < MAX_TURN_ATTEMPTS:
+                                        logger.info(f"偵測到畫面靜止 (誤差:{mean_diff:.2f})，嘗試左右平移解卡 ({turn_attempt_count+1}/{MAX_TURN_ATTEMPTS})")
+                                        # 簡單的左右平移
+                                        if turn_attempt_count % 2 == 0:
+                                            Swipe([450,700], [250, 700]) # 左滑
+                                        else:
+                                            Swipe([450,700], [650, 700]) # 右滑
+                                        Sleep(1)
+                                        turn_attempt_count += 1
+                                        lastscreen = ScreenShot() # 更新基準畫面，避免下次誤判
+                                        continue
+                                    else:
+                                        logger.info(f"停止移動 (已嘗試解卡 {turn_attempt_count} 次). 誤差:{mean_diff}. 當前狀態為{dungState}.")
+                                        if dungState == DungeonState.Dungeon:
+                                            targetInfoList.pop(0)
+                                        break
+                                else:
+                                    # 畫面有在動，重置解卡計數
+                                    turn_attempt_count = 0
                                 lastscreen = screen
                         elapsed_ms = (time.time() - state_handle_start) * 1000
                         logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
