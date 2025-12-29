@@ -2060,7 +2060,10 @@ def Factory():
         cv2.imwrite(debug_path, scn)
         logger.warning(f"[強制單體] 未找到可用的强力单体技能! 已檢查: {len(not_found_skills)} 個技能")
         logger.warning(f"[強制單體] 偵錯截圖已保存: {debug_path}")
-        return False
+        
+        # 找不到強力單體技能時，改用普攻
+        logger.info("[強制單體] 改用普攻")
+        return use_normal_attack()
     def useForcedAOESkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
         强制使用全体技能
