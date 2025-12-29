@@ -2898,6 +2898,19 @@ def Factory():
             scn = ScreenShot()
             
             # 快速狀態檢查（替代原本的 FindCoordsOrElseExecuteFallbackAndWait）
+            # [異常處理] 檢查是否有異常狀態（交由 IdentifyState 處理）
+            # 包含：伏擊、因果跳躍、復活、對話選項、下載提示、回標題等
+            abnormal_states = [
+                'ambush', 'ignore', 'sandman_recover', 'cursedWheel_timeLeap',
+                'multipeopledead', 'startdownload', 'totitle', 'Deepsnow',
+                'adventurersbones', 'halfBone', 'nothanks', 'strange_things', 'blessing',
+                'DontBuyIt', 'donthelp', 'buyNothing', 'Nope', 'ignorethequest',
+                'dontGiveAntitoxin', 'pass'
+            ]
+            if any(CheckIf(scn, t) for t in abnormal_states):
+                logger.info(f"[StateChest] 偵測到異常狀態 (第 {chest_wait_count} 輪)，退出寶箱流程轉交 IdentifyState 處理")
+                return None
+
             # 先檢查戰鬥和死亡（這些優先級最高，即使在等待dungFlag確認時也要響應）
             if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
                 logger.info(f"[StateChest] 偵測到戰鬥 (第 {chest_wait_count} 輪)，中斷 dungFlag 確認")
