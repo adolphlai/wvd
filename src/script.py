@@ -697,6 +697,8 @@ def Factory():
             logger.info("ScreenShot 檢測到停止信號，停止截圖")
             raise RuntimeError("截圖已停止")
         
+        final_img = None
+        
         # 嘗試使用 pyscrcpy 串流（極快：~1ms）
         stream = get_scrcpy_stream()
         if stream:
@@ -718,29 +720,64 @@ def Factory():
                             if stream.frame_count == 1 or _adb_mode_logged:
                                 logger.info("[截圖模式] 使用 pyscrcpy 串流 (~1ms)")
                                 _adb_mode_logged = False  # 重置 ADB 模式標誌
-                            return frame
-                        # 否則用補黑邊方式調整
-                        pad_bottom = max(0, 1600 - h)
-                        pad_right = max(0, 900 - w)
-                        if pad_bottom > 0 or pad_right > 0:
-                            frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
-                        return frame[:1600, :900]
+                            final_img = frame
+                        else:
+                            # 否則用補黑邊方式調整
+                            pad_bottom = max(0, 1600 - h)
+                            pad_right = max(0, 900 - w)
+                            if pad_bottom > 0 or pad_right > 0:
+                                frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                            final_img = frame[:1600, :900]
                     elif abs(h - 900) <= 10 and abs(w - 1600) <= 10:
                         # 橫屏，旋轉後處理
                         frame = cv2.transpose(frame)
                         h, w = frame.shape[:2]
                         if h == 1600 and w == 900:
-                            return frame
-                        pad_bottom = max(0, 1600 - h)
-                        pad_right = max(0, 900 - w)
-                        if pad_bottom > 0 or pad_right > 0:
-                            frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
-                        return frame[:1600, :900]
+                            final_img = frame
+                        else:
+                            pad_bottom = max(0, 1600 - h)
+                            pad_right = max(0, 900 - w)
+                            if pad_bottom > 0 or pad_right > 0:
+                                frame = cv2.copyMakeBorder(frame, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                            final_img = frame[:1600, :900]
                     else:
                         logger.warning(f"串流幀尺寸異常: {frame.shape}，使用 ADB 截圖")
         
         # 退回 ADB 截圖（較慢：~150-570ms）
-        return _ScreenShot_ADB()
+        if final_img is None:
+            final_img = _ScreenShot_ADB()
+
+        # [功能] 定期截圖記錄 (每 60 秒)
+        try:
+            # 使用函數屬性來存儲上次記錄時間，避免使用全域變量
+            if not hasattr(ScreenShot, "last_record_time"):
+                ScreenShot.last_record_time = 0
+            
+            # 使用函數屬性來存儲記錄目錄路徑 (初始化一次)
+            if not hasattr(ScreenShot, "record_dir"):
+                ScreenShot.record_dir = os.path.join(LOGS_FOLDER_NAME, "record")
+                if not os.path.exists(ScreenShot.record_dir):
+                    os.makedirs(ScreenShot.record_dir, exist_ok=True)
+
+            current_time = time.time()
+            if current_time - ScreenShot.last_record_time > 60:
+                # 再次檢查目錄是否存在（防止被刪除）
+                if not os.path.exists(ScreenShot.record_dir):
+                     os.makedirs(ScreenShot.record_dir, exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = os.path.join(ScreenShot.record_dir, f"{timestamp}.png")
+                
+                # 異步保存以避免阻塞主線程 (雖然 cv2.imwrite 很快，但為了保險)
+                # 這裡簡單起見先同步，因為 60 秒一次影響不大
+                cv2.imwrite(filename, final_img)
+                logger.info(f"[自動截圖] 已保存監控截圖: {filename}")
+                
+                ScreenShot.last_record_time = current_time
+        except Exception as e:
+            logger.error(f"[自動截圖] 保存失敗: {e}")
+
+        return final_img
     
     def _ScreenShot_ADB():
         """使用 ADB 截圖（原始方式）"""
@@ -889,12 +926,17 @@ def Factory():
         
         for template_name in templates_to_try:
             template = LoadTemplateImage(template_name)
+            if template is None:
+                # 如果模板加載失敗（例如文件不存在），跳過該模板
+                logger.trace(f"[CheckIf] 模板加載失敗或為 None: {template_name}，跳過")
+                continue
+
             screenshot = screenImage.copy()
             search_area = CutRoI(screenshot, roi)
             try:
                 result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
             except Exception as e:
-                logger.error(f"{e}")
+                logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}): {e}")
                 logger.info(f"{e}")
                 if isinstance(e, (cv2.error)):
                     logger.info(f"cv2异常.")
@@ -2367,6 +2409,10 @@ def Factory():
                 MAX_SPAM_CLICKS = 20
                 
                 while spam_click_count < MAX_SPAM_CLICKS:
+                    # 檢查停止信號
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return
+
                     # 1. 點擊加速
                     Press([1, 1])
                     spam_click_count += 1
@@ -2381,7 +2427,7 @@ def Factory():
                         
                     # 3. 檢查下一狀態標誌 (優先級: 戰鬥 > 寶箱 > 地城 > 其它)
                     # 這些標誌出現意味著過場結束，應立即交回主循環處理
-                    next_state_markers = ['chestFlag', 'dungFlag', 'combatActive', 'shrineFlag', 'mapFlag']
+                    next_state_markers = ['chestFlag', 'dungFlag', 'combatActive', 'mapFlag']
                     if any(CheckIf(scn, marker) for marker in next_state_markers):
                         logger.info(f"[戰後加速] 偵測到下一狀態標誌 (點擊 {spam_click_count} 次)，結束等待")
                         break
@@ -2892,6 +2938,8 @@ def Factory():
                         Sleep(0.5)
                         PressReturn()
                         while 1:
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return None, targetInfoList
                             if setting._DUNGWAITTIMEOUT-time.time()+waitTimer<0:
                                 logger.info("等得够久了. 目标地点完成.")
                                 targetInfoList.pop(0)
@@ -2918,6 +2966,10 @@ def Factory():
         DUNGFLAG_CONFIRM_REQUIRED = 3  # 需要連續 3 次偵測才確認
         
         while 1:
+            # 檢查停止信號
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return None
+
             chest_wait_count += 1
             scn = ScreenShot()
             
@@ -2983,10 +3035,34 @@ def Factory():
                 Sleep(0.5)
                 continue
             
-            # 如果沒有任何寶箱相關狀態，點擊跳過對話
+            # 如果沒有任何寶箱相關狀態，快速連點跳過掉落物彈窗
             if not has_whowillopenit and not has_chestOpening and not has_chestFlag:
-                Press([1, 1])  # 點擊空白處跳過對話
-                Sleep(0.15)
+                # 快速連點循環，同時定期檢查 dungFlag
+                for click_batch in range(4):  # 4 批次
+                    # 每批次連點 5 下
+                    for _ in range(5):
+                        Press([450, 800])  # 點擊畫面中央
+                        Sleep(0.05)
+                    
+                    # 每批次後檢查 dungFlag
+                    check_scn = ScreenShot()
+                    if CheckIf(check_scn, 'dungFlag', threshold=0.75):
+                        dungflag_consecutive_count += 1
+                        logger.debug(f"[掉落物快進] dungFlag 連續 {dungflag_consecutive_count}/{DUNGFLAG_CONFIRM_REQUIRED}")
+                        if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
+                            logger.info("[掉落物快進] dungFlag 確認，寶箱處理完成")
+                            return DungeonState.Dungeon
+                    else:
+                        dungflag_consecutive_count = 0
+                    
+                    # 也檢查其他優先狀態
+                    if any(CheckIf(check_scn, t, threshold=0.70) for t in get_combat_active_templates()):
+                        logger.info("[掉落物快進] 偵測到戰鬥")
+                        return DungeonState.Combat
+                    if CheckIf(check_scn, 'chestFlag') or CheckIf(check_scn, 'whowillopenit'):
+                        logger.info("[掉落物快進] 偵測到新寶箱")
+                        break  # 退出快點循環，回主循環處理
+                
                 if chest_wait_count >= MAX_CHEST_WAIT_LOOPS:
                     logger.warning(f"[StateChest] 等待循環達到上限 {MAX_CHEST_WAIT_LOOPS}，可能有異常")
                     break
@@ -3479,14 +3555,42 @@ def Factory():
                                 logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                                 continue
                         Sleep(0.5)
+                        # 檢查是否已無寶箱（notresure 彈窗）
+                        notresure_check = ScreenShot()
+                        if CheckIf(notresure_check, 'notresure'):
+                            logger.info("[chest_auto] 偵測到 notresure，已無寶箱，進入下一個目標")
+                            targetInfoList.pop(0)
+                            # 打印下一個目標資訊
+                            if targetInfoList:
+                                next_target = targetInfoList[0]
+                                logger.info(f"[chest_auto] 下一個目標: {next_target.target}")
+                            else:
+                                logger.info("[chest_auto] 已無更多目標")
+                            Press([1, 1])  # 點擊關閉彈窗
+                            Sleep(0.5)
+                            # 重設 has_chest_auto 並直接打開地圖（跳過 Dungeon 狀態處理）
+                            has_chest_auto = False
+                            Press([777, 150])  # 直接打開地圖
+                            Sleep(1)
+                            dungState = DungeonState.Map  # 直接進入 Map 狀態選擇新目標
+                            logger.info(f"[chest_auto] 已打開地圖，準備選擇新目標 (has_chest_auto={has_chest_auto})")
+                            elapsed_ms = (time.time() - state_handle_start) * 1000
+                            logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
+                            continue
                         # 等待移動完成
-                        # 等待移動完成
+                        # 確保 lastscreen 被初始化（用於靜止檢測）
+                        if 'lastscreen' not in locals() or lastscreen is None:
+                            lastscreen = ScreenShot()
                         chest_auto_start = time.time()
                         last_chest_auto_click_time = time.time()
                         CHEST_AUTO_CLICK_INTERVAL = 5  # 每 5 秒檢查一次
                         CHEST_AUTO_TIMEOUT = 60  # 60秒超時
                         while True:
-                            Sleep(3)
+                            # 檢查停止信號
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return None
+
+                            Sleep(0.5)
                             # 超時檢查（防止原地旋轉BUG）
                             elapsed = time.time() - chest_auto_start
                             if elapsed > CHEST_AUTO_TIMEOUT:
@@ -3518,7 +3622,20 @@ def Factory():
                                 gray2 = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
                                 mean_diff = cv2.absdiff(gray1, gray2).mean()/255
                                 logger.debug(f"移動停止檢查:{mean_diff:.2f}")
+                                
+                                if 'still_count' not in locals():
+                                    still_count = 0
+                                    
                                 if mean_diff < 0.05:
+                                    still_count += 1
+                                    logger.debug(f"畫面靜止，連續靜止 {still_count} 次")
+                                    
+                                    # 需要連續靜止多次才判定為真正停止 (0.5s 休眠 * 6 ≈ 3秒)
+                                    STILL_REQUIRED = 6
+                                    if still_count < STILL_REQUIRED:
+                                        lastscreen = screen
+                                        continue
+
                                     # [解卡邏輯] 畫面靜止時，先嘗試左右平移解卡，若多次無效才判定為到達
                                     MAX_TURN_ATTEMPTS = 3
                                     if 'turn_attempt_count' not in locals():
@@ -3533,6 +3650,7 @@ def Factory():
                                             Swipe([450,700], [650, 700]) # 右滑
                                         Sleep(1)
                                         turn_attempt_count += 1
+                                        still_count = 0 # 重置靜止計數，重新檢測移動
                                         lastscreen = ScreenShot() # 更新基準畫面，避免下次誤判
                                         continue
                                     else:
@@ -3542,6 +3660,7 @@ def Factory():
                                         break
                                 else:
                                     # 畫面有在動，重置解卡計數
+                                    still_count = 0
                                     turn_attempt_count = 0
                                 lastscreen = screen
                         elapsed_ms = (time.time() - state_handle_start) * 1000
