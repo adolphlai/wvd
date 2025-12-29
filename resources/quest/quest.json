@@ -26,8 +26,8 @@
         "_preEOTcheck":"AWD/AWD",
         "_EOT":
         [
-            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],1],
-            ["press","AWD/AWD2F",[1,1],1]
+            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],2],
+            ["press","AWD/AWD2F",[1,1],2]
         ]
     },
     "Dist":{
@@ -93,13 +93,12 @@
         "_TYPE":"dungeon",
         "questName":"[宝箱]深雪入口",
         "_TARGETINFOLIST":[
-            ["position","右下",[872,920]],
-            ["position","右下",[552,865]],
-            ["position","右下",[819,1240]]
+            ["chest_auto"],
+            ["harken", "右上",null]
         ],
         "_EOT":[
-            ["press","DH",["EdgeOfTown",[1,1]],1],
-            ["press","DH-entrance","input swipe 650 250 650 900",1]
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","DH-R6","input swipe 650 250 650 900",2]
         ]
     },
     "DH-6f":{
