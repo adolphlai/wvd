@@ -2361,8 +2361,32 @@ def Factory():
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
                 runtimeContext._COMBAT_ACTION_COUNT = 0
                 # 等待黑屏結束
-                while IsScreenBlack(ScreenShot()):
-                    Sleep(0.1)
+                # [戰後加速] 黑屏期間點擊 (1,1) 加速過場，並提前偵測下一狀態
+                # 限制最多點擊 20 次 (約 6 秒)，或偵測到明確狀態時退出
+                spam_click_count = 0
+                MAX_SPAM_CLICKS = 20
+                
+                while spam_click_count < MAX_SPAM_CLICKS:
+                    # 1. 點擊加速
+                    Press([1, 1])
+                    spam_click_count += 1
+                    Sleep(0.3)
+                    
+                    # 2. 截圖檢查狀態
+                    scn = ScreenShot()
+                    
+                    # 如果還在黑屏，繼續點擊
+                    if IsScreenBlack(scn):
+                        continue
+                        
+                    # 3. 檢查下一狀態標誌 (優先級: 戰鬥 > 寶箱 > 地城 > 其它)
+                    # 這些標誌出現意味著過場結束，應立即交回主循環處理
+                    next_state_markers = ['chestFlag', 'dungFlag', 'combatActive', 'shrineFlag', 'mapFlag']
+                    if any(CheckIf(scn, marker) for marker in next_state_markers):
+                        logger.info(f"[戰後加速] 偵測到下一狀態標誌 (點擊 {spam_click_count} 次)，結束等待")
+                        break
+                
+                logger.info(f"[戰後加速] 完成，共點擊 {spam_click_count} 次")
                 # 黑屏結束後，回到 StateCombat 開頭重新計數
                 return
             
