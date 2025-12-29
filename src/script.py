@@ -2387,6 +2387,20 @@ def Factory():
         if setting._AE_CASTER_INTERVAL == 0:
             ae_interval_match = True
 
+        # 調試 log：確認 AE 手條件
+        logger.debug(f"[AE手調試] ae_enabled={ae_enabled}, ae_interval_match={ae_interval_match}, "
+                     f"_COUNTERDUNG={runtimeContext._COUNTERDUNG}, _AE_CASTER_INTERVAL={setting._AE_CASTER_INTERVAL}, "
+                     f"_AE_CASTER_1_SKILL='{setting._AE_CASTER_1_SKILL}'")
+
+        # === 間隔不匹配時的處理 ===
+        # 當 AE 手啟用但間隔不匹配時，直接開啟自動戰鬥（而不是進入 Fallback）
+        if ae_enabled and not ae_interval_match:
+            logger.info(f"[技能施放] AE 手啟用但間隔不匹配（第 {runtimeContext._COUNTERDUNG} 次地城，間隔設定 {setting._AE_CASTER_INTERVAL}），開啟自動戰鬥")
+            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 標記已觸發，跳過黑屏檢測
+            enable_auto_combat()
+            Sleep(3)
+            return
+
         if ae_enabled and ae_interval_match:
             battle_num = runtimeContext._COMBAT_BATTLE_COUNT
             action_count = runtimeContext._COMBAT_ACTION_COUNT
@@ -2831,12 +2845,73 @@ def Factory():
         if runtimeContext._TIME_CHEST==0:
             runtimeContext._TIME_CHEST = time.time()
 
+        logger.info("[StateChest] 進入寶箱處理流程")
+        MAX_CHEST_WAIT_LOOPS = 100  # 最大等待循環次數（安全上限）
+        chest_wait_count = 0
+        dungflag_consecutive_count = 0  # dungFlag 連續偵測計數
+        DUNGFLAG_CONFIRM_REQUIRED = 3  # 需要連續 3 次偵測才確認
+        
         while 1:
-            FindCoordsOrElseExecuteFallbackAndWait(
-                ['dungFlag'] + get_combat_active_templates() + ['chestOpening','whowillopenit','RiseAgain'],
-                [[1,1],[1,1],'chestFlag'],
-                1)
+            chest_wait_count += 1
             scn = ScreenShot()
+            
+            # 快速狀態檢查（替代原本的 FindCoordsOrElseExecuteFallbackAndWait）
+            # 先檢查戰鬥和死亡（這些優先級最高，即使在等待dungFlag確認時也要響應）
+            if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
+                logger.info(f"[StateChest] 偵測到戰鬥 (第 {chest_wait_count} 輪)，中斷 dungFlag 確認")
+                return DungeonState.Combat
+            if CheckIf(scn, 'RiseAgain'):
+                logger.info(f"[StateChest] 偵測到死亡 (第 {chest_wait_count} 輪)")
+                RiseAgainReset(reason='chest')
+                return None
+            
+            # 檢查 dungFlag（需要連續確認）
+            dungflag_result = CheckIf(scn, 'dungFlag')
+            if dungflag_result:
+                dungflag_consecutive_count += 1
+                logger.info(f"[StateChest] 偵測到 dungFlag (第 {chest_wait_count} 輪, 連續 {dungflag_consecutive_count}/{DUNGFLAG_CONFIRM_REQUIRED} 次)")
+                if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
+                    logger.info(f"[StateChest] dungFlag 連續確認 {DUNGFLAG_CONFIRM_REQUIRED} 次，寶箱處理完成")
+                    return DungeonState.Dungeon
+                else:
+                    Sleep(0.2)  # 短暫等待再確認
+                    continue  # 繼續確認 dungFlag（戰鬥/死亡已在上面檢查過）
+            else:
+                if dungflag_consecutive_count > 0:
+                    logger.info(f"[StateChest] dungFlag 消失 (之前連續 {dungflag_consecutive_count} 次)，重置計數")
+                dungflag_consecutive_count = 0  # 重置計數
+            
+            # 檢查寶箱相關狀態
+            has_whowillopenit = CheckIf(scn, 'whowillopenit')
+            has_chestOpening = CheckIf(scn, 'chestOpening')
+            has_chestFlag = CheckIf(scn, 'chestFlag')
+            
+            if has_whowillopenit or has_chestOpening or has_chestFlag:
+                logger.debug(f"[StateChest] 狀態: whowillopenit={has_whowillopenit}, chestOpening={has_chestOpening}, chestFlag={has_chestFlag}")
+            
+            # 處理快進和網路重試
+            if Press(CheckIf_fastForwardOff(scn)):
+                Sleep(0.3)
+                continue
+            if TryPressRetry(scn):
+                Sleep(0.3)
+                continue
+            
+            # 如果只有 chestFlag（寶箱圖標），點擊它開始開箱流程
+            if has_chestFlag and not has_whowillopenit and not has_chestOpening:
+                logger.info(f"[StateChest] 偵測到 chestFlag，點擊開始開箱 {has_chestFlag}")
+                Press(has_chestFlag)
+                Sleep(0.5)
+                continue
+            
+            # 如果沒有任何寶箱相關狀態，點擊跳過對話
+            if not has_whowillopenit and not has_chestOpening and not has_chestFlag:
+                Press([1, 1])  # 點擊空白處跳過對話
+                Sleep(0.15)
+                if chest_wait_count >= MAX_CHEST_WAIT_LOOPS:
+                    logger.warning(f"[StateChest] 等待循環達到上限 {MAX_CHEST_WAIT_LOOPS}，可能有異常")
+                    break
+                continue
 
             if CheckIf(scn,'whowillopenit'):
                 while 1:
@@ -2868,10 +2943,60 @@ def Factory():
                 Sleep(1)
                 if setting._SMARTDISARMCHEST:
                     ChestOpen()
-                FindCoordsOrElseExecuteFallbackAndWait(
-                    ['dungFlag'] + get_combat_active_templates() + ['chestFlag','RiseAgain'], # 如果这个fallback重启了, 战斗箱子会直接消失, 固有箱子会是chestFlag
-                    [disarm,disarm,disarm,disarm,disarm,disarm,disarm,disarm],
-                    1)
+                # 改進：快速點擊循環，每次點擊後立即檢查退出條件
+                # 而不是使用 FindCoordsOrElseExecuteFallbackAndWait 的固定 8 次點擊循環
+                MAX_DIALOG_CLICKS = 50  # 安全上限（防止無限循環）
+                dialog_click_count = 0
+                dialog_dungflag_count = 0  # 開箱對話中的 dungFlag 連續計數
+                DIALOG_DUNGFLAG_CONFIRM = 3  # 需要連續 3 次確認
+                
+                while dialog_click_count < MAX_DIALOG_CLICKS:
+                    dialog_scn = ScreenShot()
+                    
+                    # 先檢查優先級高的狀態（即使在 dungFlag 確認期間也要響應）
+                    if any(CheckIf(dialog_scn, t, threshold=0.70) for t in get_combat_active_templates()):
+                        logger.info(f"[開箱對話] 點擊 {dialog_click_count} 次後偵測到戰鬥，中斷 dungFlag 確認")
+                        break
+                    if CheckIf(dialog_scn, 'RiseAgain'):
+                        logger.info(f"[開箱對話] 點擊 {dialog_click_count} 次後偵測到死亡")
+                        break
+                    if CheckIf(dialog_scn, 'chestFlag') or CheckIf(dialog_scn, 'whowillopenit'):
+                        logger.info(f"[開箱對話] 點擊 {dialog_click_count} 次後偵測到新寶箱")
+                        break  # 退出點擊循環，回到主循環繼續處理
+                    
+                    # 檢查 dungFlag（需要連續確認）
+                    dialog_dungflag_result = CheckIf(dialog_scn, 'dungFlag')
+                    if dialog_dungflag_result:
+                        dialog_dungflag_count += 1
+                        logger.info(f"[開箱對話] 偵測到 dungFlag (點擊 {dialog_click_count} 次, 連續 {dialog_dungflag_count}/{DIALOG_DUNGFLAG_CONFIRM} 次)")
+                        if dialog_dungflag_count >= DIALOG_DUNGFLAG_CONFIRM:
+                            logger.info(f"[開箱對話] dungFlag 連續確認 {DIALOG_DUNGFLAG_CONFIRM} 次，開箱完成")
+                            return DungeonState.Dungeon  # 直接返回，避免重複確認
+                        else:
+                            Sleep(0.2)  # 短暫等待再確認
+                            continue  # 繼續確認（戰鬥/寶箱/死亡已在上面檢查過）
+                    else:
+                        if dialog_dungflag_count > 0:
+                            logger.info(f"[開箱對話] dungFlag 消失 (之前連續 {dialog_dungflag_count} 次)，重置計數，繼續點擊")
+                        dialog_dungflag_count = 0  # 重置計數
+                    
+                    # 檢查快進是否關閉
+                    if Press(CheckIf_fastForwardOff(dialog_scn)):
+                        Sleep(0.5)
+                        continue
+                    
+                    # 檢查網路重試
+                    if TryPressRetry(dialog_scn):
+                        Sleep(0.5)
+                        continue
+                    
+                    # 未偵測到任何退出條件，繼續點擊跳過對話
+                    Press(disarm)
+                    dialog_click_count += 1
+                    Sleep(0.15)  # 縮短間隔，加快響應速度
+                
+                if dialog_click_count >= MAX_DIALOG_CLICKS:
+                    logger.warning(f"開箱對話點擊達到上限 {MAX_DIALOG_CLICKS} 次，可能有異常")
             
             if CheckIf(scn,'RiseAgain'):
                 RiseAgainReset(reason = 'chest')
