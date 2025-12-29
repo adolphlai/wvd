@@ -91,7 +91,7 @@
 
     "DH-entrance":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]深雪入口",
+        "questName":"[宝箱]深雪六樓自動寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
             ["harken", "右上",null]
