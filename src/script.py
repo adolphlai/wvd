@@ -250,6 +250,7 @@ class RuntimeContext:
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
     _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
     _RESTART_OPEN_MAP_PENDING = False  # 重启后待打开地图标志，跳过Resume优化
+    _MID_DUNGEON_START = False  # 地城內啟動標記，用於跳過黑屏打斷（因為不知道已打幾戰）
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -1522,9 +1523,9 @@ def Factory():
 
             # [黑屏偵測] 首戰/二戰打斷自動戰鬥
             # 當偵測到黑屏且 AE 手尚未觸發 AOE 時，提前開始點擊打斷
-            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）
+            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）+ 非地城內啟動
             is_black = IsScreenBlack(screen)
-            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and is_black:
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and not runtimeContext._MID_DUNGEON_START and is_black:
                 # 檢查是否需要首戰打斷（AE 手機制）
                 need_first_combat_interrupt = bool(setting._AE_CASTER_1_SKILL)
 
@@ -1577,10 +1578,12 @@ def Factory():
 
             # 動態掃描 combatActive 系列圖片
             combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
+            # 優先級順序：戰鬥 > 寶箱 > 地城 > 地圖
+            # 寶箱優先級高於地城，避免戰鬥結束時先偵測到 dungFlag 而走冗餘流程
             identifyConfig = combat_active_config + [
+                ('chestFlag',     DungeonState.Chest),   # 寶箱優先
+                ('whowillopenit', DungeonState.Chest),   # 寶箱優先
                 ('dungFlag',      DungeonState.Dungeon),
-                ('chestFlag',     DungeonState.Chest),
-                ('whowillopenit', DungeonState.Chest),
                 ('mapFlag',       DungeonState.Map),
                 ]
 
@@ -2990,10 +2993,12 @@ def Factory():
                         Sleep(0.5)
                         continue
                     
-                    # 未偵測到任何退出條件，繼續點擊跳過對話
-                    Press(disarm)
-                    dialog_click_count += 1
-                    Sleep(0.15)  # 縮短間隔，加快響應速度
+                    # 未偵測到任何退出條件，快速連點跳過對話
+                    for _ in range(3):  # 連點 3 下
+                        Press(disarm)
+                        Sleep(0.05)  # 極短間隔
+                    dialog_click_count += 3
+                    Sleep(0.1)  # 短暫等待後重新檢測
                 
                 if dialog_click_count >= MAX_DIALOG_CLICKS:
                     logger.warning(f"開箱對話點擊達到上限 {MAX_DIALOG_CLICKS} 次，可能有異常")
@@ -3236,11 +3241,10 @@ def Factory():
                             dungState = DungeonState.Map
                     # Resume优化: 非第一次进入，检查Resume按钮决定下一步动作
                     # 注意: 重启后跳过Resume优化，因为之前的路径可能已失效
-                    elif setting._ENABLE_RESUME_OPTIMIZATION and runtimeContext._STEPAFTERRESTART:
-                        Sleep(1)
-                        
-                        # 检测Resume按钮，最多重试3次（等待画面过渡）
-                        # 同时检测宝箱和战斗状态，避免错过刚出现的宝箱
+                    # 注意: chest_auto 跳過 Resume 優化，使用自己的移動等待邏輯
+                    elif setting._ENABLE_RESUME_OPTIMIZATION and runtimeContext._STEPAFTERRESTART and not has_chest_auto:
+                        # 檢測Resume按鈕，最多重試3次（等待畫面過渡）
+                        # 同時檢測寶箱和戰鬥狀態，避免錯過剛出現的寶箱
                         MAX_RESUME_DETECT_RETRIES = 3
                         resume_pos = None
                         detected_other_state = False
@@ -3274,7 +3278,7 @@ def Factory():
                             else:
                                 if detect_retry < MAX_RESUME_DETECT_RETRIES - 1:
                                     logger.info(f"Resume优化: 未检测到Resume按钮，等待重试（{detect_retry + 1}/{MAX_RESUME_DETECT_RETRIES}）")
-                                    Sleep(1)
+                                    Sleep(0.5)  # 縮短等待時間
                         
                         # 如果检测到其他状态，跳过Resume优化
                         if detected_other_state:
@@ -3357,13 +3361,18 @@ def Factory():
                                 logger.warning("visibliityistoopoor，但继续尝试导航")
                             dungState = DungeonState.Map
                     else:
-                        Sleep(1)
-                        Press([777,150])
-                        Sleep(1)
-                        # 检查能见度（仅记录日志，不再触发回城）
-                        if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                            logger.warning("visibliityistoopoor，但继续尝试导航")
-                        dungState = DungeonState.Map
+                        # chest_auto 不需要打開地圖，直接回到 Map 狀態讓其專屬邏輯處理
+                        if has_chest_auto:
+                            logger.debug("chest_auto: 跳過打開地圖，直接進入 Map 狀態")
+                            dungState = DungeonState.Map
+                        else:
+                            Sleep(1)
+                            Press([777,150])
+                            Sleep(1)
+                            # 检查能见度（仅记录日志，不再触发回城）
+                            if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                logger.warning("visibliityistoopoor，但继续尝试导航")
+                            dungState = DungeonState.Map
                 case DungeonState.Map:
                     if runtimeContext._SHOULDAPPLYSPELLSEQUENCE: # 默认值(第一次)和重启后应当直接应用序列
                         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = False
@@ -3498,6 +3507,16 @@ def Factory():
                         lambda: _identifyState()
                         )
                     logger.info(f"下一状态: {state}")
+                    
+                    # 地城內啟動偵測：如果首次識別就是 Dungeon 狀態，說明在地城內啟動
+                    if state == State.Dungeon and runtimeContext._COUNTERDUNG == 0:
+                        logger.info("[地城內啟動] 偵測到在地城內啟動腳本，初始化參數...")
+                        runtimeContext._FIRST_DUNGEON_ENTRY = False  # 已經在地城內，不是第一次進入
+                        runtimeContext._DUNGEON_CONFIRMED = True     # 直接確認在地城
+                        runtimeContext._STEPAFTERRESTART = True      # 不需要防轉圈
+                        runtimeContext._MID_DUNGEON_START = True     # 標記地城內啟動（跳過黑屏打斷）
+                        logger.info("[地城內啟動] 參數初始化完成")
+                    
                     if state ==State.Quit:
                         logger.info("即将停止脚本...")
                         break
@@ -3533,11 +3552,14 @@ def Factory():
                         )
                     state = State.Dungeon
                 case State.Dungeon:
-                    runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
-                    runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
-                    # 只有在新地城開始時才重置 AE 手旗標（不是從地城內的狀態進入）
-                    if initial_dungState not in [DungeonState.Combat, DungeonState.Chest, DungeonState.Dungeon, DungeonState.Map]:
+                    # 只有在正常進入地城時才重置，地城內啟動不重置（已在 case None 設定好）
+                    is_mid_dungeon_start = initial_dungState in [DungeonState.Combat, DungeonState.Chest, DungeonState.Dungeon, DungeonState.Map]
+                    if not is_mid_dungeon_start:
+                        runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
+                        runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
+                    else:
+                        logger.debug("[地城內啟動] 跳過 flag 重置")
                     # 注意：不重置 _STEPAFTERRESTART，只有 restartGame 才會設為 False
                     targetInfoList = quest._TARGETINFOLIST.copy()
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）

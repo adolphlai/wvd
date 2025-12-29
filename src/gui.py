@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('750x550')  # 加寬視窗以容納日誌過濾器
+        self.geometry('950x600')  # 加寬視窗以容納更寬的日誌區域
         
         self.title(self.TITLE)
 
@@ -120,9 +120,13 @@ class ConfigPanelApp(tk.Toplevel):
             self.karma_adjust_var.set(config['_KARMAADJUST'])
 
     def create_widgets(self):
+        # 設定 grid 權重讓日誌區域自動填滿右側空間
+        self.columnconfigure(1, weight=1)  # column 1 (日誌區) 自動擴展
+        self.rowconfigure(0, weight=1)     # row 0 自動擴展
+        
         # === 右側容器 (包含過濾器 + LOG 顯示區域) ===
         right_frame = ttk.Frame(self)
-        right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E), padx=5, pady=5)
+        right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=5, pady=5)
         
         # === 日志过滤器 checkbox ===
         log_filter_frame = ttk.Frame(right_frame)
@@ -156,8 +160,8 @@ class ConfigPanelApp(tk.Toplevel):
                         command=update_log_filter).pack(side=tk.LEFT, padx=2)
 
         # === 日志显示区域 ===
-        scrolled_text_formatter = logging.Formatter('%(levelname)s: %(message)s')
-        self.log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff', bd=2, relief=tk.FLAT, width=34, height=28)
+        scrolled_text_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
+        self.log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff', bd=2, relief=tk.FLAT, width=55, height=28)
         self.log_display.pack(fill=tk.BOTH, expand=True)
         self.scrolled_text_handler = ScrolledTextHandler(self.log_display)
         self.scrolled_text_handler.setLevel(logging.DEBUG)  # 降低 level 讓 DEBUG 訊息能通過
@@ -166,7 +170,7 @@ class ConfigPanelApp(tk.Toplevel):
         logger.addHandler(self.scrolled_text_handler)
 
         # === 摘要顯示區域 ===
-        self.summary_log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4", bd=2, width=34)
+        self.summary_log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4", bd=2, width=55)
         self.summary_log_display.pack(fill=tk.X, pady=(5, 0))
         self.summary_text_handler = ScrolledTextHandler(self.summary_log_display)
         self.summary_text_handler.setLevel(logging.INFO)
