@@ -2600,9 +2600,18 @@ def Factory():
         POLL_INTERVAL = 0.3  # 每 0.3 秒檢查一次
         
         # 連續靜止參數（唯一檢查點）
-        # 6 秒 ÷ 0.3 秒 ≈ 20 次
-        STILL_REQUIRED = 20  # 連續 20 次靜止（約 6 秒）才判定停止
+        # 3 秒 ÷ 0.3 秒 ≈ 10 次
+        STILL_REQUIRED = 10  # 連續 10 次靜止（約 3 秒）才判定停止
         still_count = 0
+        
+        
+        # 轉向嘗試參數（靜止後嘗試轉向解決動態背景問題）
+        turn_attempt_count = 0
+        MAX_TURN_ATTEMPTS = 3  # 最多轉向 3 次
+
+        # 定期點擊 Resume 參數（防止雖然判定為移動但實際已停止顯示Resume的情況）
+        last_resume_click_time = time.time()
+        RESUME_CLICK_INTERVAL = 5  # 每 5 秒檢查一次
 
         logger.info("面具男, 移动.")
         while 1:
@@ -2617,6 +2626,15 @@ def Factory():
             if elapsed > MOVING_TIMEOUT:
                 logger.error(f"移动超时（{elapsed:.1f}秒），疑似原地旋转BUG，准备重启游戏")
                 restartGame()
+            
+            # 定期檢查並點擊 Resume 按鈕（不管是否判斷為移動中）
+            # 這能處理動態背景導致误判為移動，但實際已出現 Resume 的情況
+            if time.time() - last_resume_click_time > RESUME_CLICK_INTERVAL:
+                resume_pos_periodic = CheckIf(screen, 'resume')
+                if resume_pos_periodic:
+                    logger.info(f"【定期檢查】偵測到 Resume 按鈕，主動點擊: {resume_pos_periodic}")
+                    Press(resume_pos_periodic)
+                last_resume_click_time = time.time()
 
             _, dungState, screen = IdentifyState()
             
@@ -2673,6 +2691,22 @@ def Factory():
                     
                     # 達到連續靜止次數（約 10 秒），進入 Resume/退出判斷
                     logger.info(f"連續 {STILL_REQUIRED} 次靜止（約 {STILL_REQUIRED * POLL_INTERVAL:.1f} 秒），判定停止")
+                    
+                    # 轉向嘗試機制：如果靜止，先嘗試轉向確認是否真的停止（或卡住）
+                    if turn_attempt_count < MAX_TURN_ATTEMPTS:
+                        turn_attempt_count += 1
+                        logger.info(f"靜止判定觸發轉向機制 (第 {turn_attempt_count}/{MAX_TURN_ATTEMPTS} 次)，向左轉並等待 6 秒...")
+                        # 向左轉 (改用 Swipe 以確保生效)
+                        Swipe([450, 700], [250, 700])
+                        # 等待 6 秒（用戶指定）
+                        Sleep(6)
+                        
+                        # 重置狀態以重新判斷靜止
+                        still_count = 0
+                        lastscreen = None
+                        logger.info("轉向完成，重新開始靜止判定...")
+                        continue
+
                     # 画面静止，检查Resume按钮
                     # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
                     if CheckIf(screen, 'mapFlag'):
@@ -2720,12 +2754,21 @@ def Factory():
                         break
                 else:
                     # 画面在移动，重置连续计数器
+                    # 使用 Soft Reset：不直接归零，而是减少计数，以容忍偶尔的画面闪烁（如暴风雪）
                     if still_count > 0:
-                        logger.debug(f"畫面恢復變化，重置靜止計數（之前: {still_count}）")
-                        still_count = 0
+                        decay = 1  # 衰减值
+                        old_count = still_count
+                        still_count = max(0, still_count - decay)
+                        if still_count == 0:
+                            logger.debug(f"畫面恢復變化，靜止計數歸零（之前: {old_count}）")
+                        else:
+                            logger.debug(f"畫面有變化，靜止計數衰減（{old_count} -> {still_count}）")
                     if resume_consecutive_count > 0:
                         logger.debug(f"画面恢复移动，重置Resume计数器（之前: {resume_consecutive_count}）")
                         resume_consecutive_count = 0
+                    if turn_attempt_count > 0:
+                        logger.debug(f"畫面恢復變化，重置轉向計數（之前: {turn_attempt_count}）")
+                        turn_attempt_count = 0
             lastscreen = screen
         return dungState
     def StateSearch(waitTimer, targetInfoList : list[TargetInfo]):
@@ -3397,7 +3440,10 @@ def Factory():
                                 continue
                         Sleep(0.5)
                         # 等待移動完成
+                        # 等待移動完成
                         chest_auto_start = time.time()
+                        last_chest_auto_click_time = time.time()
+                        CHEST_AUTO_CLICK_INTERVAL = 5  # 每 5 秒檢查一次
                         CHEST_AUTO_TIMEOUT = 60  # 60秒超時
                         while True:
                             Sleep(3)
@@ -3406,7 +3452,23 @@ def Factory():
                             if elapsed > CHEST_AUTO_TIMEOUT:
                                 logger.error(f"chest_auto 移動超時（{elapsed:.1f}秒），疑似卡住，準備重啟遊戲")
                                 restartGame()
+                            
+                            # 定期檢查並點擊自動寶箱按鈕
+                            if time.time() - last_chest_auto_click_time > CHEST_AUTO_CLICK_INTERVAL:
+                                # 注意：這裡使用最後一次截圖的 screen 來檢查，需要先獲取 screen
+                                # 但下面的 IdentifyState 會更新 screen，我們在它之後檢查比較好，或者這裡直接截圖
+                                # 為了不影響循環，我們使用下面的 IdentifyState 返回的 screen
+                                pass 
+                            
                             _, dungState, screen = IdentifyState()
+
+                            # 在識別狀態後進行定期檢查
+                            if time.time() - last_chest_auto_click_time > CHEST_AUTO_CLICK_INTERVAL:
+                                current_chest_auto_pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
+                                if current_chest_auto_pos:
+                                    logger.info(f"【定期檢查】偵測到自動寶箱按鈕，主動點擊: {current_chest_auto_pos}")
+                                    Press(current_chest_auto_pos)
+                                last_chest_auto_click_time = time.time()
                             if dungState != DungeonState.Dungeon:
                                 logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
                                 # chest_auto 遇到 Combat/Chest 只是途中事件，不 pop，處理完會回來繼續
