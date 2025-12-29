@@ -423,13 +423,6 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
 
-        self.enable_resume_optimization_check = ttk.Checkbutton(
-            frame_recover, text="啟用Resume按鈕優化",
-            variable=self.enable_resume_optimization_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.enable_resume_optimization_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
-
         # --- AOE 設定 ---
         row += 1
         frame_aoe = ttk.LabelFrame(tab, text="AOE 設定", padding=5)
@@ -1072,7 +1065,6 @@ class ConfigPanelApp(tk.Toplevel):
             self.auto_after_aoe_check,
             self.skip_recover_check,
             self.skip_chest_recover_check,
-            self.enable_resume_optimization_check,
             self.active_rest_check,
             self.rest_intervel_entry,
             self.button_save_rest_intervel,

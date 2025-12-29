@@ -163,7 +163,6 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
-            ["enable_resume_optimization_var", tk.BooleanVar, "_ENABLE_RESUME_OPTIMIZATION", True],
             # AE 手設定
             ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 1],  # 單位數量：1~6
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
@@ -2674,56 +2673,50 @@ def Factory():
                     
                     # 達到連續靜止次數（約 10 秒），進入 Resume/退出判斷
                     logger.info(f"連續 {STILL_REQUIRED} 次靜止（約 {STILL_REQUIRED * POLL_INTERVAL:.1f} 秒），判定停止")
-                    # 画面静止，检查Resume按钮（如果启用了Resume优化）
-                    if setting._ENABLE_RESUME_OPTIMIZATION:
-                        # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
-                        if CheckIf(screen, 'mapFlag'):
-                            logger.info("StateMoving: 已在地圖狀態，跳過 Resume 檢測")
-                            dungState = DungeonState.Map
-                            break
+                    # 画面静止，检查Resume按钮
+                    # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
+                    if CheckIf(screen, 'mapFlag'):
+                        logger.info("StateMoving: 已在地圖狀態，跳過 Resume 檢測")
+                        dungState = DungeonState.Map
+                        break
+                    
+                    resume_pos = CheckIf(screen, 'resume')
+                    
+                    if resume_pos:
+                        # Resume按钮存在 = 移动被打断但未到达
+                        resume_consecutive_count += 1
                         
-                        resume_pos = CheckIf(screen, 'resume')
-                        
-                        if resume_pos:
-                            # Resume按钮存在 = 移动被打断但未到达
-                            resume_consecutive_count += 1
+                        if resume_consecutive_count <= MAX_RESUME_RETRIES:
+                            # 继续点击Resume
+                            logger.info(f"检测到Resume按钮（画面静止），点击继续移动（第 {resume_consecutive_count} 次）位置:{resume_pos}")
+                            Press(resume_pos)
+                            Sleep(1)
                             
-                            if resume_consecutive_count <= MAX_RESUME_RETRIES:
-                                # 继续点击Resume
-                                logger.info(f"检测到Resume按钮（画面静止），点击继续移动（第 {resume_consecutive_count} 次）位置:{resume_pos}")
-                                Press(resume_pos)
-                                Sleep(1)
-                                
-                                # 检查 routenotfound 是否出现
-                                screen_after_resume = ScreenShot()
-                                if CheckIf(screen_after_resume, 'routenotfound'):
-                                    logger.info("StateMoving: 检测到routenotfound，已到达目的地，打开地图")
-                                    Sleep(1)  # routenotfound 会自动消失，稍等一下
-                                    Press([777,150])  # 打开地图
-                                    dungState = DungeonState.Map
-                                    break
-                                else:
-                                    logger.info("StateMoving: 未检测到routenotfound")
-                                
-                                lastscreen = None  # 重置lastscreen以重新开始检测
-                                still_count = 0  # 重置靜止計數
-                                continue  # 继续循环，不退出
-                            else:
-                                # Resume点击多次仍然静止 = 可能卡住，打开地图重新导航
-                                logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，打开地图重新导航")
+                            # 检查 routenotfound 是否出现
+                            screen_after_resume = ScreenShot()
+                            if CheckIf(screen_after_resume, 'routenotfound'):
+                                logger.info("StateMoving: 检测到routenotfound，已到达目的地，打开地图")
+                                Sleep(1)  # routenotfound 会自动消失，稍等一下
                                 Press([777,150])  # 打开地图
-                                Sleep(1)
                                 dungState = DungeonState.Map
                                 break
+                            else:
+                                logger.info("StateMoving: 未检测到routenotfound")
+                            
+                            lastscreen = None  # 重置lastscreen以重新开始检测
+                            still_count = 0  # 重置靜止計數
+                            continue  # 继续循环，不退出
                         else:
-                            # Resume按钮不存在 = 已到达目标
-                            logger.info("已退出移动状态（画面静止且Resume按钮消失）.进行状态检查...")
-                            dungState = None
+                            # Resume点击多次仍然静止 = 可能卡住，打开地图重新导航
+                            logger.warning(f"Resume按钮点击{MAX_RESUME_RETRIES}次后画面仍静止，打开地图重新导航")
+                            Press([777,150])  # 打开地图
+                            Sleep(1)
+                            dungState = DungeonState.Map
                             break
                     else:
-                        # 未启用Resume优化，使用原始逻辑
+                        # Resume按钮不存在 = 已到达目标
+                        logger.info("已退出移动状态（画面静止且Resume按钮消失）.进行状态检查...")
                         dungState = None
-                        logger.info("已退出移动状态.进行状态检查...")
                         break
                 else:
                     # 画面在移动，重置连续计数器
@@ -2804,9 +2797,9 @@ def Factory():
                 else:
                     logger.info(f"移動中途遇到 {result_state}，保留當前目標 {target} 待戰鬥/寶箱結束後繼續")
                 
-                # 如果启用了Resume优化且成功到达(返回None)，返回Dungeon状态避免重新打开地图
-                if setting._ENABLE_RESUME_OPTIMIZATION and result_state is None:
-                    logger.debug("Resume优化: 移动完成，跳过重新打开地图")
+                # 如果成功到达(返回None)，返回Dungeon状态避免重新打开地图
+                if result_state is None:
+                    logger.debug("移动完成，返回 Dungeon 状态")
                     return DungeonState.Dungeon, targetInfoList
                 else:
                     return result_state, targetInfoList
@@ -2869,7 +2862,7 @@ def Factory():
                 return None
             
             # 檢查 dungFlag（需要連續確認）
-            dungflag_result = CheckIf(scn, 'dungFlag')
+            dungflag_result = CheckIf(scn, 'dungFlag', threshold=0.75)
             if dungflag_result:
                 dungflag_consecutive_count += 1
                 logger.info(f"[StateChest] 偵測到 dungFlag (第 {chest_wait_count} 輪, 連續 {dungflag_consecutive_count}/{DUNGFLAG_CONFIRM_REQUIRED} 次)")
@@ -2968,7 +2961,7 @@ def Factory():
                         break  # 退出點擊循環，回到主循環繼續處理
                     
                     # 檢查 dungFlag（需要連續確認）
-                    dialog_dungflag_result = CheckIf(dialog_scn, 'dungFlag')
+                    dialog_dungflag_result = CheckIf(dialog_scn, 'dungFlag', threshold=0.75)
                     if dialog_dungflag_result:
                         dialog_dungflag_count += 1
                         logger.info(f"[開箱對話] 偵測到 dungFlag (點擊 {dialog_click_count} 次, 連續 {dialog_dungflag_count}/{DIALOG_DUNGFLAG_CONFIRM} 次)")
@@ -3006,7 +2999,7 @@ def Factory():
             if CheckIf(scn,'RiseAgain'):
                 RiseAgainReset(reason = 'chest')
                 return None
-            if CheckIf(scn,'dungFlag'):
+            if CheckIf(scn,'dungFlag', threshold=0.75):
                 return DungeonState.Dungeon
             # 使用動態掃描的 combatActive 圖片列表（與 IdentifyState 保持一致）
             if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
@@ -3239,10 +3232,10 @@ def Factory():
                             logger.info("minimap_stair: 未檢測到 Resume 按鈕，打開地圖繼續")
                             Press([777,150])
                             dungState = DungeonState.Map
-                    # Resume优化: 非第一次进入，检查Resume按钮决定下一步动作
+                    # Resume: 非第一次进入，检查Resume按钮决定下一步动作
                     # 注意: 重启后跳过Resume优化，因为之前的路径可能已失效
-                    # 注意: chest_auto 跳過 Resume 優化，使用自己的移動等待邏輯
-                    elif setting._ENABLE_RESUME_OPTIMIZATION and runtimeContext._STEPAFTERRESTART and not has_chest_auto:
+                    # 注意: chest_auto 跳過 Resume，使用自己的移動等待邏輯
+                    elif runtimeContext._STEPAFTERRESTART and not has_chest_auto:
                         # 檢測Resume按鈕，最多重試3次（等待畫面過渡）
                         # 同時檢測寶箱和戰鬥狀態，避免錯過剛出現的寶箱
                         MAX_RESUME_DETECT_RETRIES = 3
