@@ -2824,8 +2824,8 @@ def Factory():
         if runtimeContext._TIME_CHEST==0:
             runtimeContext._TIME_CHEST = time.time()
 
-        logger.info("[StateChest] 進入寶箱處理流程 (Refactored)")
-        MAX_CHEST_WAIT_LOOPS = 200  # 最大等待循環次數（加大上限因為現在循環更快了）
+        logger.info("[StateChest] 進入寶箱處理流程 (Refactored & Optimized)")
+        MAX_CHEST_WAIT_LOOPS = 200  # 最大等待循環次數
         chest_wait_count = 0
         dungflag_consecutive_count = 0
         DUNGFLAG_CONFIRM_REQUIRED = 3
@@ -2851,34 +2851,40 @@ def Factory():
 
             scn = ScreenShot()
 
-            # 1. 優先中斷條件 (Interrupts)
+            # 1. 優先中斷條件 (Interrupts) - [優化] 分頻檢查
+            # 異常狀態：每 20 次循環檢查一次 (約 2-4 秒一次)
+            # 戰鬥/死亡：每 5 次循環檢查一次 (約 0.5-1 秒一次)
+            
             # 異常狀態
-            if any(CheckIf(scn, t) for t in abnormal_states):
-                logger.info(f"[StateChest] 偵測到異常狀態，交由 IdentifyState 處理")
-                return None
-            # 戰鬥
-            if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
-                logger.info("[StateChest] 偵測到戰鬥，進入戰鬥狀態")
-                return DungeonState.Combat
-            # 死亡
-            if CheckIf(scn, 'RiseAgain'):
-                logger.info("[StateChest] 偵測到死亡")
-                RiseAgainReset(reason='chest')
-                return None
+            if chest_wait_count % 20 == 0:
+                if any(CheckIf(scn, t) for t in abnormal_states):
+                    logger.info(f"[StateChest] 偵測到異常狀態，交由 IdentifyState 處理")
+                    return None
+            
+            # 戰鬥與死亡
+            if chest_wait_count % 5 == 0:
+                # 戰鬥
+                if any(CheckIf(scn, t, threshold=0.70) for t in get_combat_active_templates()):
+                    logger.info("[StateChest] 偵測到戰鬥，進入戰鬥狀態")
+                    return DungeonState.Combat
+                # 死亡
+                if CheckIf(scn, 'RiseAgain'):
+                    logger.info("[StateChest] 偵測到死亡")
+                    RiseAgainReset(reason='chest')
+                    return None
 
-            # 2. 結束檢查 (DungFlag) - 帶連續確認
+            # 2. 結束檢查 (DungFlag) - 帶連續確認 (保持每次檢查)
             if CheckIf(scn, 'dungFlag', threshold=0.75):
                 dungflag_consecutive_count += 1
                 if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
                     logger.info(f"[StateChest] dungFlag 確認 ({dungflag_consecutive_count}次)，開箱結束")
                     return DungeonState.Dungeon
                 # 正在確認中，跳過後面的點擊動作
-                # logger.debug(f"[StateChest] dungFlag 確認中... ({dungflag_consecutive_count}/{DUNGFLAG_CONFIRM_REQUIRED})")
                 continue 
             else:
                 dungflag_consecutive_count = 0
 
-            # 3. 寶箱交互 (Interactive States)
+            # 3. 寶箱交互 (Interactive States) (保持每次檢查)
             has_interaction = False
             
             # 3.1 選擇開箱角色 (whowillopenit)
@@ -2898,7 +2904,6 @@ def Factory():
                     else:
                         Press(pos)
                         Sleep(0.5)
-                        # 移除原本的 8 次 Disarm 循環，現在依靠主循環的 Spam Click
                         break
                 if not haveBeenTried:
                     haveBeenTried = True
@@ -2906,9 +2911,6 @@ def Factory():
 
             # 3.2 正在開箱/解鎖 (chestOpening)
             elif CheckIf(scn, 'chestOpening'):
-                # 僅記錄狀態，不做特殊處理（移除智能解鎖）
-                # 之後自然落入下方的 Spam Click 邏輯
-                # logger.debug("[StateChest] 正在開箱 (chestOpening)")
                 pass
 
             # 3.3 點擊寶箱 (chestFlag)
@@ -2924,20 +2926,22 @@ def Factory():
             # 4. 默認操作：連點跳過對話 (Spam Click)
             # 包含：快進、重試、點擊跳過
             
-            # 4.1 快進
-            if Press(CheckIf_fastForwardOff(scn)):
-                Sleep(0.3)
-                continue
-                
-            # 4.2 網絡重試
-            if TryPressRetry(scn):
-                Sleep(0.3)
-                continue
+            # 快進與重試 (保持檢查，但可以稍微降低頻率，比如每 2 次)
+            if chest_wait_count % 2 == 0:
+                if Press(CheckIf_fastForwardOff(scn)):
+                    Sleep(0.3)
+                    continue
+                if TryPressRetry(scn):
+                    Sleep(0.3)
+                    continue
 
-            # 4.3 點擊跳過 (非阻塞式，每輪點一下)
-            # 使用 disarm 座標作為默認點擊位置，既能解除也能跳過對話
-            Press(disarm)
-            Sleep(0.05) # 極短休眠，保持高響應速度
+            # [優化] 突發連點 (Burst Click)
+            # 為了提高對話跳過速度，並且不被圖像識別拖慢，我們在一次循環中連續點擊多次
+            # 這裡盲點 5 次，每次間隔 0.1秒
+            # 這能確保即使主循環變慢，我們也有足夠的點擊密度
+            for _ in range(5):
+                Press(disarm)
+                Sleep(0.1)
     def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
