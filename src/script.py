@@ -3279,16 +3279,52 @@ def Factory():
                                     logger.warning(f"Resume优化: {MAX_RESUME_RETRIES}次Resume失败，打开地图重新导航")
                                     Press([777,150])  # 打开地图
                                     Sleep(1)
-                                    dungState = DungeonState.Map
+                                    
+                                    # [Fix] 黑暗區域緊急撤離 (Panic Mode)
+                                    if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                        logger.warning("Resume失敗且能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
+                                        if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
+                                            logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
+                                            _panic_start = time.time()
+                                            while time.time() - _panic_start < 60:
+                                                if setting._FORCESTOPING.is_set(): break
+                                                Press(gohome_pos)
+                                                Sleep(0.5)
+                                                if not CheckIf(ScreenShot(), 'gohome'):
+                                                    break
+                                            dungState = None
+                                        else:
+                                            logger.warning("未找到 gohome，嘗試隨機移動脫困")
+                                            Press([1100, 360])
+                                            Sleep(2)
+                                            dungState = None
+                                    else:
+                                        dungState = DungeonState.Map
                         else:
                             # 3次都没检测到Resume，打开地图
                             logger.info("Resume优化: 3次均未检测到Resume按钮，打开地图")
                             Press([777,150])
                             Sleep(1)
-                            # 检查能见度（仅记录日志，不再触发回城）
+                            # 检查能见度 - 如果太黑，嘗試緊急撤離
                             if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                logger.warning("visibliityistoopoor，但继续尝试导航")
-                            dungState = DungeonState.Map
+                                logger.warning("能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
+                                if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
+                                    logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
+                                    _panic_start = time.time()
+                                    while time.time() - _panic_start < 60:
+                                        if setting._FORCESTOPING.is_set(): break
+                                        Press(gohome_pos)
+                                        Sleep(0.5)
+                                        if not CheckIf(ScreenShot(), 'gohome'):
+                                            break
+                                    dungState = None
+                                else:
+                                    logger.warning("未找到 gohome，嘗試隨機移動脫困")
+                                    Press([1100, 360])
+                                    Sleep(2)
+                                    dungState = None
+                            else:
+                                dungState = DungeonState.Map
                     else:
                         # chest_auto 不需要打開地圖，直接回到 Map 狀態讓其專屬邏輯處理
                         if has_chest_auto:
