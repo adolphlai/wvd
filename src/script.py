@@ -584,6 +584,19 @@ def Factory():
     setting =  None
     quest = None
     runtimeContext = None
+    
+    # [新增] 模板緩存字典，避免重複從磁碟讀取圖片
+    _template_cache = {}
+    
+    def _get_cached_template(template_name):
+        """從緩存獲取模板，如果不存在則從磁碟讀取並緩存"""
+        if template_name not in _template_cache:
+            template = LoadTemplateImage(template_name)
+            _template_cache[template_name] = template
+            if template is not None:
+                logger.trace(f"[TemplateCache] 緩存模板: {template_name}")
+        return _template_cache.get(template_name)
+    
     def LoadQuest(farmtarget):
         # 构建文件路径
         jsondict = LoadJson(ResourcePath(QUEST_FILE))
@@ -908,7 +921,7 @@ def Factory():
         match_details = []  # 收集匹配詳情用於摘要
         
         for template_name in templates_to_try:
-            template = LoadTemplateImage(template_name)
+            template = _get_cached_template(template_name)  # [優化] 使用緩存
             if template is None:
                 # 如果模板加載失敗（例如文件不存在），跳過該模板
                 logger.trace(f"[CheckIf] 模板加載失敗或為 None: {template_name}，跳過")
@@ -940,7 +953,7 @@ def Factory():
         if outputMatchResult and best_pos:
             cv2.imwrite("origin.png", screenImage)
             screenshot_copy = screenImage.copy()
-            template = LoadTemplateImage(best_template_name)
+            template = _get_cached_template(best_template_name)  # [優化] 使用緩存
             cv2.rectangle(screenshot_copy, 
                          (best_pos[0] - template.shape[1]//2, best_pos[1] - template.shape[0]//2),
                          (best_pos[0] + template.shape[1]//2, best_pos[1] + template.shape[0]//2), 
@@ -3287,6 +3300,13 @@ def Factory():
 
             # [優化] 突發連點 (Burst Click) - 減少次數和間隔
             # 從 5次x0.1s 改為 3次x0.05s，節省約 0.35s/循環
+            
+            # [新增] 黑幕檢測：如果畫面太暗，可能正在進入戰鬥，停止點擊
+            screen_brightness = scn.mean()
+            if screen_brightness < 30:
+                logger.info(f"[StateChest] 偵測到黑幕 (亮度={screen_brightness:.1f})，可能正在進入戰鬥，停止點擊")
+                return DungeonState.Combat
+            
             logger.debug(f"[StateChest] 執行 Burst Click (3次) - has_interaction={has_interaction}, dungFlag計數={dungflag_consecutive_count}")
             for _ in range(3):
                 Press(disarm)
