@@ -3178,6 +3178,7 @@ def Factory():
                 return None
 
             chest_wait_count += 1
+            logger.debug(f"[StateChest] === 循環 #{chest_wait_count} 開始 === dungFlag計數={dungflag_consecutive_count}")
             if chest_wait_count > MAX_CHEST_WAIT_LOOPS:
                 logger.warning(f"[StateChest] 超時：等待循環超過 {MAX_CHEST_WAIT_LOOPS} 次，強制退出")
                 return None
@@ -3279,6 +3280,7 @@ def Factory():
             # 為了提高對話跳過速度，並且不被圖像識別拖慢，我們在一次循環中連續點擊多次
             # 這裡盲點 5 次，每次間隔 0.1秒
             # 這能確保即使主循環變慢，我們也有足夠的點擊密度
+            logger.debug(f"[StateChest] 執行 Burst Click (5次) - has_interaction={has_interaction}, dungFlag計數={dungflag_consecutive_count}")
             for _ in range(5):
                 Press(disarm)
                 Sleep(0.1)
