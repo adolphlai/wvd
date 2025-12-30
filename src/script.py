@@ -3221,7 +3221,8 @@ def Factory():
                 # [Modified] Removed 'continue' to allow fall-through to Spam Click below
                 # 這樣即使在確認 dungFlag 期間，也能持續點擊關閉彈窗 
             else:
-                dungflag_consecutive_count = 0
+                # [優化] 軟重置：只減少 1，而非歸零，避免偶發的識別失敗完全打斷計數進度
+                dungflag_consecutive_count = max(0, dungflag_consecutive_count - 1)
 
             # 3. 寶箱交互 (Interactive States) (保持每次檢查)
             has_interaction = False
