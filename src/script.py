@@ -759,21 +759,6 @@ def Factory():
                 if not os.path.exists(ScreenShot.record_dir):
                     os.makedirs(ScreenShot.record_dir, exist_ok=True)
 
-            current_time = time.time()
-            if current_time - ScreenShot.last_record_time > 60:
-                # 再次檢查目錄是否存在（防止被刪除）
-                if not os.path.exists(ScreenShot.record_dir):
-                     os.makedirs(ScreenShot.record_dir, exist_ok=True)
-                
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = os.path.join(ScreenShot.record_dir, f"{timestamp}.png")
-                
-                # 異步保存以避免阻塞主線程 (雖然 cv2.imwrite 很快，但為了保險)
-                # 這裡簡單起見先同步，因為 60 秒一次影響不大
-                cv2.imwrite(filename, final_img)
-                logger.info(f"[自動截圖] 已保存監控截圖: {filename}")
-                
-                ScreenShot.last_record_time = current_time
         except Exception as e:
             logger.error(f"[自動截圖] 保存失敗: {e}")
 
