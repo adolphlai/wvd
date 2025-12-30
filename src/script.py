@@ -3162,7 +3162,7 @@ def Factory():
         chest_wait_count = 0
         dungflag_consecutive_count = 0
         dungflag_fail_count = 0  # [新增] 連續失敗計數器
-        DUNGFLAG_CONFIRM_REQUIRED = 5
+        DUNGFLAG_CONFIRM_REQUIRED = 3  # [優化] 從 5 改為 3
         DUNGFLAG_FAIL_THRESHOLD = 3  # 連續失敗 3 次才重置
         
         # 異常狀態定義
@@ -3215,7 +3215,7 @@ def Factory():
             if dungFlag_result:
                 dungflag_consecutive_count += 1
                 dungflag_fail_count = 0  # 成功時重置失敗計數
-                if dungflag_consecutive_count >= 5:
+                if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
                     logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗干擾，開箱流程結束")
                     return DungeonState.Dungeon
                 
@@ -3285,14 +3285,12 @@ def Factory():
                     Sleep(0.3)
                     continue
 
-            # [優化] 突發連點 (Burst Click)
-            # 為了提高對話跳過速度，並且不被圖像識別拖慢，我們在一次循環中連續點擊多次
-            # 這裡盲點 5 次，每次間隔 0.1秒
-            # 這能確保即使主循環變慢，我們也有足夠的點擊密度
-            logger.debug(f"[StateChest] 執行 Burst Click (5次) - has_interaction={has_interaction}, dungFlag計數={dungflag_consecutive_count}")
-            for _ in range(5):
+            # [優化] 突發連點 (Burst Click) - 減少次數和間隔
+            # 從 5次x0.1s 改為 3次x0.05s，節省約 0.35s/循環
+            logger.debug(f"[StateChest] 執行 Burst Click (3次) - has_interaction={has_interaction}, dungFlag計數={dungflag_consecutive_count}")
+            for _ in range(3):
                 Press(disarm)
-                Sleep(0.1)
+                Sleep(0.05)
     def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
