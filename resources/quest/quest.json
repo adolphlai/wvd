@@ -1,18 +1,16 @@
 {
     "GoblinCave":{
         "_TYPE":"dungeon",
-        "questName":"[酒+善恶]初始深渊哥布林洞窟救圣女",
+        "questName":"[宝箱]狼洞1f宝箱",
         "_TARGETINFOLIST":[
-            ["stair_goblinsNest","右下",[875,867]],
-            ["position","左下",[134,973]],
-            ["position","右下",[286,919]],
-            ["position","右上",[713,341]],
-            ["stair_3","左下",[26,546]],
-            ["harken","右下",null]
+            ["chest_auto"],
+            ["position","右上",[771,921]]
         ],
-        "_EOT":[
-            ["press","beginningAbyss",["EdgeOfTown",[1,1]],1],
-            ["press","caveinZone",[1,1],1]
+        "_preEOTcheck":"AWD/AWD",
+        "_EOT":
+        [
+            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],2],
+            ["press","AWD/AWD1F",[1,1],2]
         ]
     },
 	
