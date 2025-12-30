@@ -2414,6 +2414,11 @@ def Factory():
         runtimeContext._COMBAT_ACTION_COUNT += 1
         logger.info(f"[戰鬥] 行動次數: {runtimeContext._COMBAT_ACTION_COUNT}")
 
+        # [計時器] 戰鬥開始計時（只在首次進入時設置）
+        if runtimeContext._TIME_COMBAT == 0:
+            runtimeContext._TIME_COMBAT = time.time()
+            logger.trace("[計時器] 戰鬥計時開始")
+
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
         logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(30):  # 最多等待 15 秒
@@ -2562,8 +2567,6 @@ def Factory():
                     useForcedPhysicalSkill(screen, doubleConfirmCastSpell, f"順序{position}")
                     return
 
-        if runtimeContext._TIME_COMBAT==0:
-            runtimeContext._TIME_COMBAT = time.time()
 
         screen = ScreenShot()
         # combatSpd 檢查已移至 StateCombat 開頭
