@@ -3208,7 +3208,9 @@ def Factory():
                     return None
 
             # 2. 結束檢查 (DungFlag) - 帶連續確認 (保持每次檢查)
-            if CheckIf(scn, 'dungFlag', threshold=0.75):
+            dungFlag_result = CheckIf(scn, 'dungFlag', threshold=0.75)
+            logger.debug(f"[StateChest] dungFlag 偵測結果: {dungFlag_result}, 當前計數={dungflag_consecutive_count}")
+            if dungFlag_result:
                 dungflag_consecutive_count += 1
                 if dungflag_consecutive_count >= 5:
                     logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗干擾，開箱流程結束")
