@@ -3042,13 +3042,8 @@ def Factory():
                             availableChar.remove(whowillopenit) 
                     else:
                         Press(pos)
-                        Sleep(1.5)
-                        if not setting._SMARTDISARMCHEST:
-                            for _ in range(8):
-                                t = time.time()
-                                Press(disarm)
-                                if time.time()-t<0.3:
-                                    Sleep(0.3-(time.time()-t))
+                        Sleep(0.5)
+                        # 移除原本的 8 次 Disarm 循環，現在依靠主循環的 Spam Click
                         break
                 if not haveBeenTried:
                     haveBeenTried = True
@@ -3056,13 +3051,10 @@ def Factory():
 
             # 3.2 正在開箱/解鎖 (chestOpening)
             elif CheckIf(scn, 'chestOpening'):
-                logger.info("[StateChest] 正在開箱 (chestOpening)")
-                Sleep(1)
-                if setting._SMARTDISARMCHEST:
-                    ChestOpen()
-                # 無論是否智能解鎖，之後都會進入連點跳過階段
-                # 這裡不設 has_interaction=True，讓它自然落入下方的連點邏輯
-                # 這樣可以實現「解鎖後立刻開始跳對話」的效果
+                # 僅記錄狀態，不做特殊處理（移除智能解鎖）
+                # 之後自然落入下方的 Spam Click 邏輯
+                # logger.debug("[StateChest] 正在開箱 (chestOpening)")
+                pass
 
             # 3.3 點擊寶箱 (chestFlag)
             elif pos := CheckIf(scn, 'chestFlag'):
