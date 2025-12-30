@@ -26,8 +26,8 @@
         "_preEOTcheck":"AWD/AWD",
         "_EOT":
         [
-            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],1],
-            ["press","AWD/AWD2F",[1,1],1]
+            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],2],
+            ["press","AWD/AWD2F",[1,1],2]
         ]
     },
     "Dist":{
@@ -91,14 +91,14 @@
 
     "DH-entrance":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]深雪入口1",
+        "questName":"[宝箱]深雪六樓自動寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
             ["harken", "右上",null]
         ],
         "_EOT":[
-            ["press","DH",["EdgeOfTown",[1,1]],1],
-            ["press","DH-R6","input swipe 650 250 650 900",1]
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","DH-R6","input swipe 650 250 650 900",2]
         ]
     },
     "DH-6f":{

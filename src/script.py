@@ -1629,9 +1629,11 @@ def Factory():
                 ]
 
             for pattern, state in identifyConfig:
-                # combatActive 系列使用較低閾值（串流品質問題）
+                # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
                 if pattern.startswith('combatActive'):
                     result = CheckIf(screen, pattern, threshold=0.70)
+                elif pattern == 'dungFlag':
+                    result = CheckIf(screen, pattern, threshold=0.75)
                 else:
                     result = CheckIf(screen, pattern)
                 if result:
@@ -1729,6 +1731,26 @@ def Factory():
 
             if counter>=4:
                 logger.info("看起来遇到了一些不太寻常的情况...")
+                # [異常截圖] 只在首次進入異常狀態時截圖
+                if counter == 4:
+                    try:
+                        if not os.path.exists(ScreenShot.record_dir):
+                            os.makedirs(ScreenShot.record_dir, exist_ok=True)
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = os.path.join(ScreenShot.record_dir, f"unusual_{timestamp}.png")
+                        cv2.imwrite(filename, screen)
+                        logger.info(f"[異常截圖] 已保存異常狀態截圖: {filename}")
+                    except Exception as e:
+                        logger.error(f"[異常截圖] 保存失敗: {e}")
+                # [最高優先級] 檢測 returnText，避免誤觸 harken 導致傳送
+                if Press(CheckIf(screen, "returnText")):
+                    logger.info("[異常處理] 偵測到 returnText，點擊返回")
+                    Sleep(2)
+                    return IdentifyState()
+                if Press(CheckIf(screen, "ReturnText")):
+                    logger.info("[異常處理] 偵測到 ReturnText，點擊返回")
+                    Sleep(2)
+                    return IdentifyState()
                 if (CheckIf(screen,'RiseAgain')):
                     RiseAgainReset(reason = 'combat')
                     return IdentifyState()
