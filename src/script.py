@@ -2478,6 +2478,339 @@ def Factory():
                 Sleep(0.5)
                 Press([850,1100])
                 Sleep(3) # Increased sleep duration
+
+    # ==================== DungeonMover 類別 ====================
+    # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯
+    class DungeonMover:
+        """
+        統一的地城移動管理器
+        - 整合 chest_auto, position, harken, gohome 的處理邏輯
+        - 實現分層超時機制 (Soft 30s -> GoHome, Hard 60s -> Restart)
+        - 統一 Resume 和 Chest_Resume 處理
+        """
+        
+        # 超時設定
+        SOFT_TIMEOUT = 30  # 軟超時：觸發 GoHome
+        HARD_TIMEOUT = 60  # 硬超時：觸發重啟
+        
+        # 輪詢設定
+        POLL_INTERVAL = 0.5
+        STILL_REQUIRED = 10  # 約 5 秒靜止判定
+        
+        # Resume 設定
+        MAX_RESUME_RETRIES = 5
+        RESUME_CLICK_INTERVAL = 5  # 每 5 秒主動檢查
+        CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
+        
+        # 轉向解卡設定
+        MAX_TURN_ATTEMPTS = 3
+        
+        def __init__(self):
+            self.reset()
+        
+        def reset(self):
+            """重置所有狀態"""
+            self.move_start_time = time.time()
+            self.last_screen = None
+            self.still_count = 0
+            self.turn_attempt_count = 0
+            self.resume_consecutive_count = 0
+            self.last_resume_click_time = time.time()
+            self.last_chest_auto_click_time = time.time()
+            self.is_gohome_mode = False
+            self.current_target = None
+        
+        def initiate_move(self, targetInfoList: list, ctx):
+            """
+            啟動移動流程
+            Args:
+                targetInfoList: 目標列表
+                ctx: RuntimeContext
+            Returns:
+                DungeonState: 下一個狀態
+            """
+            if not targetInfoList:
+                logger.info("[DungeonMover] 無目標，返回 Map 狀態")
+                return DungeonState.Map
+            
+            self.reset()
+            target_info = targetInfoList[0]
+            self.current_target = target_info.target
+            
+            logger.info(f"[DungeonMover] 啟動移動: 目標={self.current_target}")
+            
+            try:
+                if self.current_target == 'chest_auto':
+                    return self._start_chest_auto(targetInfoList, ctx)
+                elif self.current_target == 'gohome':
+                    self.is_gohome_mode = True
+                    return self._start_gohome(targetInfoList, ctx)
+                else:
+                    # position, harken, stair 等
+                    return self._start_normal_move(targetInfoList, ctx)
+            except Exception as e:
+                logger.error(f"[DungeonMover] 啟動移動發生例外: {e}")
+                return DungeonState.Dungeon
+        
+        def _start_chest_auto(self, targetInfoList, ctx):
+            """啟動 chest_auto 移動"""
+            screen = ScreenShot()
+            pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
+            
+            if pos:
+                logger.info(f"[DungeonMover] 找到 chest_auto 按鈕: {pos}")
+                Press(pos)
+            else:
+                # 嘗試打開地圖面板尋找
+                logger.info("[DungeonMover] 主畫面找不到 chest_auto，嘗試打開地圖")
+                Press([777, 150])
+                Sleep(1)
+                screen = ScreenShot()
+                pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
+                if pos:
+                    Press(pos)
+                else:
+                    # 檢查是否無寶箱
+                    if CheckIf(screen, 'notresure'):
+                        logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
+                        targetInfoList.pop(0)
+                        return DungeonState.Map
+                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕")
+                    targetInfoList.pop(0)
+                    return DungeonState.Map
+            
+            return self._monitor_move(targetInfoList, ctx)
+        
+        def _start_gohome(self, targetInfoList, ctx):
+            """啟動 gohome 移動（內部 Fallback 機制）"""
+            screen = ScreenShot()
+            pos = CheckIf(screen, "gohome")
+            
+            if pos:
+                logger.info(f"[DungeonMover] 找到 gohome 按鈕: {pos}")
+                Press(pos)
+            else:
+                # 嘗試打開地圖面板尋找
+                logger.info("[DungeonMover] 主畫面找不到 gohome，嘗試打開地圖")
+                Press([777, 150])
+                Sleep(1)
+                screen = ScreenShot()
+                pos = CheckIf(screen, "gohome")
+                if pos:
+                    Press(pos)
+                else:
+                    # 緊急撤離：盲點 gohome 常見位置
+                    logger.warning("[DungeonMover] 無法找到 gohome，嘗試盲點")
+                    Press([800, 360])  # 常見的 gohome 位置
+            
+            return self._monitor_move(targetInfoList, ctx)
+        
+        def _start_normal_move(self, targetInfoList, ctx):
+            """啟動一般移動 (position, harken, stair)"""
+            target_info = targetInfoList[0]
+            
+            # 確保地圖開啟
+            screen = ScreenShot()
+            if not CheckIf(screen, 'mapFlag'):
+                logger.info("[DungeonMover] 打開地圖")
+                Press([777, 150])
+                Sleep(1)
+                screen = ScreenShot()
+                
+                # 檢查暴風雪（無法開地圖）
+                if CheckIf(screen, 'visibliityistoopoor'):
+                    logger.warning("[DungeonMover] 能見度過低，直接觸發 GoHome")
+                    self.is_gohome_mode = True
+                    return self._start_gohome(targetInfoList, ctx)
+                
+                if not CheckIf(screen, 'mapFlag'):
+                    logger.warning("[DungeonMover] 無法打開地圖")
+                    return DungeonState.Dungeon
+            
+            # 搜索並點擊目標
+            try:
+                search_result = StateMap_FindSwipeClick(target_info)
+                if search_result:
+                    # 設定特殊 Flag
+                    if target_info.target == 'harken' and target_info.floorImage:
+                        ctx._HARKEN_FLOOR_TARGET = target_info.floorImage
+                    if target_info.target == 'minimap_stair' and target_info.floorImage:
+                        ctx._MINIMAP_STAIR_FLOOR_TARGET = target_info.floorImage
+                        ctx._MINIMAP_STAIR_IN_PROGRESS = True
+                    
+                    Press(search_result)
+                    Press([138, 1432])  # automove
+                    logger.info(f"[DungeonMover] 點擊目標並開始移動")
+                else:
+                    logger.info(f"[DungeonMover] 找不到目標 {target_info.target}")
+                    if target_info.target in ['position', 'minimap_stair'] or target_info.target.startswith('stair'):
+                        targetInfoList.pop(0)
+                    return DungeonState.Map
+            except KeyError as e:
+                logger.error(f"[DungeonMover] 地圖操作錯誤: {e}")
+                return DungeonState.Dungeon
+            
+            return self._monitor_move(targetInfoList, ctx)
+        
+        def _monitor_move(self, targetInfoList, ctx):
+            """
+            統一的移動監控循環
+            Returns:
+                DungeonState: 下一個狀態
+            """
+            target_info = targetInfoList[0] if targetInfoList else None
+            target = target_info.target if target_info else None
+            is_chest_auto = (target == 'chest_auto')
+            
+            logger.info(f"[DungeonMover] 進入監控循環: target={target}, is_gohome={self.is_gohome_mode}")
+            
+            while True:
+                # 檢查停止信號
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return DungeonState.Quit
+                
+                Sleep(self.POLL_INTERVAL)
+                
+                # ========== A. 硬超時檢查 (60s) ==========
+                elapsed = time.time() - self.move_start_time
+                if elapsed > self.HARD_TIMEOUT:
+                    logger.error(f"[DungeonMover] 硬超時 ({self.HARD_TIMEOUT}s)，觸發重啟")
+                    restartGame()
+                
+                # ========== B. 軟超時檢查 (30s) ==========
+                if elapsed > self.SOFT_TIMEOUT and not self.is_gohome_mode:
+                    logger.warning(f"[DungeonMover] 軟超時 ({self.SOFT_TIMEOUT}s)，切換至 GoHome 模式")
+                    self.is_gohome_mode = True
+                    # 不重置計時器，讓硬超時繼續計時
+                    return self._start_gohome(targetInfoList, ctx)
+                
+                # ========== C. 狀態檢查 ==========
+                _, state, screen = IdentifyState()
+                
+                # Harken 傳送完成檢測
+                if ctx._HARKEN_FLOOR_TARGET is None and state == DungeonState.Dungeon:
+                    if hasattr(ctx, '_HARKEN_TELEPORT_JUST_COMPLETED') and ctx._HARKEN_TELEPORT_JUST_COMPLETED:
+                        logger.info("[DungeonMover] Harken 傳送完成")
+                        ctx._HARKEN_TELEPORT_JUST_COMPLETED = False
+                        if target == 'harken':
+                            targetInfoList.pop(0)
+                        return DungeonState.Map
+                
+                # 狀態轉換
+                if state == DungeonState.Combat:
+                    logger.info("[DungeonMover] 進入戰鬥")
+                    return DungeonState.Combat
+                if state == DungeonState.Chest:
+                    logger.info("[DungeonMover] 進入寶箱")
+                    return DungeonState.Chest
+                if state == DungeonState.Quit:
+                    return DungeonState.Quit
+                
+                # ========== D. chest_resume (chest_auto 專用) ==========
+                if is_chest_auto:
+                    if time.time() - self.last_chest_auto_click_time > self.CHEST_AUTO_CLICK_INTERVAL:
+                        pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
+                        if pos:
+                            logger.info(f"[DungeonMover] chest_resume: 點擊 {pos}")
+                            Press(pos)
+                        self.last_chest_auto_click_time = time.time()
+                    
+                    # 檢查無寶箱
+                    if CheckIf(screen, 'notresure'):
+                        logger.info("[DungeonMover] chest_auto: 無寶箱 (notresure)")
+                        Press([1, 1])
+                        targetInfoList.pop(0)
+                        return DungeonState.Map
+                
+                # ========== E. gohome Keep-Alive ==========
+                if self.is_gohome_mode:
+                    if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
+                        pos = CheckIf(screen, "gohome")
+                        if pos:
+                            logger.info(f"[DungeonMover] gohome Keep-Alive: 點擊 {pos}")
+                            Press(pos)
+                        self.last_resume_click_time = time.time()
+                
+                # ========== F. 靜止與 Resume 偵測 ==========
+                if self.last_screen is not None:
+                    gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                    gray2 = cv2.cvtColor(self.last_screen, cv2.COLOR_BGR2GRAY)
+                    diff = cv2.absdiff(gray1, gray2).mean() / 255
+                    
+                    if diff < 0.1:
+                        self.still_count += 1
+                        logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
+                        
+                        if self.still_count >= self.STILL_REQUIRED:
+                            logger.info(f"[DungeonMover] 連續靜止 {self.STILL_REQUIRED} 次")
+                            
+                            # 檢查是否已在地圖
+                            if CheckIf(screen, 'mapFlag'):
+                                logger.info("[DungeonMover] 已在地圖狀態")
+                                return DungeonState.Map
+                            
+                            # Resume 檢查 (非 chest_auto)
+                            if not is_chest_auto:
+                                resume_pos = CheckIf(screen, 'resume')
+                                if resume_pos:
+                                    if self.resume_consecutive_count < self.MAX_RESUME_RETRIES:
+                                        self.resume_consecutive_count += 1
+                                        logger.info(f"[DungeonMover] 點擊 Resume ({self.resume_consecutive_count}/{self.MAX_RESUME_RETRIES})")
+                                        Press(resume_pos)
+                                        Sleep(1)
+                                        
+                                        # 檢查 RouteNotFound
+                                        if CheckIf(ScreenShot(), 'routenotfound'):
+                                            logger.info("[DungeonMover] RouteNotFound，到達目的地")
+                                            if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
+                                                targetInfoList.pop(0)
+                                            return DungeonState.Map
+                                        
+                                        self.still_count = 0
+                                        self.last_screen = None
+                                        continue
+                                    else:
+                                        logger.warning(f"[DungeonMover] Resume 無效 ({self.MAX_RESUME_RETRIES}次)，等待軟超時")
+                            
+                            # 轉向解卡
+                            if self.turn_attempt_count < self.MAX_TURN_ATTEMPTS and not self.is_gohome_mode:
+                                self.turn_attempt_count += 1
+                                logger.info(f"[DungeonMover] 轉向解卡 ({self.turn_attempt_count}/{self.MAX_TURN_ATTEMPTS})")
+                                Swipe([450, 700], [250, 700])
+                                Sleep(2)
+                                self.still_count = 0
+                                self.last_screen = None
+                                continue
+                            
+                            # Minimap Stair 檢測
+                            if ctx._MINIMAP_STAIR_IN_PROGRESS and ctx._MINIMAP_STAIR_FLOOR_TARGET:
+                                result = CheckIf_minimapFloor(screen, ctx._MINIMAP_STAIR_FLOOR_TARGET)
+                                if result["found"]:
+                                    logger.info("[DungeonMover] 到達目標樓層 (MiniMap)")
+                                    ctx._MINIMAP_STAIR_IN_PROGRESS = False
+                                    targetInfoList.pop(0)
+                                    return DungeonState.Map
+                            
+                            # 判定停止（無 Resume 且靜止）
+                            if not is_chest_auto and not CheckIf(screen, 'resume'):
+                                logger.info("[DungeonMover] 靜止且無 Resume，判定到達")
+                                if target in ['position', 'harken'] or (target and target.startswith('stair')):
+                                    targetInfoList.pop(0)
+                                return DungeonState.Map
+                    else:
+                        # 畫面有變化
+                        if self.still_count > 0:
+                            self.still_count = max(0, self.still_count - 1)
+                        if self.resume_consecutive_count > 0:
+                            self.resume_consecutive_count = 0
+                        if self.turn_attempt_count > 0:
+                            self.turn_attempt_count = 0
+                
+                self.last_screen = screen
+    
+    # 全域 DungeonMover 實例
+    dungeon_mover = DungeonMover()
+
     def StateMap_FindSwipeClick(targetInfo : TargetInfo):
         ### return = None: 视为没找到, 大约等于目标点结束.
         ### return = [x,y]: 视为找到, [x,y]是坐标.
@@ -3351,165 +3684,23 @@ def Factory():
                             logger.info("因为初始化, 复制了施法序列.")
                             runtimeContext._ACTIVESPELLSEQUENCE = copy.deepcopy(quest._SPELLSEQUENCE)
 
-                    # chest_auto 特殊處理：不打開地圖，直接使用遊戲內建自動寶箱
-                    if targetInfoList and targetInfoList[0] and (targetInfoList[0].target == "chest_auto"):
-                        logger.info("使用遊戲內建自動寶箱功能")
-                        lastscreen = ScreenShot()
-                        chest_auto_pos = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
-                        logger.debug(f"[chest_auto] 第一次偵測: {chest_auto_pos}")
-                        if not Press(chest_auto_pos):
-                            # 找不到就打開地圖面板再找
-                            mapFlag_pos = CheckIf(lastscreen, "mapFlag")
-                            logger.debug(f"[chest_auto] mapFlag: {mapFlag_pos}")
-                            Press(mapFlag_pos)
-                            Press([664,329])
-                            Sleep(1)
-                            lastscreen = ScreenShot()
-                            chest_auto_pos_2 = CheckIf(lastscreen, "chest_auto", [[710,250,180,180]])
-                            logger.debug(f"[chest_auto] 第二次偵測(地圖面板): {chest_auto_pos_2}")
-                            if not Press(chest_auto_pos_2):
-                                logger.warning("無法找到自動寶箱按鈕，跳過此目標")
-                                dungState = None
-                                elapsed_ms = (time.time() - state_handle_start) * 1000
-                                logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
-                                continue
-                        Sleep(0.5)
-                        # 檢查是否已無寶箱（notresure 彈窗）
-                        notresure_check = ScreenShot()
-                        if CheckIf(notresure_check, 'notresure'):
-                            logger.info("[chest_auto] 偵測到 notresure，已無寶箱，進入下一個目標")
-                            targetInfoList.pop(0)
-                            # 打印下一個目標資訊
-                            if targetInfoList:
-                                next_target = targetInfoList[0]
-                                logger.info(f"[chest_auto] 下一個目標: {next_target.target}")
-                            else:
-                                logger.info("[chest_auto] 已無更多目標")
-                            Press([1, 1])  # 點擊關閉彈窗
-                            Sleep(0.5)
-                            # 重設 has_chest_auto 並直接打開地圖（跳過 Dungeon 狀態處理）
-                            has_chest_auto = False
-                            Press([777, 150])  # 直接打開地圖
-                            Sleep(1)
-                            dungState = DungeonState.Map  # 直接進入 Map 狀態選擇新目標
-                            logger.info(f"[chest_auto] 已打開地圖，準備選擇新目標 (has_chest_auto={has_chest_auto})")
-                            elapsed_ms = (time.time() - state_handle_start) * 1000
-                            logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
-                            continue
-                        # 等待移動完成
-                        # 確保 lastscreen 被初始化（用於靜止檢測）
-                        if 'lastscreen' not in locals() or lastscreen is None:
-                            lastscreen = ScreenShot()
-                        chest_auto_start = time.time()
-                        last_chest_auto_click_time = time.time()
-                        CHEST_AUTO_CLICK_INTERVAL = 5  # 每 5 秒檢查一次
-                        CHEST_AUTO_TIMEOUT = 60  # 60秒超時
-                        while True:
-                            # 檢查停止信號
-                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                                return None
-
-                            Sleep(0.5)
-                            # 超時檢查（防止原地旋轉BUG）
-                            elapsed = time.time() - chest_auto_start
-                            if elapsed > CHEST_AUTO_TIMEOUT:
-                                logger.error(f"chest_auto 移動超時（{elapsed:.1f}秒），疑似卡住，準備重啟遊戲")
-                                restartGame()
-                            
-                            # 定期檢查並點擊自動寶箱按鈕
-                            if time.time() - last_chest_auto_click_time > CHEST_AUTO_CLICK_INTERVAL:
-                                # 注意：這裡使用最後一次截圖的 screen 來檢查，需要先獲取 screen
-                                # 但下面的 IdentifyState 會更新 screen，我們在它之後檢查比較好，或者這裡直接截圖
-                                # 為了不影響循環，我們使用下面的 IdentifyState 返回的 screen
-                                pass 
-                            
-                            _, dungState, screen = IdentifyState()
-
-                            # 在識別狀態後進行定期檢查
-                            if time.time() - last_chest_auto_click_time > CHEST_AUTO_CLICK_INTERVAL:
-                                current_chest_auto_pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
-                                if current_chest_auto_pos:
-                                    logger.info(f"【定期檢查】偵測到自動寶箱按鈕，主動點擊: {current_chest_auto_pos}")
-                                    Press(current_chest_auto_pos)
-                                last_chest_auto_click_time = time.time()
-                            if dungState != DungeonState.Dungeon:
-                                logger.info(f"已退出移動狀態. 當前狀態為{dungState}.")
-                                # chest_auto 遇到 Combat/Chest 只是途中事件，不 pop，處理完會回來繼續
-                                break
-                            elif lastscreen is not None:
-                                gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-                                gray2 = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
-                                mean_diff = cv2.absdiff(gray1, gray2).mean()/255
-                                logger.debug(f"移動停止檢查:{mean_diff:.2f}")
-                                
-                                if 'still_count' not in locals():
-                                    still_count = 0
-                                    
-                                if mean_diff < 0.05:
-                                    still_count += 1
-                                    logger.debug(f"畫面靜止，連續靜止 {still_count} 次")
-                                    
-                                    # 需要連續靜止多次才判定為真正停止 (0.5s 休眠 * 6 ≈ 3秒)
-                                    STILL_REQUIRED = 6
-                                    if still_count < STILL_REQUIRED:
-                                        lastscreen = screen
-                                        continue
-
-                                    # [解卡邏輯] 畫面靜止時，先嘗試左右平移解卡，若多次無效才判定為到達
-                                    MAX_TURN_ATTEMPTS = 3
-                                    if 'turn_attempt_count' not in locals():
-                                        turn_attempt_count = 0
-                                    
-                                    if turn_attempt_count < MAX_TURN_ATTEMPTS:
-                                        logger.info(f"偵測到畫面靜止 (誤差:{mean_diff:.2f})，嘗試左右平移解卡 ({turn_attempt_count+1}/{MAX_TURN_ATTEMPTS})")
-                                        # 簡單的左右平移
-                                        if turn_attempt_count % 2 == 0:
-                                            Swipe([450,700], [250, 700]) # 左滑
-                                        else:
-                                            Swipe([450,700], [650, 700]) # 右滑
-                                        Sleep(1)
-                                        turn_attempt_count += 1
-                                        still_count = 0 # 重置靜止計數，重新檢測移動
-                                        lastscreen = ScreenShot() # 更新基準畫面，避免下次誤判
-                                        continue
-                                    else:
-                                        logger.info(f"停止移動 (已嘗試解卡 {turn_attempt_count} 次). 誤差:{mean_diff}. 當前狀態為{dungState}.")
-                                        if dungState == DungeonState.Dungeon:
-                                            targetInfoList.pop(0)
-                                        break
-                                else:
-                                    # 畫面有在動，重置解卡計數
-                                    still_count = 0
-                                    turn_attempt_count = 0
-                                lastscreen = screen
-                        elapsed_ms = (time.time() - state_handle_start) * 1000
-                        logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
-                        continue
-
-                    dungState, newTargetInfoList = StateSearch(waitTimer,targetInfoList)
+                    # ==================== 使用 DungeonMover 統一處理移動 ====================
+                    logger.info("[StateDungeon] 使用 DungeonMover 處理移動")
+                    dungState = dungeon_mover.initiate_move(targetInfoList, runtimeContext)
                     
-                    if newTargetInfoList == targetInfoList:
-                        gameFrozen_map +=1
-                        logger.info(f"地图卡死检测:{gameFrozen_map}")
-                    else:
-                        gameFrozen_map = 0
-                    if gameFrozen_map > 50:
-                        gameFrozen_map = 0
-                        restartGame()
-
-                    if (targetInfoList==None) or (targetInfoList == []):
+                    # 檢查目標是否完成
+                    if (targetInfoList is None) or (targetInfoList == []):
                         logger.info("地下城目标完成. 地下城状态结束.(仅限任务模式.)")
                         elapsed_ms = (time.time() - state_handle_start) * 1000
                         logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
-
-                    if (newTargetInfoList != targetInfoList):
-                        if newTargetInfoList[0].activeSpellSequenceOverride:
+                    
+                    # 更新施法序列（如果目標變更）
+                    if targetInfoList and targetInfoList[0].activeSpellSequenceOverride:
+                        if runtimeContext._ACTIVESPELLSEQUENCE is None:
                             logger.info("因为目标信息变动, 重新复制了施法序列.")
                             runtimeContext._ACTIVESPELLSEQUENCE = copy.deepcopy(quest._SPELLSEQUENCE)
-                        else:
-                            logger.info("因为目标信息变动, 清空了施法序列.")
-                            runtimeContext._ACTIVESPELLSEQUENCE = None
+
 
                 case DungeonState.Chest:
                     needRecoverBecauseChest = True
