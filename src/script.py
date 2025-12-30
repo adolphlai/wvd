@@ -3161,7 +3161,9 @@ def Factory():
         MAX_CHEST_WAIT_LOOPS = 200  # 最大等待循環次數
         chest_wait_count = 0
         dungflag_consecutive_count = 0
-        DUNGFLAG_CONFIRM_REQUIRED = 3
+        dungflag_fail_count = 0  # [新增] 連續失敗計數器
+        DUNGFLAG_CONFIRM_REQUIRED = 5
+        DUNGFLAG_FAIL_THRESHOLD = 3  # 連續失敗 3 次才重置
         
         # 異常狀態定義
         abnormal_states = [
@@ -3212,6 +3214,7 @@ def Factory():
             logger.debug(f"[StateChest] dungFlag 偵測結果: {dungFlag_result}, 當前計數={dungflag_consecutive_count}")
             if dungFlag_result:
                 dungflag_consecutive_count += 1
+                dungflag_fail_count = 0  # 成功時重置失敗計數
                 if dungflag_consecutive_count >= 5:
                     logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗干擾，開箱流程結束")
                     return DungeonState.Dungeon
@@ -3224,8 +3227,12 @@ def Factory():
                 # [Modified] Removed 'continue' to allow fall-through to Spam Click below
                 # 這樣即使在確認 dungFlag 期間，也能持續點擊關閉彈窗 
             else:
-                # [優化] 軟重置：只減少 1，而非歸零，避免偶發的識別失敗完全打斷計數進度
-                dungflag_consecutive_count = max(0, dungflag_consecutive_count - 1)
+                # [優化] 延遲重置：只有連續失敗 3 次才重置計數
+                dungflag_fail_count += 1
+                if dungflag_fail_count >= DUNGFLAG_FAIL_THRESHOLD:
+                    logger.debug(f"[StateChest] dungFlag 連續失敗 {dungflag_fail_count} 次，重置計數")
+                    dungflag_consecutive_count = 0
+                    dungflag_fail_count = 0
 
             # 3. 寶箱交互 (Interactive States) (保持每次檢查)
             has_interaction = False
