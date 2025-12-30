@@ -2876,11 +2876,17 @@ def Factory():
             # 2. 結束檢查 (DungFlag) - 帶連續確認 (保持每次檢查)
             if CheckIf(scn, 'dungFlag', threshold=0.75):
                 dungflag_consecutive_count += 1
-                if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
-                    logger.info(f"[StateChest] dungFlag 確認 ({dungflag_consecutive_count}次)，開箱結束")
+                if dungflag_consecutive_count >= 5:
+                    logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗干擾，開箱流程結束")
                     return DungeonState.Dungeon
-                # 正在確認中，跳過後面的點擊動作
-                continue 
+                
+                # [優化] 即使看到 dungFlag，也不馬上退出，而是繼續執行下方的 Spam Click
+                # 這樣可以利用主循環的點擊能力來消除潛在的殘留彈窗
+                logger.debug(f"[StateChest] 檢測到 dungFlag ({dungflag_consecutive_count}/5)，繼續執行清理點擊以確保彈窗關閉...")
+                # 注意：這裡不 continue，讓它自然掉落到下方的 Spam Click 邏輯
+                pass
+                # [Modified] Removed 'continue' to allow fall-through to Spam Click below
+                # 這樣即使在確認 dungFlag 期間，也能持續點擊關閉彈窗 
             else:
                 dungflag_consecutive_count = 0
 
