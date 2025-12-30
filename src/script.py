@@ -2698,6 +2698,34 @@ def Factory():
                     return self._start_gohome(targetInfoList, ctx)
                 
                 # ========== C. 狀態檢查 ==========
+                # ========== C. 異常狀況預先檢查 (防止 IdentifyState 卡死) ==========
+                screen_pre = ScreenShot()
+                
+                # 1. 網路重試 / 異常彈窗
+                if TryPressRetry(screen_pre):
+                    logger.info("[DungeonMover] 偵測到 Retry 選項，點擊重試")
+                    Sleep(2)
+                    continue
+
+                # 2. ReturnText (對話框卡住)
+                if Press(CheckIf(screen_pre, "returnText")):
+                    logger.info("[DungeonMover] 偵測到 returnText (可能是對話框)，點擊返回")
+                    Sleep(0.5)
+                    continue
+                
+                # 3. 特殊對話選項
+                if getattr(quest, '_SPECIALDIALOGOPTION', None):
+                    handled_dialog = False
+                    for option in quest._SPECIALDIALOGOPTION:
+                        if Press(CheckIf(screen_pre, option)):
+                            logger.info(f"[DungeonMover] 點擊特殊對話選項: {option}")
+                            handled_dialog = True
+                            break
+                    if handled_dialog:
+                        Sleep(0.5)
+                        continue
+
+                # ========== D. 狀態檢查 ==========
                 _, state, screen = IdentifyState()
                 
                 # Harken 傳送完成檢測
