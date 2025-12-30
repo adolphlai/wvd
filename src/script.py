@@ -2552,6 +2552,31 @@ def Factory():
             
             logger.info(f"[DungeonMover] 啟動移動: 目標={self.current_target}")
             
+            # ========== 異常狀況預先檢查 (暫時性補丁) ==========
+            # 防止因對話框擋住導致無法進入移動狀態 (如無法開啟地圖)
+            screen_pre = ScreenShot()
+            
+            # 1. 網路重試 / 異常彈窗
+            if TryPressRetry(screen_pre):
+                logger.info("[DungeonMover] 偵測到 Retry 選項，點擊重試")
+                Sleep(2)
+                # 直接返回 IdentifyState 以便重新識別狀態
+                return DungeonState.Map
+
+            # 2. ReturnText (對話框卡住)
+            if Press(CheckIf(screen_pre, "returnText")):
+                logger.info("[DungeonMover] 偵測到 returnText (可能是對話框)，點擊返回")
+                Sleep(0.5)
+                return DungeonState.Map
+            
+            # 3. 特殊對話選項
+            if getattr(quest, '_SPECIALDIALOGOPTION', None):
+                for option in quest._SPECIALDIALOGOPTION:
+                    if Press(CheckIf(screen_pre, option)):
+                        logger.info(f"[DungeonMover] 點擊特殊對話選項: {option}")
+                        Sleep(0.5)
+                        return DungeonState.Map
+            
             try:
                 if self.current_target == 'chest_auto':
                     return self._start_chest_auto(targetInfoList, ctx)
