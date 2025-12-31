@@ -498,10 +498,16 @@ class ConfigPanelApp(tk.Toplevel):
             category = category_var.get()
             if category == "":
                 skill_options = [""]
-            elif category == "普攻":
-                skill_options = ["attack"]
             else:
-                skill_options = [""] + SKILLS_BY_CATEGORY.get(category, [])
+                # 從 SKILLS_BY_CATEGORY 取得技能列表
+                skills_from_folder = SKILLS_BY_CATEGORY.get(category, [])
+                if skills_from_folder:
+                    skill_options = [""] + skills_from_folder
+                elif category == "普攻":
+                    skill_options = ["attack"]  # fallback
+                else:
+                    skill_options = [""]
+                logger.debug(f"[技能選項] 類別={category}, 技能數={len(skills_from_folder)}, 選項={skill_options[:5]}...")
             
             skill_combo['values'] = skill_options
             # 如果當前選擇不在新選項中，重置為空
