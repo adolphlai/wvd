@@ -2042,7 +2042,15 @@ def Factory():
         found_skills = []
         not_found_skills = []
         for skillspell in PHYSICAL_SKILLS:
-            skill_pos = CheckIf(scn, 'spellskill/單體/'+skillspell, threshold=0.70)
+            # 使用 get_skill_image_path 取得帶數字前綴的實際檔名
+            full_path = get_skill_image_path("單體", skillspell)
+            if full_path and os.path.exists(full_path):
+                filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                image_path = f'spellskill/單體/{filename_no_ext}'
+            else:
+                image_path = f'spellskill/單體/{skillspell}'
+            
+            skill_pos = CheckIf(scn, image_path, threshold=0.70)
             if skill_pos:
                 found_skills.append(skillspell)
                 logger.info(f"[強制單體] 使用技能: {skillspell}")
@@ -2311,14 +2319,19 @@ def Factory():
             logger.info(f"[技能施放] 使用普攻")
             return use_normal_attack()
         
-        # 取得圖片路徑
-        image_path = get_skill_image_path(category, skill_name)
-        if not image_path:
-            logger.warning(f"[技能施放] 找不到技能圖片: {category}/{skill_name}，嘗試直接搜尋")
-            image_path = 'spellskill/' + skill_name
+        # 取得圖片路徑 - 使用 get_skill_image_path 找到帶數字前綴的實際檔名
+        full_image_path = get_skill_image_path(category, skill_name)
+        if full_image_path and os.path.exists(full_image_path):
+            # 提取相對路徑: 從完整路徑中提取 spellskill/類別/檔名(不含副檔名)
+            folder = SKILL_CATEGORIES.get(category, {}).get("folder", category)
+            filename_no_ext = os.path.basename(full_image_path).rsplit('.', 1)[0]
+            image_path = f'spellskill/{folder}/{filename_no_ext}'
         else:
-            # 轉換為相對路徑供 CheckIf 使用
-            image_path = 'spellskill/' + SKILL_CATEGORIES[category]["folder"] + '/' + os.path.basename(image_path).rsplit('.', 1)[0]
+            # 直接使用類別/技能名格式 (fallback)
+            folder = SKILL_CATEGORIES.get(category, {}).get("folder", category)
+            image_path = f'spellskill/{folder}/{skill_name}'
+        logger.info(f"[順序 {runtimeContext._COMBAT_ACTION_COUNT}] 搜尋技能: {image_path}")
+
         
         # 確保技能欄可見
         scn = ScreenShot()
