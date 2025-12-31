@@ -2830,22 +2830,48 @@ def Factory():
         if spellsequence != None:
             logger.info(f"當前施法序列:{spellsequence}")
             for k in spellsequence.keys():
-                if CheckIf(screen,'spellskill/'+ k):
-                    targetSpell = 'spellskill/'+ spellsequence[k][0]
-                    if not CheckIf(screen, targetSpell):
-                        logger.error("錯誤:施法序列包含不可用的技能")
+                # 構建檢查路徑 (k)
+                check_path = f'spellskill/{k}'
+                for cat, skills in SKILLS_BY_CATEGORY.items():
+                    if k in skills:
+                        full_path = get_skill_image_path(cat, k)
+                        if full_path and os.path.exists(full_path):
+                            folder = SKILL_CATEGORIES.get(cat, {}).get("folder", cat)
+                            filename = os.path.basename(full_path).rsplit('.', 1)[0]
+                            check_path = f'spellskill/{folder}/{filename}'
+                        break
+                
+                if CheckIf(screen, check_path):
+                    skill_name = spellsequence[k][0]
+                    
+                    # 構建目標技能路徑 (targetSpell)
+                    target_spell_path = f'spellskill/{skill_name}'
+                    for cat, skills in SKILLS_BY_CATEGORY.items():
+                        if skill_name in skills:
+                            full_path = get_skill_image_path(cat, skill_name)
+                            if full_path and os.path.exists(full_path):
+                                folder = SKILL_CATEGORIES.get(cat, {}).get("folder", cat)
+                                filename = os.path.basename(full_path).rsplit('.', 1)[0]
+                                target_spell_path = f'spellskill/{folder}/{filename}'
+                            break
+
+                    if not CheckIf(screen, target_spell_path):
+                        logger.error(f"錯誤:施法序列包含不可用的技能 {skill_name}")
                         Press([850,1100])
                         Sleep(0.5)
                         Press([850,1100])
                         Sleep(3)
                         return
                     
-                    logger.info(f"使用技能{targetSpell}, 施法序列特徵: {k}:{spellsequence[k]}")
+                    logger.info(f"使用技能{target_spell_path}, 施法序列特徵: {k}:{spellsequence[k]}")
                     if len(spellsequence[k])!=1:
                         spellsequence[k].pop(0)
-                    Press(CheckIf(screen,targetSpell))
-                    if targetSpell != 'spellskill/' + 'defend':
-                        doubleConfirmCastSpell()
+                    Press(CheckIf(screen, target_spell_path))
+                    
+                    # Defend is at root, so spellskill/defend is correct.
+                    # We check if target_spell_path ends with defend or defend.png
+                    if "defend" not in target_spell_path: 
+                         doubleConfirmCastSpell()
 
                     return
 
