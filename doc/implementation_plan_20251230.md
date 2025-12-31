@@ -44,7 +44,8 @@ flowchart TD
 
     %% 一般移動邏輯 (Resume 檢查)
     CheckResume -- Yes --> ClickResume[點擊 Resume]
-    CheckResume -- No --> OpenMap
+    CheckResume -- No --> MapState[**[Fix] 直接返回 Map 狀態**<br/>(不進入監控, 恢復即時響應)]
+    MapState --> End
     
     %% 地圖導航邏輯
     OpenMap --> FindTarget{"在地圖找到目標?<br/>(Position/Harken/Stair)"}
@@ -124,6 +125,7 @@ flowchart TD
         - 定義: 總移動時間超過 60 秒（含 GoHome 執行時間）。
         - 判定: 即使 GoHome 也無法解決，視為系統卡死。
         - 行為: **觸發 `restartGame`**。
+        - **[Fix] 立即退出優化**: 若偵測到開啟世界地圖(`openworldmap`)或點擊回城(`Deepsnow` / `worldmapflag`)，立即判定為 **DungeonState.Quit**，停止監控與計時，防止在回城過程中觸發超時。
 
 2.  **狀態檢查 (`IdentifyState`)**:
     - 定期截圖並檢查是否進入 **戰鬥 (Combat)**、**寶箱 (Chest)** 或 **退出 (Quit)** 狀態。
@@ -171,7 +173,7 @@ flowchart TD
 *   程式碼語法檢查。
 
 ### 手動驗證
-*   **場景 1 - 一般移動**: 測試 `position` 目標在 60s 內完成。
-*   **場景 2 - 軟超時**: 模擬移動超過 60s，確認目標自動切換為 `gohome` 並開始撤離。
-*   **場景 3 - 硬超時**: 模擬 `gohome` 也卡住，總時間超過設定值 (400s)，人為觸發重啟。
+*   **場景 1 - 一般移動**: 測試 `position` 目標在 30s 內完成。
+*   **場景 2 - 軟超時**: 模擬移動超過 30s，確認目標自動切換為 `gohome` 並開始撤離。
+*   **場景 3 - 硬超時**: 模擬 `gohome` 也卡住，總時間超過設定值 (60s)，人為觸發重啟。
 *   **場景 4 - 正常 Resume**: 模擬移動中出現 Resume 按鈕，確認能點擊並繼續移動，且不會誤觸超時（如果設計為 Resume 成功重置計時器，或者計時器夠長）。
