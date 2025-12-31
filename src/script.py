@@ -4246,6 +4246,10 @@ def Factory():
 
     def DungeonFarm():
         nonlocal runtimeContext
+        # [Fix] 初始化戰鬥計數器，確保定點戰鬥邏輯正常運作
+        runtimeContext._COMBAT_ACTION_COUNT = 0
+        runtimeContext._COMBAT_BATTLE_COUNT = 0
+
         state = None
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
         while 1:
