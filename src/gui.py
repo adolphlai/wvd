@@ -1095,9 +1095,6 @@ class ConfigPanelApp(tk.Toplevel):
         self.button_and_entry = [
             self.adb_path_change_button,
             self.who_will_open_combobox,
-            self.system_auto_check,
-            self.aoe_once_check,
-            self.auto_after_aoe_check,
             self.skip_recover_check,
             self.skip_chest_recover_check,
             self.active_rest_check,
@@ -1112,9 +1109,14 @@ class ConfigPanelApp(tk.Toplevel):
             self.organize_backpack_check,
             self.organize_backpack_count_spinbox,
             self.auto_refill_check,  # 自動補給
+            # 戰鬥設定
+            self.auto_combat_mode_combo,
+            self.unconfigured_default_combo,
+            self.dungeon_repeat_limit_spinbox,
             # 技能施放設定
             self.ae_caster_interval_entry,
             self.ae_caster_count_combo,
+            *[row['category_combo'] for row in self.ae_caster_rows],
             *[row['skill_combo'] for row in self.ae_caster_rows],
             *[row['level_combo'] for row in self.ae_caster_rows],
             ]
