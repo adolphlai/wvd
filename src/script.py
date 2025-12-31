@@ -3763,8 +3763,6 @@ def Factory():
                     Press([1,1])
                     ########### COMBAT RESET
                     # 戰鬥結束了, 我們將一些設置復位
-                    if setting._AOE_ONCE:
-                        runtimeContext._ENOUGH_AOE = False
                     runtimeContext._COMBAT_ACTION_COUNT = 0  # 重置行動計數器
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
@@ -4438,8 +4436,6 @@ def Factory():
                         while 1:
                             Press(FindCoordsOrElseExecuteFallbackAndWait(['icanstillgo','combatActive','combatActive_2'],['input swipe 400 400 400 100',[1,1]],1))
                             Sleep(1)
-                            if setting._AOE_ONCE:
-                                runtimeContext._ENOUGH_AOE = False
                             while 1:
                                 scn=ScreenShot()
                                 if TryPressRetry(scn):
@@ -4501,8 +4497,6 @@ def Factory():
                             Press([1,1])
                             ########### COMBAT RESET
                             # 戰鬥結束了, 我們將一些設置復位
-                            if setting._AOE_ONCE:
-                                runtimeContext._ENOUGH_AOE = False
                             ########### TIMER
                             if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
                                 spend_on_chest = 0
