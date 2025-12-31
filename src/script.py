@@ -2050,7 +2050,7 @@ def Factory():
         found_skills = []
         not_found_skills = []
         for skillspell in PHYSICAL_SKILLS:
-            skill_pos = CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)
+            skill_pos = CheckIf(scn, 'spellskill/單體/'+skillspell, threshold=0.70)
             if skill_pos:
                 found_skills.append(skillspell)
                 logger.info(f"[強制單體] 使用技能: {skillspell}")

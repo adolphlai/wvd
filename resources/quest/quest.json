@@ -92,7 +92,7 @@
         "questName":"[寶箱]深雪六樓自動寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
-            ["harken", "右上",null]
+            ["position","右上",[825,920]]
         ],
         "_EOT":[
             ["press","DH",["EdgeOfTown",[1,1]],2],
