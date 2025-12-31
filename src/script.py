@@ -1470,37 +1470,7 @@ def Factory():
                 # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
                 logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
 
-            # 動態掃描 combatActive 系列圖片
-            combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
-            # 優先級順序：戰鬥 > 寶箱 > 地城 > 地圖
-            # 寶箱優先級高於地城，避免戰鬥結束時先偵測到 dungFlag 而走冗餘流程
-            identifyConfig = combat_active_config + [
-                ('chestFlag',     DungeonState.Chest),   # 寶箱優先
-                ('whowillopenit', DungeonState.Chest),   # 寶箱優先
-                ('dungFlag',      DungeonState.Dungeon),
-                ('mapFlag',       DungeonState.Map),
-                ]
 
-            for pattern, state in identifyConfig:
-                # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
-                if pattern.startswith('combatActive'):
-                    result = CheckIf(screen, pattern, threshold=0.70)
-                elif pattern == 'dungFlag':
-                    result = CheckIf(screen, pattern, threshold=0.75)
-                else:
-                    result = CheckIf(screen, pattern)
-                if result:
-                    elapsed_ms = (time.time() - state_check_start) * 1000
-                    logger.debug(f"[狀態識別] 匹配成功: {pattern} -> {state} (耗時 {elapsed_ms:.0f} ms)")
-                    # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
-                    if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
-                        logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
-                        continue
-                    # 確認已進入地城（用於黑屏偵測）
-                    if not runtimeContext._DUNGEON_CONFIRMED:
-                        runtimeContext._DUNGEON_CONFIRMED = True
-                        logger.info("[狀態識別] 已確認進入地城")
-                    return State.Dungeon, state, screen
 
             if CheckIf(screen,'someonedead'):
                 AddImportantInfo("他们活了,活了!")
@@ -1582,6 +1552,37 @@ def Factory():
                 for option in quest._SPECIALDIALOGOPTION:
                     if Press(CheckIf(screen,option)):
                         return IdentifyState()
+
+            # [Moved] 動態掃描 combatActive 系列圖片 (移至此处以优先处理 Blocking States)
+            combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
+            # 優先級順序：戰鬥 > 寶箱 > 地城 > 地圖
+            identifyConfig = combat_active_config + [
+                ('chestFlag',     DungeonState.Chest),   # 寶箱優先
+                ('whowillopenit', DungeonState.Chest),   # 寶箱優先
+                ('dungFlag',      DungeonState.Dungeon),
+                ('mapFlag',       DungeonState.Map),
+                ]
+
+            for pattern, state in identifyConfig:
+                # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
+                if pattern.startswith('combatActive'):
+                    result = CheckIf(screen, pattern, threshold=0.70)
+                elif pattern == 'dungFlag':
+                    result = CheckIf(screen, pattern, threshold=0.75)
+                else:
+                    result = CheckIf(screen, pattern)
+                if result:
+                    elapsed_ms = (time.time() - state_check_start) * 1000
+                    logger.debug(f"[狀態識別] 匹配成功: {pattern} -> {state} (耗時 {elapsed_ms:.0f} ms)")
+                    # 如果設置了樓層選擇但檢測到 dungFlag，不要立即返回，繼續等待傳送完成
+                    if runtimeContext._HARKEN_FLOOR_TARGET is not None and pattern == 'dungFlag':
+                        logger.debug(f"哈肯樓層選擇: 檢測到 dungFlag 但正在等待傳送，繼續等待...")
+                        continue
+                    # 確認已進入地城（用於黑屏偵測）
+                    if not runtimeContext._DUNGEON_CONFIRMED:
+                        runtimeContext._DUNGEON_CONFIRMED = True
+                        logger.info("[狀態識別] 已確認進入地城")
+                    return State.Dungeon, state, screen
 
             if counter>=4:
                 logger.info("看起来遇到了一些不太寻常的情况...")
@@ -2703,7 +2704,13 @@ def Factory():
             self.move_start_time = time.time()
             self.is_gohome_mode = False
             
-            screen = ScreenShot()
+            # [Fix] 增加狀態檢查，避免在 Dungeon 狀態下遇到戰鬥卻因沒檢查 Resume 而無限循環
+            _, state, screen = IdentifyState()
+            if state in [DungeonState.Combat, DungeonState.Chest, DungeonState.Quit]:
+                logger.info(f"[DungeonMover] resume_move 偵測到 {state}，立即返回該狀態")
+                return state
+            
+            # screen = ScreenShot() # Redundant
             resume_pos = CheckIf(screen, 'resume')
             
             if resume_pos:
@@ -3085,7 +3092,7 @@ def Factory():
         chest_wait_count = 0
         dungflag_consecutive_count = 0
         dungflag_fail_count = 0  # [新增] 連續失敗計數器
-        DUNGFLAG_CONFIRM_REQUIRED = 3  # [優化] 從 5 改為 3
+        DUNGFLAG_CONFIRM_REQUIRED = 5  # [優化] 增加到 5 次確認，避免過早退出
         DUNGFLAG_FAIL_THRESHOLD = 3  # 連續失敗 3 次才重置
         
         # 異常狀態定義
