@@ -132,15 +132,105 @@ def get_scrcpy_stream():
     return _scrcpy_stream
 
 
-CC_SKILLS = ["KANTIOS"]
-SECRET_AOE_SKILLS = ["SAoLABADIOS","SAoLAERLIK","SAoLAFOROS"]
-FULL_AOE_SKILLS = ["LAERLIK", "LAMIGAL","LAZELOS", "LACONES", "LAFOROS","LAHALITO", "LAFERU", "千戀萬花"]
-ROW_AOE_SKILLS = ["maerlik", "mahalito", "mamigal","mazelos","maferu", "macones","maforos","終焉之刻"]
-PHYSICAL_SKILLS = ["unendingdeaths","動靜斬","地裂斬","全力一擊","tzalik","居合","精密攻擊","鎖腹刺","破甲","星光裂","遲鈍連攜擊","強襲","重裝一擊","眩暈打擊","幻影狩獵"]
-ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
+# ==================== 技能分類與載入 ====================
 
-ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS +  PHYSICAL_SKILLS
-ALL_SKILLS = [s for s in ALL_SKILLS if s in list(set(ALL_SKILLS))]
+# 技能類別與施放方式對應
+SKILL_CATEGORIES = {
+    "普攻": {"cast_type": "target", "folder": "普攻"},
+    "單體": {"cast_type": "target", "folder": "單體"},
+    "橫排": {"cast_type": "target", "folder": "橫排"},
+    "全體": {"cast_type": "ok", "folder": "全體"},
+    "秘術": {"cast_type": "ok", "folder": "秘術"},
+    "群控": {"cast_type": "target", "folder": "群控"},
+}
+
+def load_skills_from_folder():
+    """從資料夾結構載入技能列表
+    
+    掃描 resources/images/spellskill/ 下的分類資料夾，
+    按數字前綴排序返回技能名稱列表。
+    
+    Returns:
+        dict: {類別名: [技能名列表], ...}
+    """
+    skills_by_category = {}
+    spellskill_dir = ResourcePath("resources/images/spellskill")
+    
+    for category, info in SKILL_CATEGORIES.items():
+        folder_path = os.path.join(spellskill_dir, info["folder"])
+        skills = []
+        
+        if os.path.isdir(folder_path):
+            files = os.listdir(folder_path)
+            # 過濾只取 .png 檔案
+            png_files = [f for f in files if f.lower().endswith('.png')]
+            # 依檔名排序（數字前綴會自然排序）
+            png_files.sort()
+            
+            for filename in png_files:
+                # 移除數字前綴和副檔名，取得技能名稱
+                # 例：01_attack.png → attack
+                skill_name = filename.rsplit('.', 1)[0]  # 移除副檔名
+                if '_' in skill_name:
+                    skill_name = skill_name.split('_', 1)[1]  # 移除數字前綴
+                skills.append(skill_name)
+        
+        skills_by_category[category] = skills
+        logger.debug(f"[技能載入] {category}: {len(skills)} 個技能")
+    
+    return skills_by_category
+
+def get_skill_cast_type(category):
+    """取得技能類別的施放方式
+    
+    Args:
+        category: 技能類別名稱
+        
+    Returns:
+        str: "target" (需選目標) 或 "ok" (OK 確認)
+    """
+    return SKILL_CATEGORIES.get(category, {}).get("cast_type", "target")
+
+def get_skill_image_path(category, skill_name):
+    """取得技能圖片的完整路徑
+    
+    Args:
+        category: 技能類別名稱
+        skill_name: 技能名稱（不含前綴）
+        
+    Returns:
+        str: 圖片路徑，若找不到則返回 None
+    """
+    folder = SKILL_CATEGORIES.get(category, {}).get("folder", "")
+    if not folder:
+        return None
+    
+    spellskill_dir = ResourcePath("resources/images/spellskill")
+    folder_path = os.path.join(spellskill_dir, folder)
+    
+    if os.path.isdir(folder_path):
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith('.png'):
+                # 檢查是否匹配技能名稱
+                name_part = filename.rsplit('.', 1)[0]
+                if '_' in name_part:
+                    name_part = name_part.split('_', 1)[1]
+                if name_part == skill_name:
+                    return os.path.join(folder_path, filename)
+    
+    return None
+
+# 載入技能列表（程式啟動時執行）
+SKILLS_BY_CATEGORY = load_skills_from_folder()
+
+# 相容性：維持舊常數供現有程式碼使用（之後會移除）
+CC_SKILLS = SKILLS_BY_CATEGORY.get("群控", ["KANTIOS"])
+SECRET_AOE_SKILLS = SKILLS_BY_CATEGORY.get("秘術", ["SAoLABADIOS", "SAoLAERLIK", "SAoLAFOROS"])
+FULL_AOE_SKILLS = SKILLS_BY_CATEGORY.get("全體", ["LAERLIK", "LAMIGAL", "LAZELOS", "LACONES", "LAFOROS", "LAHALITO", "LAFERU"])
+ROW_AOE_SKILLS = SKILLS_BY_CATEGORY.get("橫排", ["maerlik", "mahalito", "mamigal", "mazelos", "maferu", "macones", "maforos"])
+PHYSICAL_SKILLS = SKILLS_BY_CATEGORY.get("單體", ["unendingdeaths", "動靜斬", "地裂斬", "全力一擊", "tzalik", "居合"])
+ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
+ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS + PHYSICAL_SKILLS
 
 SPELLSEKILL_TABLE = [
             ["btn_enable_all","所有技能",ALL_SKILLS,0,0],
