@@ -1030,72 +1030,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.organize_backpack_count_spinbox.config(state="disable")
         self.save_config()
 
-    def update_change_aoe_once_check(self):
-        if self.aoe_once_var.get()==False:
-            self.auto_after_aoe_var.set(False)
-            self.auto_after_aoe_check.config(state="disabled")
-        if self.aoe_once_var.get():
-            self.auto_after_aoe_check.config(state="normal")
 
-    def update_system_auto_combat(self):
-        is_system_auto = self.system_auto_combat_var.get()
-
-        # 更新技能列表
-        if is_system_auto:
-            self._spell_skill_config_internal = ["systemAuto"]
-        else:
-            if self._spell_skill_config_internal == ["systemAuto"]:
-                self._spell_skill_config_internal = []
-                for buttonName,buttonText,buttonSpell, row, col in SPELLSEKILL_TABLE:
-                    if getattr(self,f"{buttonName}_var").get():
-                        self._spell_skill_config_internal += buttonSpell
-        
-        # 更新其他按鈕信息
-        button_state = tk.DISABLED if is_system_auto else tk.NORMAL
-        for buttonName,_,_, _, _ in SPELLSEKILL_TABLE:
-            getattr(self,buttonName).config(state=button_state)
-        self.aoe_once_check.config(state = button_state)
-        if is_system_auto:
-            self.auto_after_aoe_check.config(state = button_state)
-        else:
-            self.update_change_aoe_once_check()
-        
-        # 更新按鈕顏色並保存
-        self.save_config()
-
-    def update_spell_config(self, skills_to_process, buttonName, buttonText):
-        if self.system_auto_combat_var.get():
-            return
-
-        skills_to_process_set = set(skills_to_process)
-
-        if buttonName == "btn_enable_all":
-            if getattr(self,f"{buttonName}_var").get():
-                self._spell_skill_config_internal = list(skills_to_process_set)
-                logger.info(f"已啓用所有技能: {self._spell_skill_config_internal}")
-                for btn,_,_,_,_ in SPELLSEKILL_TABLE:
-                    if btn!=buttonName:
-                        getattr(self,f"{btn}_var").set(True)
-            else:
-                self._spell_skill_config_internal = []
-                for btn,_,_,_,_ in SPELLSEKILL_TABLE:
-                    if btn!=buttonName:
-                        getattr(self,f"{btn}_var").set(False)
-                logger.info("已取消所有技能。")
-        else:
-            if getattr(self,f"{buttonName}_var").get():
-                for skill in skills_to_process:
-                    if skill not in self._spell_skill_config_internal:
-                        self._spell_skill_config_internal.append(skill)
-                logger.info(f"已啓用{buttonText}技能. 當前技能: {self._spell_skill_config_internal}")
-            else:
-                self._spell_skill_config_internal = [s for s in self._spell_skill_config_internal if s not in skills_to_process_set]
-                logger.info(f"已禁用{buttonText}技能. 當前技能: {self._spell_skill_config_internal}")
-
-        # 保證唯一性，但保留順序
-        self._spell_skill_config_internal = list(dict.fromkeys(self._spell_skill_config_internal))
-
-        self.save_config()
 
     def set_controls_state(self, state):
         self.button_and_entry = [

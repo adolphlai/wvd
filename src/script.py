@@ -232,14 +232,6 @@ PHYSICAL_SKILLS = SKILLS_BY_CATEGORY.get("單體", ["unendingdeaths", "動靜斬
 ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
 ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS + PHYSICAL_SKILLS
 
-SPELLSEKILL_TABLE = [
-            ["btn_enable_all","所有技能",ALL_SKILLS,0,0],
-            ["btn_enable_horizontal_aoe","橫排AOE",ROW_AOE_SKILLS,0,1],
-            ["btn_enable_full_aoe","全體AOE",FULL_AOE_SKILLS,1,0],
-            ["btn_enable_secret_aoe","祕術AOE",SECRET_AOE_SKILLS,1,1],
-            ["btn_enable_physical","強力單體",PHYSICAL_SKILLS,2,0],
-            ["btn_enable_cc","羣體控制",CC_SKILLS,2,1]
-            ]
 
 DUNGEON_TARGETS = BuildQuestReflection()
 
