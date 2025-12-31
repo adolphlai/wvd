@@ -1,7 +1,7 @@
 {
     "GoblinCave":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]狼洞1f宝箱",
+        "questName":"[寶箱]狼洞1f寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
             ["position","右上",[771,921]]
@@ -16,7 +16,7 @@
 	
     "AWD":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]狼洞2f宝箱",
+        "questName":"[寶箱]狼洞2f寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
             ["position","右下",[766,974]]
@@ -30,7 +30,7 @@
     },
     "Dist":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]水路一号街",
+        "questName":"[寶箱]水路一號街",
 		"_TARGETINFOLIST":[
             ["harken","右上",[[769,874,875,942]],"DH-R5-harken"],
             ["harken","左上",null]
@@ -43,7 +43,7 @@
 
     "lounge":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]水路船二lounge",
+        "questName":"[寶箱]水路船二lounge",
         "_TARGETINFOLIST":[
             ["stair_lounge","左上",[292,394]],
             ["chest","左上",[[0,0,900,739],[0,529,212,106]]],
@@ -58,7 +58,7 @@
 
     "fortress-B1F":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]要塞一层",
+        "questName":"[寶箱]要塞一層",
         "_TARGETINFOLIST":[
             ["chest","左下",[[0,305,900,965]]],
             ["harken","左下",null]
@@ -71,7 +71,7 @@
 
     "fortress-B8F":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]要塞八层",
+        "questName":"[寶箱]要塞八層",
         "_TARGETINFOLIST":[
             ["stair_fortress1f","左上",[720,395]],
             ["position","左下",[453,865]],
@@ -89,7 +89,7 @@
 
     "DH-entrance":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]深雪六樓自動寶箱",
+        "questName":"[寶箱]深雪六樓自動寶箱",
         "_TARGETINFOLIST":[
             ["chest_auto"],
             ["harken", "右上",null]
@@ -101,7 +101,7 @@
     },
     "DH-6f":{
         "_TYPE":"dungeon",
-        "questName":"*新!*[宝箱+刷怪]深雪R6",
+        "questName":"*新!*[寶箱+刷怪]深雪R6",
         "_TARGETINFOLIST":[
             ["position","右下",[506,1243]],
             ["position","右下",[768,660]],
@@ -146,7 +146,7 @@
 
     "fordraig-B3F":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]鸟洞三层fordraigB3F",
+        "questName":"[寶箱]鳥洞三層fordraigB3F",
         "_TARGETINFOLIST":[
             ["chest",null],
             ["harken",[[100,1200,700,100],[700,800,100,800],[400,100,400,1200],[100,800,700,800],[400,1200,400,100]]]
@@ -160,7 +160,7 @@
 
     "SSC_chest":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]忍洞一层宝箱",
+        "questName":"[寶箱]忍洞一層寶箱",
         "_TARGETINFOLIST":[
 	        ["chest","右上",[[0,0,900,1600],[0,0,407,1600]]],
             ["chest","右下",[[0,0,900,1600],[0,0,900,800]]],
@@ -176,7 +176,7 @@
 
     "LBC":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]卢比肯宝箱",
+        "questName":"[寶箱]盧比肯寶箱",
         "_TARGETINFOLIST":[
             ["chest"],
             ["LBC/LBC_quit"]
@@ -190,7 +190,7 @@
 
     "GHB":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]百花之庭固定怪",
+        "questName":"[寶箱]百花之庭固定怪",
         "_TARGETINFOLIST":[
             ["position","左上",[80,450]],
             ["position","右上",[340,450]],
@@ -211,7 +211,7 @@
 
     "COS_chest":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]离别洞窟",
+        "questName":"[寶箱]離別洞窟",
         "_TARGETINFOLIST":[
             ["chest","左上",null],
             ["chest","右上",null],
@@ -229,7 +229,7 @@
 
     "COS_chest_short":{
         "_TYPE":"dungeon",
-        "questName":"[宝箱]离别洞窟(只刷2f)",
+        "questName":"[寶箱]離別洞窟(只刷2f)",
         "_TARGETINFOLIST":[
             ["chest","左上",null],
             ["chest","右上",null],
@@ -244,7 +244,7 @@
 
     "DOE":{
         "_TYPE":"dungeon",
-        "questName":"[矿石]土洞(5-9)",
+        "questName":"[礦石]土洞(5-9)",
         "_EOT":[
             ["press","DOE",["EdgeOfTown",[1,1]],1],
             ["press","DOEB1F",[1,1],1]
@@ -259,7 +259,7 @@
 
     "DOF": {
         "_TYPE":"dungeon",
-        "questName":"[矿石]火洞(10-14)",
+        "questName":"[礦石]火洞(10-14)",
         "_TARGETINFOLIST":[
             ["position","左下",[347,866]],
             ["position","左下",[400,1183]],
@@ -274,7 +274,7 @@
 
     "DOW":{
         "_TYPE":"dungeon",
-        "questName":"[矿石]风洞(15-19)",
+        "questName":"[礦石]風洞(15-19)",
         "_TARGETINFOLIST":[
         ["chest",[[700,1200,100,100]],[[0,780,900,500],[0,780,150,120]]],
         ["DOW_quit",[[700,1200,100,100]],null]
@@ -287,7 +287,7 @@
     
     "DOL":{
         "_TYPE":"dungeon",
-        "questName":"[矿石]光洞(15-19)",
+        "questName":"[礦石]光洞(15-19)",
         "_EOT":[
             ["press","DOL",["EdgeOfTown",[1,1]],1],
             ["press","DOLB1F",[1,1],1]
@@ -302,47 +302,47 @@
     },
 
     "7000G":{
-        "questName":"[金币]7000G",
+        "questName":"[金幣]7000G",
         "_TYPE":"quest"
     },
 
     "fordraig":{
-        "questName":"[任务]角鹫之剑 fordraig",
+        "questName":"[任務]角鷲之劍 fordraig",
         "_TYPE":"quest"
     },
 
     "darkLight":{
-        "questName":"[装备]暗灯",
+        "questName":"[裝備]暗燈",
         "_TYPE":"quest"
     },
 
     "LBC-oneGorgon":{
-        "questName":"[任务]卢比肯 三牛",
+        "questName":"[任務]盧比肯 三牛",
         "_TYPE":"quest"
     },
 
     "SSC-goldenchest":{
-        "questName":"[任务]忍洞一层 金箱",
+        "questName":"[任務]忍洞一層 金箱",
         "_TYPE":"quest"
     },
 
     "CaveOfSeperation":{
-        "questName":"[任务]离别洞窟 约定之剑",
+        "questName":"[任務]離別洞窟 約定之劍",
         "_TYPE":"quest"
     },
 
     "Scorpionesses":{
-        "questName":"[悬赏+金币]悬赏点数: 蝎女",
+        "questName":"[懸賞+金幣]懸賞點數: 蠍女",
         "_TYPE":"quest"
     },
 
     "steeltrail":{
-        "questName":"[酒]钢试炼",
+        "questName":"[酒]鋼試煉",
         "_TYPE":"quest"
     },
 
     "jier":{
-        "questName":"[刷怪]悬赏点数: 吉尔",
+        "questName":"[刷怪]懸賞點數: 吉爾",
         "_TYPE":"quest"
     },
 

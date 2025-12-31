@@ -11,11 +11,11 @@ import threading
 import queue
 import numpy as np
 
-# 基础模块包括:
-# LOGGER. 将输入写入到logger.txt文件中.
-# CONFIG. 保存和写入设置.
-# CHANGES LOG. 弹窗展示更新文档.
-# TOOLTIP. 鼠标悬停时的提示.
+# 基礎模塊包括:
+# LOGGER. 將輸入寫入到logger.txt文件中.
+# CONFIG. 保存和寫入設置.
+# CHANGES LOG. 彈窗展示更新文檔.
+# TOOLTIP. 鼠標懸停時的提示.
 
 ############################################
 THREE_DAYS_AGO = time.time() - 3 * 24 * 60 * 60
@@ -24,10 +24,10 @@ os.makedirs(LOGS_FOLDER_NAME, exist_ok=True)
 for filename in os.listdir(LOGS_FOLDER_NAME):
     file_path = os.path.join(LOGS_FOLDER_NAME, filename)
     
-    # 获取最后修改时间
+    # 獲取最後修改時間
     creation_time = os.path.getmtime(file_path)
     
-    # 如果文件创建时间早于3天前，则删除
+    # 如果文件創建時間早於3天前，則刪除
     if creation_time < THREE_DAYS_AGO:
         os.remove(file_path)
 ############################################
@@ -67,7 +67,7 @@ def reset_log_time():
 
 # ===========================================
 def setup_file_handler():
-    """设置普通日誌文件处理器（DEBUG 級別以上）"""
+    """設置普通日誌文件處理器（DEBUG 級別以上）"""
     os.makedirs(LOGS_FOLDER_NAME, exist_ok=True)
     log_file_path = f"{LOG_FILE_PREFIX}_{_get_log_time()}.txt"
     
@@ -81,7 +81,7 @@ def setup_file_handler():
     return file_handler
 
 def setup_verbose_file_handler():
-    """设置詳細日誌文件处理器（TRACE 級別以上，包含所有詳細記錄）"""
+    """設置詳細日誌文件處理器（TRACE 級別以上，包含所有詳細記錄）"""
     os.makedirs(LOGS_FOLDER_NAME, exist_ok=True)
     log_file_path = f"{LOG_FILE_PREFIX}_{_get_log_time()}_verbose.txt"
     
@@ -94,12 +94,12 @@ def setup_verbose_file_handler():
     file_handler.setFormatter(file_formatter)
     return file_handler
 
-# 使用线程安全的 Queue 而不是 multiprocessing.Queue
+# 使用線程安全的 Queue 而不是 multiprocessing.Queue
 log_queue = queue.Queue(-1)
 queue_listener = None
 
 def StartLogListener():
-    """启动日志监听器（雙文件輸出）"""
+    """啓動日誌監聽器（雙文件輸出）"""
     global queue_listener
     if queue_listener is None:
         reset_log_time()  # 重置時間戳，確保新日誌文件
@@ -114,40 +114,40 @@ def StartLogListener():
 
 
 def StopLogListener():
-    """停止日志监听器"""
+    """停止日誌監聽器"""
     global queue_listener
     if queue_listener is not None:
         queue_listener.stop()
         queue_listener = None
 #===========================================
 class LoggerStream:
-    """自定义流，将输出重定向到logger"""
+    """自定義流，將輸出重定向到logger"""
     def __init__(self, logger, log_level):
         self.logger = logger
         self.log_level = log_level
-        self.buffer = ''  # 用于累积不完整的行
+        self.buffer = ''  # 用於累積不完整的行
     
     def write(self, message):
-        # 累积消息直到遇到换行符
+        # 累積消息直到遇到換行符
         self.buffer += message
         while '\n' in self.buffer:
             line, self.buffer = self.buffer.split('\n', 1)
-            if line:  # 跳过空行
+            if line:  # 跳過空行
                 self.logger.log(self.log_level, line)
     
     def flush(self):
-        # 处理缓冲区中剩余的内容
+        # 處理緩衝區中剩餘的內容
         if self.buffer:
             self.logger.log(self.log_level, self.buffer)
             self.buffer = ''
 
 def RegisterQueueHandler():
-    """配置QueueHandler，将日志发送到队列"""
+    """配置QueueHandler，將日誌發送到隊列"""
     # 保持原有的stdout/stderr重定向
     sys.stdout = LoggerStream(logger, logging.DEBUG)
     sys.stderr = LoggerStream(logger, logging.ERROR)
     
-    # 创建QueueHandler并连接到全局队列
+    # 創建QueueHandler並連接到全局隊列
     queue_handler = logging.handlers.QueueHandler(log_queue)
     queue_handler.setLevel(TRACE)  # 設為 TRACE 以捕獲所有日誌
     
@@ -211,17 +211,17 @@ class LogLevelFilter(logging.Filter):
         return True  # 其他級別預設顯示
 ############################################
 def ResourcePath(relative_path):
-    """ 获取资源的绝对路径，适用于开发环境和 PyInstaller 打包环境 """
+    """ 獲取資源的絕對路徑，適用於開發環境和 PyInstaller 打包環境 """
     try:
-        # PyInstaller 创建一个临时文件夹并将路径存储在 _MEIPASS 中
+        # PyInstaller 創建一個臨時文件夾並將路徑存儲在 _MEIPASS 中
         base_path = sys._MEIPASS
     except Exception:
-        # 未打包状态 (开发环境)
-        # 假设 script.py 位于 C:\Users\Arnold\Desktop\andsimscripts\src\
-        # 并且 resources 位于 C:\Users\Arnold\Desktop\andsimscripts\resources\
-        # 我们需要从 script.py 的目录 (src) 回到上一级 (andsimscripts)
+        # 未打包狀態 (開發環境)
+        # 假設 script.py 位於 C:\Users\Arnold\Desktop\andsimscripts\src\
+        # 並且 resources 位於 C:\Users\Arnold\Desktop\andsimscripts\resources\
+        # 我們需要從 script.py 的目錄 (src) 回到上一級 (andsimscripts)
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        # 如果你的 script.py 和 resources 文件夹都在项目根目录，则 base_path = os.path.abspath(".")
+        # 如果你的 script.py 和 resources 文件夾都在項目根目錄，則 base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
 def LoadJson(path):
@@ -233,20 +233,20 @@ def LoadJson(path):
         else:
             return {}   
     except json.JSONDecodeError:
-        logger.error(f"错误: 无法解析 {path}。将使用默认配置。")
+        logger.error(f"錯誤: 無法解析 {path}。將使用默認配置。")
         return {}
     except Exception as e:
-        logger.error(f"错误: 加载配置时发生错误: {e}。将使用默认配置。")
+        logger.error(f"錯誤: 加載配置時發生錯誤: {e}。將使用默認配置。")
         return {}
 def LoadImage(path):
     try:
-        # 尝试读取图片
+        # 嘗試讀取圖片
         img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if img is None:
-        # 手动抛出异常
-            raise ValueError(f"[OpenCV 错误] 图片加载失败，路径可能不存在或图片损坏: {path}")
+        # 手動拋出異常
+            raise ValueError(f"[OpenCV 錯誤] 圖片加載失敗，路徑可能不存在或圖片損壞: {path}")
     except Exception as e:
-        logger.error(f"加载图片失败: {str(e)}")
+        logger.error(f"加載圖片失敗: {str(e)}")
         return None
     return img
 ############################################
@@ -258,7 +258,7 @@ def SaveConfigToFile(config_data):
         logger.info("配置已保存。")
         return True
     except Exception as e:
-        logger.error(f"保存配置时发生错误: {e}")
+        logger.error(f"保存配置時發生錯誤: {e}")
         return False
 def LoadConfigFromFile(config_file_path = CONFIG_FILE):
     if config_file_path == None:
@@ -272,14 +272,14 @@ def SetOneVarInConfig(var, value):
 CHANGES_LOG = "CHANGES_LOG.md"
 def ShowChangesLogWindow():
     log_window = tk.Toplevel()
-    log_window.title("更新日志")
+    log_window.title("更新日誌")
     log_window.geometry("700x500")
 
-    log_window.lift()  # 提升到最上层
-    log_window.attributes('-topmost', True)  # 强制置顶
+    log_window.lift()  # 提升到最上層
+    log_window.attributes('-topmost', True)  # 強制置頂
     log_window.after(100, lambda: log_window.attributes('-topmost', False))
     
-    # 创建滚动文本框
+    # 創建滾動文本框
     text_area = scrolledtext.ScrolledText(
         log_window, 
         wrap=tk.WORD,
@@ -289,16 +289,16 @@ def ShowChangesLogWindow():
     )
     text_area.pack(fill=tk.BOTH, expand=True)
     
-    # 禁用文本编辑功能
+    # 禁用文本編輯功能
     text_area.configure(state='disabled')
     
-    # 尝试读取并显示Markdown文件
+    # 嘗試讀取並顯示Markdown文件
     try:
-        # 替换为你的Markdown文件路径
+        # 替換爲你的Markdown文件路徑
         with open(CHANGES_LOG, "r", encoding="utf-8") as file:
             markdown_content = file.read()
         
-        # 临时启用文本框以插入内容
+        # 臨時啓用文本框以插入內容
         text_area.configure(state='normal')
         text_area.delete(1.0, tk.END)
         text_area.insert(tk.INSERT, markdown_content)
@@ -306,12 +306,12 @@ def ShowChangesLogWindow():
     
     except FileNotFoundError:
         text_area.configure(state='normal')
-        text_area.insert(tk.INSERT, f"错误：未找到{CHANGES_LOG}文件")
+        text_area.insert(tk.INSERT, f"錯誤：未找到{CHANGES_LOG}文件")
         text_area.configure(state='disabled')
     
     except Exception as e:
         text_area.configure(state='normal')
-        text_area.insert(tk.INSERT, f"读取文件时出错: {str(e)}")
+        text_area.insert(tk.INSERT, f"讀取文件時出錯: {str(e)}")
         text_area.configure(state='disabled')
 ###########################################
 QUEST_FILE = 'resources/quest/quest.json'
@@ -322,26 +322,26 @@ def BuildQuestReflection():
         quest_reflect_map = {}
         seen_names = set()
         
-        # 遍历所有任务代号
+        # 遍歷所有任務代號
         for quest_code, quest_info in data.items():
-            # 获取本地化任务名称
+            # 獲取本地化任務名稱
             quest_name = quest_info["questName"]
             
-            # 检查名称是否重复
+            # 檢查名稱是否重複
             if quest_name in seen_names:
                 raise ValueError(f"Duplicate questName found: '{quest_name}'")
             
-            # 添加到映射表和已见集合
+            # 添加到映射表和已見集合
             quest_reflect_map[quest_name] = quest_code
             seen_names.add(quest_name)
         
         return quest_reflect_map
     
     except KeyError as e:
-        raise KeyError(f"不存在'questName'属性: {e}.")
+        raise KeyError(f"不存在'questName'屬性: {e}.")
     except json.JSONDecodeError as e:
         logger.info(f"Error at line {e.lineno}, column {e.colno}: {e.msg}")
-        logger.info(f"Problematic text: {e.doc[e.pos-30:e.pos+30]}")  # 显示错误上下文
+        logger.info(f"Problematic text: {e.doc[e.pos-30:e.pos+30]}")  # 顯示錯誤上下文
         exit()
     except FileNotFoundError as e:
         raise FileNotFoundError(f"{e}")
@@ -387,17 +387,17 @@ class Tooltip:
         if self.tooltip_window:
             return
             
-        # 获取widget的位置和尺寸
+        # 獲取widget的位置和尺寸
         widget_x = self.widget.winfo_rootx()
         widget_y = self.widget.winfo_rooty()
         widget_width = self.widget.winfo_width()
         widget_height = self.widget.winfo_height()
         
         self.tooltip_window = tk.Toplevel(self.widget)
-        self.tooltip_window.wm_overrideredirect(True)  # 移除窗口装饰
-        self.tooltip_window.attributes("-alpha", 0.95)  # 设置透明度
+        self.tooltip_window.wm_overrideredirect(True)  # 移除窗口裝飾
+        self.tooltip_window.attributes("-alpha", 0.95)  # 設置透明度
         
-        # 创建标签显示文本
+        # 創建標籤顯示文本
         label = ttk.Label(
             self.tooltip_window, 
             text=self.text, 
@@ -407,15 +407,15 @@ class Tooltip:
             padding=(8, 4),
             font=("Arial", 10),
             justify="left",
-            wraplength=300  # 自动换行宽度
+            wraplength=300  # 自動換行寬度
         )
         label.pack()
         
-        # 计算最佳显示位置（默认在widget下方）
+        # 計算最佳顯示位置（默認在widget下方）
         x = widget_x + widget_width + 2
         y = widget_y + widget_height//2
         
-        # 设置最终位置并显示
+        # 設置最終位置並顯示
         self.tooltip_window.wm_geometry(f"+{int(x)}+{int(y)}")
         self.tooltip_window.deiconify()
 

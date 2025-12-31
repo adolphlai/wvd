@@ -10,8 +10,8 @@ from utils import *
 class ConfigPanelApp(tk.Toplevel):
     def __init__(self, master_controller, version, msg_queue):
         self.URL = "https://github.com/arnold2957/wvd"
-        self.TITLE = f"WvDAS 巫术daphne自动刷怪 v{version} @德德Dellyla(B站)"
-        self.INTRODUCTION = f"遇到问题? 请访问:\n{self.URL} \n或加入Q群: 922497356."
+        self.TITLE = f"WvDAS 巫術daphne自動刷怪 v{version} @德德Dellyla(B站)"
+        self.INTRODUCTION = f"遇到問題? 請訪問:\n{self.URL} \n或加入Q羣: 922497356."
 
         RegisterQueueHandler()
         StartLogListener()
@@ -25,10 +25,10 @@ class ConfigPanelApp(tk.Toplevel):
 
         self.adb_active = False
 
-        # 关闭时退出整个程序
+        # 關閉時退出整個程序
         self.protocol("WM_DELETE_WINDOW", self.controller.on_closing)
 
-        # --- 任务状态 ---
+        # --- 任務狀態 ---
         self.quest_active = False
 
         # --- ttk Style ---
@@ -37,10 +37,10 @@ class ConfigPanelApp(tk.Toplevel):
         self.style.configure("custom.TCheckbutton")
         self.style.map("Custom.TCheckbutton",
             foreground=[("disabled selected", "#8CB7DF"),("disabled", "#A0A0A0"), ("selected", "#196FBF")])
-        self.style.configure("BoldFont.TCheckbutton", font=("微软雅黑", 9,"bold"))
-        self.style.configure("LargeFont.TCheckbutton", font=("微软雅黑", 12,"bold"))
+        self.style.configure("BoldFont.TCheckbutton", font=("微軟雅黑", 9,"bold"))
+        self.style.configure("LargeFont.TCheckbutton", font=("微軟雅黑", 12,"bold"))
 
-        # --- UI 变量 ---
+        # --- UI 變量 ---
         self.config = LoadConfigFromFile()
         for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
             if issubclass(var_type, tk.Variable):
@@ -57,12 +57,12 @@ class ConfigPanelApp(tk.Toplevel):
 
         self.create_widgets()
         self.update_system_auto_combat()
-        self.update_active_rest_state() # 初始化时更新旅店住宿entry.
-        self.update_organize_backpack_state()  # 初始化整理背包狀態
+        self.update_active_rest_state() # 初始化時更新旅店住宿entry.
+        self.update_organize_backpack_state()  # 初始化整理揹包狀態
         
 
         logger.info("**********************************")
-        logger.info(f"当前版本: {version}")
+        logger.info(f"當前版本: {version}")
         logger.info(self.INTRODUCTION, extra={"summary": True})
         logger.info("**********************************")
         
@@ -128,7 +128,7 @@ class ConfigPanelApp(tk.Toplevel):
         right_frame = ttk.Frame(self)
         right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=5, pady=5)
         
-        # === 日志过滤器 checkbox ===
+        # === 日誌過濾器 checkbox ===
         log_filter_frame = ttk.Frame(right_frame)
         log_filter_frame.pack(fill=tk.X, pady=(0, 5))
         
@@ -159,7 +159,7 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Checkbutton(log_filter_frame, text="ERROR", variable=self.show_error_var,
                         command=update_log_filter).pack(side=tk.LEFT, padx=2)
 
-        # === 日志显示区域 ===
+        # === 日誌顯示區域 ===
         scrolled_text_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
         self.log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff', bd=2, relief=tk.FLAT, width=55, height=28)
         self.log_display.pack(fill=tk.BOTH, expand=True)
@@ -185,15 +185,15 @@ class ConfigPanelApp(tk.Toplevel):
         self.summary_text_handler.emit = new_emit
         logger.addHandler(self.summary_text_handler)
 
-        # === 主框架（左侧）===
+        # === 主框架（左側）===
         self.main_frame = ttk.Frame(self, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # === 分页控件 ===
+        # === 分頁控件 ===
         self.notebook = ttk.Notebook(self.main_frame)
         self.notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # 创建五个分页
+        # 創建五個分頁
         self.tab_general = ttk.Frame(self.notebook, padding=10)
         self.tab_battle = ttk.Frame(self.notebook, padding=10)
         self.tab_skills = ttk.Frame(self.notebook, padding=10)
@@ -206,40 +206,40 @@ class ConfigPanelApp(tk.Toplevel):
         self.notebook.add(self.tab_advanced, text="進階設定")
         self.notebook.add(self.tab_test, text="測試")
 
-        # 验证命令（数字输入）
+        # 驗證命令（數字輸入）
         vcmd_non_neg = self.register(lambda x: ((x=="")or(x.isdigit())))
 
-        # checkcommand 用于多个地方
+        # checkcommand 用於多個地方
         def checkcommand():
             self.update_active_rest_state()
             self.save_config()
 
         # =============================================
-        # Tab 1: 一般设定
+        # Tab 1: 一般設定
         # =============================================
         self._create_general_tab(vcmd_non_neg)
 
         # =============================================
-        # Tab 2: 战斗设定
+        # Tab 2: 戰鬥設定
         # =============================================
         self._create_battle_tab()
 
         # =============================================
-        # Tab 3: 技能设定
+        # Tab 3: 技能設定
         # =============================================
         self._create_skills_tab(vcmd_non_neg)
 
         # =============================================
-        # Tab 4: 进阶设定
+        # Tab 4: 進階設定
         # =============================================
         self._create_advanced_tab(vcmd_non_neg, checkcommand)
 
         # =============================================
-        # Tab 5: 测试
+        # Tab 5: 測試
         # =============================================
         self._create_test_tab()
 
-        # === 更新提示区域（默认隐藏）===
+        # === 更新提示區域（默認隱藏）===
         self.update_sep = ttk.Separator(self.main_frame, orient='horizontal')
         self.update_sep.grid(row=1, column=0, columnspan=3, sticky='ew', pady=10)
 
@@ -293,7 +293,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.adb_status_label = ttk.Label(frame_adb)
         self.adb_status_label.grid(row=0, column=0, padx=5)
 
-        # 隐藏的Entry用于存储变量
+        # 隱藏的Entry用於存儲變量
         adb_entry = ttk.Entry(frame_adb, textvariable=self.emu_path_var)
         adb_entry.grid_remove()
 
@@ -372,7 +372,7 @@ class ConfigPanelApp(tk.Toplevel):
         button_frame.columnconfigure(0, weight=1)
 
         s = ttk.Style()
-        s.configure('start.TButton', font=('微软雅黑', 15), padding=(0, 5))
+        s.configure('start.TButton', font=('微軟雅黑', 15), padding=(0, 5))
         
         def btn_command():
             self.save_config()
@@ -575,14 +575,14 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.auto_refill_check.grid(row=1, column=1, sticky=tk.W, pady=5)
 
-        # --- 整理背包 ---
+        # --- 整理揹包 ---
         row += 1
-        frame_organize = ttk.LabelFrame(tab, text="整理背包", padding=5)
+        frame_organize = ttk.LabelFrame(tab, text="整理揹包", padding=5)
         frame_organize.grid(row=row, column=0, sticky="ew", pady=5)
 
         self.organize_backpack_check = ttk.Checkbutton(
             frame_organize, variable=self.organize_backpack_enabled_var,
-            text="啟用整理背包", command=self.update_organize_backpack_state,
+            text="啟用整理揹包", command=self.update_organize_backpack_state,
             style="Custom.TCheckbutton"
         )
         self.organize_backpack_check.grid(row=0, column=0, padx=5)
@@ -661,7 +661,7 @@ class ConfigPanelApp(tk.Toplevel):
         row = 0
 
         # --- 說明 ---
-        ttk.Label(tab, text="測試功能（獨立運行，不需啟動主任務）", font=("微软雅黑", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
+        ttk.Label(tab, text="測試功能（獨立運行，不需啟動主任務）", font=("微軟雅黑", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
         row += 1
 
         # --- ADB 連接狀態 ---
@@ -674,10 +674,10 @@ class ConfigPanelApp(tk.Toplevel):
         frame_test = ttk.LabelFrame(tab, text="Inn 流程測試", padding=5)
         frame_test.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
 
-        # 測試整理背包按鈕
+        # 測試整理揹包按鈕
         self.test_organize_btn = ttk.Button(
             frame_test,
-            text="測試整理背包",
+            text="測試整理揹包",
             command=self._test_organize_backpack_standalone
         )
         self.test_organize_btn.grid(row=0, column=0, padx=5, pady=5)
@@ -752,7 +752,7 @@ class ConfigPanelApp(tk.Toplevel):
                   foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
 
     def _test_organize_backpack_standalone(self):
-        """測試整理背包功能（完全獨立運行）"""
+        """測試整理揹包功能（完全獨立運行）"""
         import threading
         
         # 禁用按鈕防止重複點擊
@@ -761,7 +761,7 @@ class ConfigPanelApp(tk.Toplevel):
         
         def run_test():
             try:
-                logger.info("=== 開始獨立測試整理背包 ===")
+                logger.info("=== 開始獨立測試整理揹包 ===")
                 
                 # 初始化設定
                 setting = FarmConfig()
@@ -785,7 +785,7 @@ class ConfigPanelApp(tk.Toplevel):
                 test_func(setting, "organize_backpack", count=count)
                 
                 self.test_adb_status.set("測試完成")
-                logger.info("=== 測試整理背包完成 ===")
+                logger.info("=== 測試整理揹包完成 ===")
                 
             except Exception as e:
                 logger.error(f"測試失敗: {e}")
@@ -798,7 +798,7 @@ class ConfigPanelApp(tk.Toplevel):
         thread.start()
 
     def _test_state_inn_standalone(self):
-        """測試完整住宿流程（住宿 → 補給 → 整理背包）"""
+        """測試完整住宿流程（住宿 → 補給 → 整理揹包）"""
         import threading
 
         # 禁用按鈕防止重複點擊
@@ -1009,7 +1009,7 @@ class ConfigPanelApp(tk.Toplevel):
                     if getattr(self,f"{buttonName}_var").get():
                         self._spell_skill_config_internal += buttonSpell
         
-        # 更新其他按钮信息
+        # 更新其他按鈕信息
         button_state = tk.DISABLED if is_system_auto else tk.NORMAL
         for buttonName,_,_, _, _ in SPELLSEKILL_TABLE:
             getattr(self,buttonName).config(state=button_state)
@@ -1019,7 +1019,7 @@ class ConfigPanelApp(tk.Toplevel):
         else:
             self.update_change_aoe_once_check()
         
-        # 更新按钮颜色并保存
+        # 更新按鈕顏色並保存
         self.save_config()
 
     def update_spell_config(self, skills_to_process, buttonName, buttonText):
@@ -1031,7 +1031,7 @@ class ConfigPanelApp(tk.Toplevel):
         if buttonName == "btn_enable_all":
             if getattr(self,f"{buttonName}_var").get():
                 self._spell_skill_config_internal = list(skills_to_process_set)
-                logger.info(f"已启用所有技能: {self._spell_skill_config_internal}")
+                logger.info(f"已啓用所有技能: {self._spell_skill_config_internal}")
                 for btn,_,_,_,_ in SPELLSEKILL_TABLE:
                     if btn!=buttonName:
                         getattr(self,f"{btn}_var").set(True)
@@ -1046,12 +1046,12 @@ class ConfigPanelApp(tk.Toplevel):
                 for skill in skills_to_process:
                     if skill not in self._spell_skill_config_internal:
                         self._spell_skill_config_internal.append(skill)
-                logger.info(f"已启用{buttonText}技能. 当前技能: {self._spell_skill_config_internal}")
+                logger.info(f"已啓用{buttonText}技能. 當前技能: {self._spell_skill_config_internal}")
             else:
                 self._spell_skill_config_internal = [s for s in self._spell_skill_config_internal if s not in skills_to_process_set]
-                logger.info(f"已禁用{buttonText}技能. 当前技能: {self._spell_skill_config_internal}")
+                logger.info(f"已禁用{buttonText}技能. 當前技能: {self._spell_skill_config_internal}")
 
-        # 保证唯一性，但保留顺序
+        # 保證唯一性，但保留順序
         self._spell_skill_config_internal = list(dict.fromkeys(self._spell_skill_config_internal))
 
         self.save_config()
@@ -1131,7 +1131,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.main_frame.grid_remove()
         summary = self.summary_log_display.get("1.0", "end-1c")
         if self.INTRODUCTION in summary:
-            summary = "唔, 看起来一次成功的地下城都没有完成."
-        text = f"你的队伍已经耗尽了所有的再起之火.\n在耗尽再起之火前,\n你的队伍已经完成了如下了不起的壮举:\n\n{summary}\n\n不过没关系, 至少, 你还可以找公主要钱.\n\n赞美公主殿下!\n"
+            summary = "唔, 看起來一次成功的地下城都沒有完成."
+        text = f"你的隊伍已經耗盡了所有的再起之火.\n在耗盡再起之火前,\n你的隊伍已經完成了如下了不起的壯舉:\n\n{summary}\n\n不過沒關係, 至少, 你還可以找公主要錢.\n\n讚美公主殿下!\n"
         turn_to_7000G_label = ttk.Label(self, text = text)
         turn_to_7000G_label.grid(row=0, column=0,)
