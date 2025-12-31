@@ -2092,7 +2092,26 @@ def Factory():
         scn = ScreenShot()
 
         for skillspell in ALL_AOE_SKILLS:
-            if Press(CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)):
+            # 找到技能所屬類別並取得正確路徑
+            skill_cat = None
+            for cat in ["全體", "秘術", "橫排"]:
+                if skillspell in SKILLS_BY_CATEGORY.get(cat, []):
+                    skill_cat = cat
+                    break
+            
+            if skill_cat:
+                full_path = get_skill_image_path(skill_cat, skillspell)
+                if full_path and os.path.exists(full_path):
+                    folder = SKILL_CATEGORIES.get(skill_cat, {}).get("folder", skill_cat)
+                    filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                    skill_path = f'spellskill/{folder}/{filename_no_ext}'
+                else:
+                    folder = SKILL_CATEGORIES.get(skill_cat, {}).get("folder", skill_cat)
+                    skill_path = f'spellskill/{folder}/{skillspell}'
+            else:
+                skill_path = 'spellskill/' + skillspell
+                
+            if Press(CheckIf(scn, skill_path, threshold=0.70)):
                 logger.info(f"強制使用全體技能: {skillspell}")
                 doubleConfirmCastSpell_func()
                 return True
@@ -2126,7 +2145,15 @@ def Factory():
     def use_normal_attack():
         """使用普攻"""
         scn = ScreenShot()
-        if Press(CheckIf(scn, 'spellskill/attack')):
+        # 使用新的資料夾結構取得普攻路徑
+        full_path = get_skill_image_path("普攻", "attack")
+        if full_path and os.path.exists(full_path):
+            filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+            attack_path = f'spellskill/普攻/{filename_no_ext}'
+        else:
+            attack_path = 'spellskill/普攻/attack'
+        
+        if Press(CheckIf(scn, attack_path)):
             logger.info("[順序] 使用普攻")
             Sleep(0.5)
             # 點擊六個點位選擇敵人
@@ -2189,7 +2216,26 @@ def Factory():
             Sleep(1)  # 等待技能欄顯示
 
         scn = ScreenShot()
-        skill_path = 'spellskill/' + skill
+        
+        # 根據技能名稱找到所屬類別並取得正確路徑
+        skill_category = None
+        for cat, skills in SKILLS_BY_CATEGORY.items():
+            if skill in skills:
+                skill_category = cat
+                break
+        
+        if skill_category:
+            full_path = get_skill_image_path(skill_category, skill)
+            if full_path and os.path.exists(full_path):
+                folder = SKILL_CATEGORIES.get(skill_category, {}).get("folder", skill_category)
+                filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                skill_path = f'spellskill/{folder}/{filename_no_ext}'
+            else:
+                folder = SKILL_CATEGORIES.get(skill_category, {}).get("folder", skill_category)
+                skill_path = f'spellskill/{folder}/{skill}'
+        else:
+            skill_path = 'spellskill/' + skill  # fallback for unknown skills
+        
         logger.info(f"[順序 {caster_type}] 搜尋技能: {skill_path}")
         if Press(CheckIf(scn, skill_path, threshold=0.70)):
             logger.info(f"[順序 {caster_type}] 使用技能: {skill}")
@@ -2471,7 +2517,7 @@ def Factory():
                 # 轉換為相對路徑
                 check_path = 'spellskill/' + SKILL_CATEGORIES[default_category]["folder"] + '/' + os.path.basename(image_path).rsplit('.', 1)[0]
             else:
-                check_path = 'spellskill/' + skill_name
+                check_path = 'spellskill/' + SKILL_CATEGORIES[default_category]["folder"] + '/' + skill_name
             
             skill_pos = CheckIf(scn, check_path, threshold=0.70)
             if skill_pos:
@@ -2535,7 +2581,7 @@ def Factory():
                     Press(CheckIf(scn,'notenough_close'))
                     Sleep(0.5)
                     scn = ScreenShot()
-                    Press(CheckIf(scn, 'spellskill/attack'))
+                    Press(CheckIf(scn, 'spellskill/普攻/attack'))
                     Sleep(0.5)
                     # 點擊六個點位選擇敵人
                     Press([150,750])
@@ -2564,7 +2610,7 @@ def Factory():
                     Press(CheckIf(scn,'notenough_close'))
                     Sleep(0.5)
                     scn = ScreenShot()
-                    Press(CheckIf(scn, 'spellskill/attack'))
+                    Press(CheckIf(scn, 'spellskill/普攻/attack'))
                     Sleep(0.5)
                     # 點擊六個點位選擇敵人
                     Press([150,750])
