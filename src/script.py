@@ -2666,7 +2666,9 @@ def Factory():
             screen = ScreenShot()
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
-            if runtimeContext._COMBAT_ACTION_COUNT > 0 and IsScreenBlack(screen):
+            is_black = IsScreenBlack(screen)
+            logger.debug(f"[StateCombat] Wait {wait_count}: ActionCount={runtimeContext._COMBAT_ACTION_COUNT}, IsBlack={is_black}")
+            if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
                 runtimeContext._COMBAT_ACTION_COUNT = 0
@@ -3032,8 +3034,8 @@ def Factory():
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
                         return DungeonState.Map
-                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕，保留目標並重試")
-                    # targetInfoList.pop(0)  <-- Remove this pop
+                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕")
+                    targetInfoList.pop(0)
                     return DungeonState.Map
             
             return self._monitor_move(targetInfoList, ctx)
