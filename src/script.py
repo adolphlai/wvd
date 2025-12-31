@@ -2061,7 +2061,7 @@ def Factory():
                 not_found_skills.append(skillspell)
         
         # 保存偵錯截圖
-        import os
+        # import os - removed to fix UnboundLocalError
         debug_dir = os.path.join(os.path.dirname(__file__), "debug_screenshots")
         os.makedirs(debug_dir, exist_ok=True)
         debug_path = os.path.join(debug_dir, f"skill_not_found_pos{runtimeContext._COMBAT_ACTION_COUNT}_{int(time.time())}.png")
