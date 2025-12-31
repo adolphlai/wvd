@@ -251,13 +251,13 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
-            # AE 手設定
-            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 1],  # 單位數量：1~6
-            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
+            # 戰鬥順序設定 (AE 手)
+            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 6],  # 設定單位數量：1~6
+            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # 順序 1 技能
             ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # 順序 1 技能等級：關閉/LV2~LV5
             ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # 順序 2 技能
-            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級：關閉/LV2~LV5
+            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級
             ["ae_caster_3_skill_var", tk.StringVar, "_AE_CASTER_3_SKILL", ""],      # 順序 3 技能
             ["ae_caster_3_level_var", tk.StringVar, "_AE_CASTER_3_LEVEL", "關閉"],  # 順序 3 技能等級
             ["ae_caster_4_skill_var", tk.StringVar, "_AE_CASTER_4_SKILL", ""],      # 順序 4 技能
@@ -266,10 +266,11 @@ CONFIG_VAR_LIST = [
             ["ae_caster_5_level_var", tk.StringVar, "_AE_CASTER_5_LEVEL", "關閉"],  # 順序 5 技能等級
             ["ae_caster_6_skill_var", tk.StringVar, "_AE_CASTER_6_SKILL", ""],      # 順序 6 技能
             ["ae_caster_6_level_var", tk.StringVar, "_AE_CASTER_6_LEVEL", "關閉"],  # 順序 6 技能等級
-            ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
-            ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
-            ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
-            ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
+            # 自動戰鬥模式設定 (新)
+            ["auto_combat_mode_var",        tk.StringVar,  "_AUTO_COMBAT_MODE",          "2 場後自動"],  # 完全自動/1場後自動/2場後自動/完全手動
+            ["unconfigured_default_var",    tk.StringVar,  "_UNCONFIGURED_DEFAULT",      "單體"],        # 未設定預設類別：普攻/單體/橫排/全體/秘術/群控
+            ["dungeon_repeat_limit_var",    tk.IntVar,     "_DUNGEON_REPEAT_LIMIT",      0],             # 連續刷地城次數：0=每次回村
+            # 系統設定
             ["active_rest_var",             tk.BooleanVar, "_ACTIVE_REST",               True],
             ["active_royalsuite_rest_var",  tk.BooleanVar, "_ACTIVE_ROYALSUITE_REST",    False],
             ["active_triumph_var",          tk.BooleanVar, "_ACTIVE_TRIUMPH",            False],
@@ -279,12 +280,12 @@ CONFIG_VAR_LIST = [
             ["adb_port_var",                tk.StringVar,  "_ADBPORT",                   5555],
             ["last_version",                tk.StringVar,  "LAST_VERSION",               ""],
             ["latest_version",              tk.StringVar,  "LATEST_VERSION",             None],
-            ["_spell_skill_config_internal",list,          "_SPELLSKILLCONFIG",          []],
             ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True],
             ["organize_backpack_enabled_var", tk.BooleanVar, "_ORGANIZE_BACKPACK_ENABLED", False],
             ["organize_backpack_count_var",  tk.IntVar,     "_ORGANIZE_BACKPACK_COUNT",   0],
             ["auto_refill_var",              tk.BooleanVar, "_AUTO_REFILL",               True],  # 自動補給
             ]
+
 
 class FarmConfig:
     for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
@@ -314,8 +315,6 @@ class RuntimeContext:
     _TIME_CHEST_TOTAL = 0
     #### 其他臨時參數
     _MEET_CHEST_OR_COMBAT = False
-    _ENOUGH_AOE = False
-    _AOE_CAST_TIME = 0  # AOE 釋放次數計數器
     _COMBATSPD = False
     _SUICIDE = False # 當有兩個人死亡的時候(multipeopledead), 在戰鬥中嘗試自殺.
     _MAXRETRYLIMIT = 20
@@ -330,7 +329,7 @@ class RuntimeContext:
     _STEPAFTERRESTART = True  # 重啓後左右平移標誌，False=需要執行防轉圈，True=已執行或無需執行
     _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
     _COMBAT_BATTLE_COUNT = 0  # 當前第幾戰 (1=第一戰, 2=第二戰...)
-    _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
+    _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發自動戰鬥
     _AE_CASTER_FIRST_ATTACK_DONE = False  # AE 手是否已完成首次普攻
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
@@ -338,6 +337,8 @@ class RuntimeContext:
     _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
     _RESTART_OPEN_MAP_PENDING = False  # 重啓後待打開地圖標誌，跳過Resume優化
     _MID_DUNGEON_START = False  # 地城內啟動標記，用於跳過黑屏打斷（因為不知道已打幾戰）
+    _DUNGEON_REPEAT_COUNT = 0  # 連續刷地城次數計數器，達到設定值後回村
+    _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -2256,14 +2257,260 @@ def Factory():
         Sleep(2)
 
     def reset_ae_caster_flags():
-        """重置 AE 手相關旗標，用於新地城開始時"""
+        """重置戰鬥相關旗標，用於新地城開始時"""
         nonlocal runtimeContext
         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._COMBAT_BATTLE_COUNT = 0
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
+        runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
         logger.info("[技能施放] 重置旗標")
+
+    def get_auto_combat_battles(auto_combat_mode):
+        """根據自動戰鬥模式返回需要手動的戰鬥場數
+        
+        Args:
+            auto_combat_mode: 自動戰鬥模式字串
+        Returns:
+            int: 需要手動的戰鬥場數，-1 表示完全手動
+        """
+        mode_map = {
+            "完全自動": 0,    # 不需要手動場次
+            "1 場後自動": 1,  # 第 1 場手動
+            "2 場後自動": 2,  # 第 1-2 場手動
+            "3 場後自動": 3,  # 第 1-3 場手動
+            "完全手動": -1    # 永遠手動
+        }
+        return mode_map.get(auto_combat_mode, 2)  # 預設為 2 場後自動
+
+    def should_enable_auto_combat(battle_count, auto_combat_mode):
+        """判斷是否應該開啟自動戰鬥
+        
+        Args:
+            battle_count: 當前第幾戰
+            auto_combat_mode: 自動戰鬥模式字串
+        Returns:
+            bool: 是否應該開啟自動戰鬥
+        """
+        manual_battles = get_auto_combat_battles(auto_combat_mode)
+        if manual_battles == -1:  # 完全手動
+            return False
+        return battle_count > manual_battles
+
+    def cast_skill_by_category(category, skill_name, level="關閉"):
+        """統一的技能施放函數
+        
+        根據技能類別自動判斷施放方式 (target/ok)，並處理技能等級升級。
+        
+        Args:
+            category: 技能類別 (普攻/單體/橫排/全體/秘術/群控)
+            skill_name: 技能名稱
+            level: 技能等級 (關閉/LV2~LV5)
+        Returns:
+            bool: 是否成功施放技能
+        """
+        if not skill_name:
+            logger.warning(f"[技能施放] 技能名稱為空")
+            return False
+            
+        # 如果是普攻，使用普攻邏輯
+        if skill_name == "attack" or category == "普攻":
+            logger.info(f"[技能施放] 使用普攻")
+            return use_normal_attack()
+        
+        # 取得圖片路徑
+        image_path = get_skill_image_path(category, skill_name)
+        if not image_path:
+            logger.warning(f"[技能施放] 找不到技能圖片: {category}/{skill_name}，嘗試直接搜尋")
+            image_path = 'spellskill/' + skill_name
+        else:
+            # 轉換為相對路徑供 CheckIf 使用
+            image_path = 'spellskill/' + SKILL_CATEGORIES[category]["folder"] + '/' + os.path.basename(image_path).rsplit('.', 1)[0]
+        
+        # 確保技能欄可見
+        scn = ScreenShot()
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        if not is_manual_mode:
+            # 可能在自動戰鬥模式，需要打斷
+            logger.info(f"[技能施放] 打斷自動戰鬥以顯示技能欄")
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.3)
+            Sleep(0.5)
+        else:
+            # 輕點確保技能欄顯示
+            Press([1, 1])
+            Sleep(0.3)
+        
+        scn = ScreenShot()
+        
+        # 搜尋技能按鈕
+        skill_pos = CheckIf(scn, image_path, threshold=0.70)
+        if not skill_pos:
+            # 嘗試舊路徑格式
+            skill_pos = CheckIf(scn, 'spellskill/' + skill_name, threshold=0.70)
+        
+        if skill_pos:
+            logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
+            Press(skill_pos)
+            Sleep(1)
+            scn = ScreenShot()
+            
+            # 處理技能等級
+            SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
+            if level != "關閉" and level in SKILL_LEVEL_X:
+                lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
+                if lv1_pos:
+                    logger.info(f"[技能施放] 升級技能到 {level}")
+                    Press([SKILL_LEVEL_X[level], lv1_pos[1]])
+                    Sleep(1)
+                    scn = ScreenShot()
+            
+            # 根據施放方式確認技能
+            cast_type = get_skill_cast_type(category)
+            
+            if cast_type == "ok":
+                # AOE 類技能：點擊 OK 確認
+                ok_pos = CheckIf(scn, 'OK')
+                if ok_pos:
+                    logger.info(f"[技能施放] 點擊 OK 確認")
+                    Press(ok_pos)
+                    Sleep(1)
+                    # 檢查 MP/SP 不足
+                    scn = ScreenShot()
+                    if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                        logger.info("[技能施放] SP/MP 不足，改用普攻")
+                        Press(CheckIf(scn, 'notenough_close'))
+                        Sleep(0.5)
+                        return use_normal_attack()
+            else:
+                # 單體/橫排/群控技能：點擊敵人
+                next_pos = CheckIf(scn, 'next', threshold=0.70)
+                if next_pos:
+                    # 點擊多個位置覆蓋不同大小敵人
+                    target_x1 = next_pos[0] - 15
+                    target_x2 = next_pos[0]
+                    target_y1 = next_pos[1] + 100
+                    target_y2 = next_pos[1] + 170
+                    logger.info(f"[技能施放] 點擊目標敵人")
+                    Press([target_x1, target_y1])
+                    Sleep(0.1)
+                    Press([target_x1, target_y2])
+                    Sleep(0.1)
+                    Press([target_x2, target_y1])
+                    Sleep(0.1)
+                    Press([target_x2, target_y2])
+                else:
+                    # 使用固定座標
+                    logger.info(f"[技能施放] 找不到 next，使用固定座標點擊敵人")
+                    Press([450, 750])
+                    Sleep(0.2)
+                    Press([450, 800])
+                
+                Sleep(0.5)
+                scn = ScreenShot()
+                if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                    logger.info("[技能施放] SP/MP 不足，改用普攻")
+                    Press(CheckIf(scn, 'notenough_close'))
+                    Sleep(0.5)
+                    return use_normal_attack()
+            
+            Sleep(1)
+            return True
+        
+        logger.warning(f"[技能施放] 找不到技能: {skill_name}，改用普攻")
+        return use_normal_attack()
+
+    def use_unconfigured_default_skill(default_category):
+        """使用未設定預設類別的技能
+        
+        Args:
+            default_category: 預設類別 (普攻/單體/橫排/全體/秘術/群控)
+        Returns:
+            bool: 是否成功施放技能
+        """
+        if default_category == "普攻":
+            return use_normal_attack()
+        
+        # 取得該類別的技能列表
+        skills = SKILLS_BY_CATEGORY.get(default_category, [])
+        if not skills:
+            logger.warning(f"[技能施放] 預設類別 {default_category} 沒有技能，改用普攻")
+            return use_normal_attack()
+        
+        # 確保技能欄可見
+        scn = ScreenShot()
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        if not is_manual_mode:
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.3)
+            Sleep(0.5)
+        else:
+            Press([1, 1])
+            Sleep(0.3)
+        
+        scn = ScreenShot()
+        
+        # 嘗試該類別的每個技能
+        for skill_name in skills:
+            image_path = get_skill_image_path(default_category, skill_name)
+            if image_path:
+                # 轉換為相對路徑
+                check_path = 'spellskill/' + SKILL_CATEGORIES[default_category]["folder"] + '/' + os.path.basename(image_path).rsplit('.', 1)[0]
+            else:
+                check_path = 'spellskill/' + skill_name
+            
+            skill_pos = CheckIf(scn, check_path, threshold=0.70)
+            if skill_pos:
+                logger.info(f"[技能施放] 使用預設類別技能: {skill_name} ({default_category})")
+                Press(skill_pos)
+                Sleep(1)
+                scn = ScreenShot()
+                
+                # 根據類別確認
+                cast_type = get_skill_cast_type(default_category)
+                if cast_type == "ok":
+                    ok_pos = CheckIf(scn, 'OK')
+                    if ok_pos:
+                        Press(ok_pos)
+                        Sleep(1)
+                        scn = ScreenShot()
+                        if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                            logger.info("[技能施放] SP/MP 不足，繼續嘗試下一個技能")
+                            Press(CheckIf(scn, 'notenough_close'))
+                            Sleep(0.5)
+                            continue
+                else:
+                    next_pos = CheckIf(scn, 'next', threshold=0.70)
+                    if next_pos:
+                        Press([next_pos[0] - 15, next_pos[1] + 100])
+                        Sleep(0.1)
+                        Press([next_pos[0], next_pos[1] + 170])
+                    else:
+                        Press([450, 750])
+                        Sleep(0.2)
+                        Press([450, 800])
+                    
+                    Sleep(0.5)
+                    scn = ScreenShot()
+                    if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                        logger.info("[技能施放] SP/MP 不足，繼續嘗試下一個技能")
+                        Press(CheckIf(scn, 'notenough_close'))
+                        Sleep(0.5)
+                        continue
+                
+                return True
+        
+        logger.warning(f"[技能施放] 預設類別 {default_category} 沒有可用技能，改用普攻")
+        return use_normal_attack()
 
     def StateCombat():
         def doubleConfirmCastSpell(skill_name=None):
@@ -2514,6 +2761,20 @@ def Factory():
         screen = ScreenShot()
         # combatSpd 檢查已移至 StateCombat 開頭
 
+        # === 新的自動戰鬥模式邏輯 ===
+        battle_num = runtimeContext._COMBAT_BATTLE_COUNT
+        action_count = runtimeContext._COMBAT_ACTION_COUNT
+        auto_combat_mode = setting._AUTO_COMBAT_MODE
+        
+        # 判斷是否應該開啟自動戰鬥
+        if should_enable_auto_combat(battle_num, auto_combat_mode):
+            logger.info(f"[技能施放] 第 {battle_num} 戰，根據設定 ({auto_combat_mode}) 開啟自動戰鬥")
+            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+            enable_auto_combat()
+            Sleep(3)
+            return
+
+        # === 保留 spellsequence 用於特殊任務 ===
         spellsequence = runtimeContext._ACTIVESPELLSEQUENCE
         if spellsequence != None:
             logger.info(f"當前施法序列:{spellsequence}")
@@ -2537,50 +2798,41 @@ def Factory():
 
                     return
 
-        # AE 手啟用時，必須等 AOE 觸發後才能開啟系統自動戰鬥
-        ae_caster_enabled = bool(setting._AE_CASTER_1_SKILL) or bool(setting._AE_CASTER_2_SKILL)
-        ae_logic_complete = not ae_caster_enabled or runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
-
-        if ae_logic_complete and ((setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE)):
-            # 只點擊一次，避免兩個都匹配時連續點擊導致開啟後又關閉
-            if not Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]])):
-                Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
-            Sleep(5) # Increased sleep duration
-            return
-
         if not CheckIf(screen,'flee'):
             return
         if runtimeContext._SUICIDE:
             Press(CheckIf(screen,'spellskill/'+'defend'))
         else:
-            # 正常戰鬥邏輯
-            castSpellSkill = False
-            castAndPressOK = False
-            for skillspell in setting._SPELLSKILLCONFIG:
-                if runtimeContext._ENOUGH_AOE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                    #logger.info(f"本次戰鬥已經釋放全體aoe, 由於面板配置, 不進行更多的技能釋放.")
-                    continue
-                elif Press((CheckIf(screen, 'spellskill/'+skillspell))):
-                    logger.info(f"使用技能 {skillspell}")
-                    castAndPressOK = doubleConfirmCastSpell(skill_name=skillspell)
-                    castSpellSkill = True
-                    if castAndPressOK and setting._AOE_ONCE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                        runtimeContext._AOE_CAST_TIME += 1
-                        if runtimeContext._AOE_CAST_TIME >= setting._AOE_TIME:
-                            runtimeContext._ENOUGH_AOE = True
-                            runtimeContext._AOE_CAST_TIME = 0
-                        logger.info(f"已釋放全體AOE ({runtimeContext._AOE_CAST_TIME}/{setting._AOE_TIME})")
-                    break
-            if not castSpellSkill:
-                # 使用 use_normal_attack 取代原本的 combatClose 判斷與點擊
-                # User request: "你不要弄那個普攻 他會卡住"
-                # 改回只點擊空白處，或者乾脆不做事 (防止卡住戰鬥流程)
-                logger.warning("[戰鬥] 無可用技能且 Fallback 被呼叫，嘗試點擊空白處取消選單")
-                Press(CheckIf(ScreenShot(),'combatClose'))
-                Press([850,1100])
-                Sleep(0.5)
-                Press([850,1100])
-                Sleep(3) # Increased sleep duration
+            # === 新的戰鬥邏輯：使用順序設定 ===
+            position = ((action_count - 1) % 6) + 1  # 當前角色順序 (1~6)
+            
+            # 取得該順序的設定
+            skill = ""
+            level = "關閉"
+            category = None
+            if position <= setting._AE_CASTER_COUNT:
+                skill = getattr(setting, f"_AE_CASTER_{position}_SKILL", "")
+                level = getattr(setting, f"_AE_CASTER_{position}_LEVEL", "關閉")
+                
+                # 判斷技能類別
+                if skill:
+                    for cat, skills in SKILLS_BY_CATEGORY.items():
+                        if skill in skills or skill == "attack":
+                            category = cat
+                            break
+            
+            if skill:
+                # 有設定技能，使用設定的技能
+                logger.info(f"[順序 {position}] 使用設定技能: {skill} ({category or '未知類別'})")
+                if category:
+                    cast_skill_by_category(category, skill, level)
+                else:
+                    use_ae_caster_skill(position, setting)
+            else:
+                # 未設定：使用預設類別技能
+                default_category = setting._UNCONFIGURED_DEFAULT
+                logger.info(f"[順序 {position}] 未設定，使用預設類別: {default_category}")
+                use_unconfigured_default_skill(default_category)
 
     # ==================== DungeonMover 類別 ====================
     # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯

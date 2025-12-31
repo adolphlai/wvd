@@ -47,18 +47,11 @@ class ConfigPanelApp(tk.Toplevel):
                 setattr(self, attr_name, var_type(value = self.config.get(var_config_name,var_default_value)))
             else:
                 setattr(self, attr_name, var_type(self.config.get(var_config_name,var_default_value)))
-        
-        for btn,_,spellskillList,_,_ in SPELLSEKILL_TABLE:
-            for item in spellskillList:
-                if item not in self._spell_skill_config_internal:
-                    setattr(self,f"{btn}_var",tk.BooleanVar(value = False))
-                    break
-                setattr(self,f"{btn}_var",tk.BooleanVar(value = True))             
 
         self.create_widgets()
-        self.update_system_auto_combat()
         self.update_active_rest_state() # 初始化時更新旅店住宿entry.
         self.update_organize_backpack_state()  # 初始化整理揹包狀態
+
         
 
         logger.info("**********************************")
@@ -102,10 +95,6 @@ class ConfigPanelApp(tk.Toplevel):
         for attr_name, var_type, var_config_name, _ in CONFIG_VAR_LIST:
             if issubclass(var_type, tk.Variable):
                 self.config[var_config_name] = getattr(self, attr_name).get()
-        if self.system_auto_combat_var.get():
-            self.config["_SPELLSKILLCONFIG"] = []
-        else:
-            self.config["_SPELLSKILLCONFIG"] = [s for s in ALL_SKILLS if s in list(set(self._spell_skill_config_internal))]
 
         if self.farm_target_text_var.get() in DUNGEON_TARGETS:
             self.farm_target_var.set(DUNGEON_TARGETS[self.farm_target_text_var.get()])
@@ -387,22 +376,42 @@ class ConfigPanelApp(tk.Toplevel):
         self.start_stop_btn.grid(row=0, column=0, sticky='ew', padx=5, pady=10)
 
     def _create_battle_tab(self):
-        """戰鬥設定分頁：自動戰鬥、恢復、強力技能、AOE"""
+        """戰鬥設定分頁：自動戰鬥模式、未設定預設、恢復設定"""
         tab = self.tab_battle
         row = 0
 
-        # --- 自動戰鬥主開關 ---
-        frame_auto = ttk.LabelFrame(tab, text="自動戰鬥", padding=5)
+        # --- 自動戰鬥模式 ---
+        frame_auto = ttk.LabelFrame(tab, text="自動戰鬥模式", padding=5)
         frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
 
-        self.system_auto_check = ttk.Checkbutton(
-            frame_auto,
-            text="啟用自動戰鬥",
-            variable=self.system_auto_combat_var,
-            command=self.update_system_auto_combat,
-            style="Custom.TCheckbutton"
+        ttk.Label(frame_auto, text="模式:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        auto_combat_options = ["完全自動", "1 場後自動", "2 場後自動", "3 場後自動", "完全手動"]
+        self.auto_combat_mode_combo = ttk.Combobox(
+            frame_auto, textvariable=self.auto_combat_mode_var,
+            values=auto_combat_options, state="readonly", width=12
         )
-        self.system_auto_check.grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.auto_combat_mode_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
+        self.auto_combat_mode_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_auto, text="※ 完全自動=進入戰鬥即開自動，2場後自動=前2場手動施法", foreground="gray").grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
+
+        # --- 未設定預設 ---
+        row += 1
+        frame_default = ttk.LabelFrame(tab, text="未設定順序預設", padding=5)
+        frame_default.grid(row=row, column=0, sticky="ew", pady=5)
+
+        ttk.Label(frame_default, text="預設類別:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        unconfigured_options = ["普攻", "單體", "橫排", "全體", "秘術", "群控"]
+        self.unconfigured_default_combo = ttk.Combobox(
+            frame_default, textvariable=self.unconfigured_default_var,
+            values=unconfigured_options, state="readonly", width=8
+        )
+        self.unconfigured_default_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
+        self.unconfigured_default_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_default, text="※ 當順序未設定技能時，自動使用此類別的第一個可用技能", foreground="gray").grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
         # --- 恢復設定 ---
         row += 1
@@ -423,65 +432,39 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
 
-        # --- AOE 設定 ---
+        # --- 連續刷地城設定 ---
         row += 1
-        frame_aoe = ttk.LabelFrame(tab, text="AOE 設定", padding=5)
-        frame_aoe.grid(row=row, column=0, sticky="ew", pady=5)
+        frame_repeat = ttk.LabelFrame(tab, text="連續刷地城", padding=5)
+        frame_repeat.grid(row=row, column=0, sticky="ew", pady=5)
 
-        def aoe_once_command():
-            if self.aoe_once_var.get():
-                if self.btn_enable_full_aoe_var.get() != True:
-                    self.btn_enable_full_aoe.invoke()
-                if self.btn_enable_secret_aoe_var.get() != True:
-                    self.btn_enable_secret_aoe.invoke()
-            self.update_change_aoe_once_check()
-            self.save_config()
-
-        self.aoe_once_check = ttk.Checkbutton(
-            frame_aoe, text="一場戰鬥中僅釋放一次全體AOE",
-            variable=self.aoe_once_var, command=aoe_once_command,
-            style="BoldFont.TCheckbutton"
+        ttk.Label(frame_repeat, text="連續次數:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        self.dungeon_repeat_limit_spinbox = ttk.Spinbox(
+            frame_repeat, from_=0, to=99, width=4,
+            textvariable=self.dungeon_repeat_limit_var,
+            command=self.save_config
         )
-        self.aoe_once_check.grid(row=0, column=0, sticky=tk.W)
+        self.dungeon_repeat_limit_spinbox.grid(row=0, column=1, padx=5, sticky=tk.W)
 
-        self.auto_after_aoe_check = ttk.Checkbutton(
-            frame_aoe, text="全體AOE後開啟自動戰鬥",
-            variable=self.auto_after_aoe_var, command=self.save_config,
-            style="BoldFont.TCheckbutton"
-        )
-        self.auto_after_aoe_check.grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(frame_repeat, text="※ 0=每次回村，N=刷N次才回村", foreground="gray").grid(
+            row=0, column=2, padx=10, sticky=tk.W)
 
     def _create_skills_tab(self, vcmd_non_neg):
-        """技能設定分頁：6個技能按鈕組"""
+        """技能設定分頁：技能施放順序設定"""
         tab = self.tab_skills
 
-        frame_skills = ttk.LabelFrame(tab, text="技能選擇", padding=10)
-        frame_skills.grid(row=0, column=0, sticky="ew", pady=5)
-
-        self.skills_button_frame = frame_skills
-        for buttonName, buttonText, buttonSpell, btn_row, btn_col in SPELLSEKILL_TABLE:
-            setattr(self, buttonName, ttk.Checkbutton(
-                self.skills_button_frame,
-                text=f"啟用{buttonText}",
-                variable=getattr(self, f"{buttonName}_var"),
-                command=lambda spell=buttonSpell, btnN=buttonName, btnT=buttonText: self.update_spell_config(spell, btnN, btnT),
-                style="Custom.TCheckbutton"
-            ))
-            getattr(self, buttonName).grid(row=btn_row, column=btn_col, padx=10, pady=5, sticky=tk.W)
-
         # --- 技能施放設定 ---
-        frame_ae_caster = ttk.LabelFrame(tab, text="技能施放設定(首1~2戰)", padding=5)
-        frame_ae_caster.grid(row=1, column=0, sticky="ew", pady=5)
+        frame_ae_caster = ttk.LabelFrame(tab, text="技能施放設定", padding=5)
+        frame_ae_caster.grid(row=0, column=0, sticky="ew", pady=5)
 
         # Row 0: 間隔 + 單位數量
-        ttk.Label(frame_ae_caster, text="間隔:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(frame_ae_caster, text="觸發間隔:").grid(row=0, column=0, sticky=tk.W)
         self.ae_caster_interval_entry = ttk.Entry(
             frame_ae_caster, textvariable=self.ae_caster_interval_var,
             validate="key", validatecommand=(vcmd_non_neg, '%P'), width=5
         )
         self.ae_caster_interval_entry.grid(row=0, column=1, padx=2, sticky=tk.W)
 
-        ttk.Label(frame_ae_caster, text="單位數:").grid(row=0, column=2, padx=(10, 0), sticky=tk.W)
+        ttk.Label(frame_ae_caster, text="顯示數量:").grid(row=0, column=2, padx=(10, 0), sticky=tk.W)
         self.ae_caster_count_combo = ttk.Combobox(
             frame_ae_caster, textvariable=self.ae_caster_count_var,
             values=["1", "2", "3", "4", "5", "6"], state="readonly", width=3
@@ -492,8 +475,9 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Button(frame_ae_caster, text="儲存", command=self.save_config, width=4).grid(row=0, column=4, padx=2)
 
         # Row 1: 說明文字
-        ttk.Label(frame_ae_caster, text="※ 選擇 AE 技能的單位首回合會普攻", foreground="gray").grid(
+        ttk.Label(frame_ae_caster, text="※ 0=每場觸發，N=每N場觸發一次順序設定", foreground="gray").grid(
             row=1, column=0, columnspan=7, sticky=tk.W, pady=(2, 5))
+
 
         # 技能選項（單體 + 全體）
         skill_options = ["", "attack"] + ALL_SKILLS
