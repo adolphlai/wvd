@@ -3032,8 +3032,8 @@ def Factory():
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
                         return DungeonState.Map
-                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕")
-                    targetInfoList.pop(0)
+                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕，保留目標並重試")
+                    # targetInfoList.pop(0)  <-- Remove this pop
                     return DungeonState.Map
             
             return self._monitor_move(targetInfoList, ctx)
@@ -3928,6 +3928,7 @@ def Factory():
                     ########### OPEN MAP
                     ########### 防止轉圈 (from upstream 1.9.27)
                     has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
+                    logger.debug(f"[StateDungeon] targetInfoList: {[t.target for t in targetInfoList]}, has_chest_auto: {has_chest_auto}")
                     if not runtimeContext._STEPAFTERRESTART:
                         # 防止轉圈：前後左右平移一次（僅重啟後執行）
                         logger.info("防止轉圈: 前後左右平移一次")
