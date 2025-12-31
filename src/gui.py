@@ -1130,17 +1130,9 @@ class ConfigPanelApp(tk.Toplevel):
             for widget in self.button_and_entry:
                 widget.configure(state="normal")
             self.update_active_rest_state()
-            self.update_change_aoe_once_check()
             self.update_organize_backpack_state()
             self._update_skill_caster_visibility(save=False)  # 恢復技能設定可見性
 
-        if not self.system_auto_combat_var.get():
-            widgets = [
-                *[getattr(self,buttonName) for buttonName,_,_,_,_ in SPELLSEKILL_TABLE]
-            ]
-            for widget in widgets:
-                if isinstance(widget, ttk.Widget):
-                    widget.state([state.lower()] if state != tk.NORMAL else ['!disabled'])
 
     def toggle_start_stop(self):
         if not self.quest_active:
