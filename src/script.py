@@ -2667,7 +2667,8 @@ def Factory():
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
-            logger.debug(f"[StateCombat] Wait {wait_count}: ActionCount={runtimeContext._COMBAT_ACTION_COUNT}, IsBlack={is_black}")
+            mean_brightness = np.mean(screen)
+            logger.info(f"[Debug] Wait {wait_count}: Action={runtimeContext._COMBAT_ACTION_COUNT}, Bright={mean_brightness:.2f}, IsBlack={is_black}")
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
