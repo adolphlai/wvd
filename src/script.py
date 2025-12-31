@@ -1598,11 +1598,12 @@ def Factory():
                     return IdentifyState()
 
                 if CheckIf(screen,"returntoTown"):
-                    if runtimeContext._MEET_CHEST_OR_COMBAT:
+                    if not should_skip_return_to_town():
+                        # 回城
                         FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
                         return State.Inn,DungeonState.Quit, screen
                     else:
-                        logger.info("由於沒有遇到任何寶箱或發生任何戰鬥, 跳過回城.")
+                        # 跳過回城，繼續刷地城
                         # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
                         for info in quest._EOT:
                             if info[1] == "intoWorldMap":
@@ -1618,11 +1619,12 @@ def Factory():
                         return State.Dungeon, None, ScreenShot()
 
             if pos:=CheckIf(screen,"openworldmap"):
-                if runtimeContext._MEET_CHEST_OR_COMBAT:
+                if not should_skip_return_to_town():
+                    # 回城
                     Press(pos)
                     return IdentifyState()
                 else:
-                    logger.info("由於沒有遇到任何寶箱或發生任何戰鬥, 跳過回城.")
+                    # 跳過回城，繼續刷地城
                     # 提前重置旗標，避免進入地城過場黑屏時誤觸發首戰打斷
                     reset_ae_caster_flags()
                     runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
@@ -2313,6 +2315,36 @@ def Factory():
         runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
         runtimeContext._MID_DUNGEON_START = False  # 重置地城內啟動標記，讓新地城可觸發黑屏偵測
         logger.info("[技能施放] 重置旗標")
+
+    def should_skip_return_to_town():
+        """判斷是否應該跳過回城（用於連續刷地城功能）
+        
+        Returns:
+            bool: True = 跳過回城繼續刷，False = 需要回城
+        """
+        nonlocal runtimeContext
+        
+        # 如果沒有遇到寶箱或戰鬥，總是跳過回城
+        if not runtimeContext._MEET_CHEST_OR_COMBAT:
+            logger.info("由於沒有遇到任何寶箱或發生任何戰鬥, 跳過回城.")
+            return True
+        
+        # 如果設置了連續刷地城次數
+        repeat_limit = setting._DUNGEON_REPEAT_LIMIT
+        if repeat_limit > 0:
+            runtimeContext._DUNGEON_REPEAT_COUNT += 1
+            current_count = runtimeContext._DUNGEON_REPEAT_COUNT
+            
+            if current_count < repeat_limit:
+                logger.info(f"[連續刷地城] 第 {current_count}/{repeat_limit} 次，跳過回城")
+                return True
+            else:
+                logger.info(f"[連續刷地城] 已達上限 {repeat_limit} 次，回城休息")
+                runtimeContext._DUNGEON_REPEAT_COUNT = 0  # 重置計數器
+                return False
+        
+        # 預設：需要回城
+        return False
 
     def get_auto_combat_battles(auto_combat_mode):
         """根據自動戰鬥模式返回需要手動的戰鬥場數
