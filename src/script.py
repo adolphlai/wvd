@@ -2311,6 +2311,7 @@ def Factory():
         runtimeContext._COMBAT_BATTLE_COUNT = 0
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
         runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
+        runtimeContext._MID_DUNGEON_START = False  # 重置地城內啟動標記，讓新地城可觸發黑屏偵測
         logger.info("[技能施放] 重置旗標")
 
     def get_auto_combat_battles(auto_combat_mode):
@@ -2667,8 +2668,6 @@ def Factory():
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
-            mean_brightness = np.mean(screen)
-            logger.info(f"[Debug] Wait {wait_count}: Action={runtimeContext._COMBAT_ACTION_COUNT}, Bright={mean_brightness:.2f}, IsBlack={is_black}")
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
@@ -3035,10 +3034,10 @@ def Factory():
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
                         return DungeonState.Map
-                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕")
-                    targetInfoList.pop(0)
-                    return DungeonState.Map
-            
+                    # 按鈕暫時不可見（可能正在移動中），進入監控循環等待
+                    # 根據設計規則：只有偵測到 notresure 時才結束 chest_auto
+                    logger.info("[DungeonMover] chest_auto 按鈕暫時不可見，進入監控等待")
+
             return self._monitor_move(targetInfoList, ctx)
         
         def _start_gohome(self, targetInfoList, ctx):
@@ -4273,10 +4272,14 @@ def Factory():
                     if state == State.Dungeon and runtimeContext._COUNTERDUNG == 0:
                         logger.info("[地城內啟動] 偵測到在地城內啟動腳本，初始化參數...")
                         runtimeContext._FIRST_DUNGEON_ENTRY = False  # 已經在地城內，不是第一次進入
-                        runtimeContext._DUNGEON_CONFIRMED = True     # 直接確認在地城
                         runtimeContext._STEPAFTERRESTART = True      # 不需要防轉圈
-                        runtimeContext._MID_DUNGEON_START = True     # 標記地城內啟動（跳過黑屏打斷）
-                        logger.info("[地城內啟動] 參數初始化完成")
+                        # 重置戰鬥計數，讓黑屏偵測立即生效（視為新地城第一戰）
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
+                        runtimeContext._COMBAT_ACTION_COUNT = 0
+                        runtimeContext._COMBAT_BATTLE_COUNT = 0
+                        runtimeContext._DUNGEON_CONFIRMED = True     # 直接確認在地城
+                        # 不設置 _MID_DUNGEON_START = True，讓黑屏偵測正常觸發
+                        logger.info("[地城內啟動] 參數初始化完成，黑屏偵測已啟用")
                     
                     if state ==State.Quit:
                         logger.info("即將停止腳本...")
