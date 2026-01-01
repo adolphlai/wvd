@@ -1123,10 +1123,51 @@ class ConfigPanelApp(tk.Toplevel):
     def _update_monitor(self):
         """更新監控面板顯示（每秒執行一次）"""
         try:
-            # 更新狀態資訊
-            self.monitor_state_var.set(MonitorState.current_state or "-")
-            self.monitor_dungeon_state_var.set(MonitorState.current_dungeon_state or "-")
-            self.monitor_target_var.set(MonitorState.current_target or "-")
+            # 更新狀態資訊（使用四個字描述當前模式）
+            current_state = MonitorState.current_state or ""
+            current_dungeon_state = MonitorState.current_dungeon_state or ""
+            current_target = MonitorState.current_target or ""
+            is_gohome = MonitorState.is_gohome_mode
+            
+            # 根據狀態組合決定顯示的四字描述
+            if current_state == "Dungeon":
+                if current_dungeon_state == "Combat":
+                    state_display = "戰鬥監控"
+                elif current_dungeon_state == "Chest":
+                    state_display = "寶箱監控"
+                elif current_dungeon_state == "Map":
+                    state_display = "地圖監控"
+                else:
+                    state_display = "地城監控"
+            elif current_state == "Inn":
+                state_display = "旅館待機"
+            elif current_state == "EoT":
+                state_display = "回合結束"
+            else:
+                state_display = "-"
+            
+            # 目標顯示：根據 current_target 決定
+            if current_target:
+                if is_gohome:
+                    target_display = "回城撤離"
+                elif current_target == "chest_auto":
+                    target_display = "寶箱移動"
+                elif current_target == "position":
+                    target_display = "地城移動"
+                elif current_target == "harken":
+                    target_display = "傳點移動"
+                elif current_target.startswith("stair"):
+                    target_display = "樓梯移動"
+                elif current_target == "gohome":
+                    target_display = "回城撤離"
+                else:
+                    target_display = current_target[:4]  # 取前四個字
+            else:
+                target_display = "-"
+            
+            self.monitor_state_var.set(state_display)
+            self.monitor_dungeon_state_var.set(current_dungeon_state or "-")
+            self.monitor_target_var.set(target_display)
 
             # 更新戰鬥資訊
             self.monitor_battle_var.set(f"第 {MonitorState.battle_count} 戰")
