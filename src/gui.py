@@ -381,56 +381,56 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_frame.grid(row=row, column=0, sticky="ew", pady=5)
 
         # 第一行：狀態 / 目標
-        ttk.Label(self.monitor_frame, text="狀態:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="監控狀態:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=0, sticky=tk.W, padx=2)
         self.monitor_state_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_state_var, width=12).grid(row=0, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="目標:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="當前目標:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_target_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_target_var, width=15).grid(row=0, column=3, sticky=tk.W)
 
         # 第二行：完成地城 / 運行時間
-        ttk.Label(self.monitor_frame, text="完成:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="完成次數:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=0, sticky=tk.W, padx=2)
         self.monitor_dungeon_count_var = tk.StringVar(value="0 次")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_dungeon_count_var, width=12).grid(row=1, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="運行:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="運行時間:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_total_time_var = tk.StringVar(value="0 秒")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_total_time_var, width=15).grid(row=1, column=3, sticky=tk.W)
 
         # 第三行：寶箱 / 寶箱效率
-        ttk.Label(self.monitor_frame, text="寶箱:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="寶箱總數:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=0, sticky=tk.W, padx=2)
         self.monitor_chest_count_var = tk.StringVar(value="0 個")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_chest_count_var, width=12).grid(row=2, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="箱效:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="寶箱效率:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_chest_efficiency_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_chest_efficiency_var, width=15).grid(row=2, column=3, sticky=tk.W)
 
         # 第四行：戰鬥 / 戰鬥效率
-        ttk.Label(self.monitor_frame, text="戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="戰鬥次數:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=0, sticky=tk.W, padx=2)
         self.monitor_combat_count_var = tk.StringVar(value="0 次")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_combat_count_var, width=12).grid(row=3, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="戰效:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="戰鬥效率:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_combat_efficiency_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_combat_efficiency_var, width=15).grid(row=3, column=3, sticky=tk.W)
 
         # 第五行：死亡 / 總效率
-        ttk.Label(self.monitor_frame, text="死亡:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="死亡次數:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=0, sticky=tk.W, padx=2)
         self.monitor_death_count_var = tk.StringVar(value="0 次")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_death_count_var, width=12).grid(row=4, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="總效:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="總計效率:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_total_efficiency_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_total_efficiency_var, width=15).grid(row=4, column=3, sticky=tk.W)
 
         # 第六行：本地戰鬥 / 靜止計數
-        ttk.Label(self.monitor_frame, text="本地:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="本地戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=0, sticky=tk.W, padx=2)
         self.monitor_battle_var = tk.StringVar(value="第 0 戰")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_battle_var, width=12).grid(row=5, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="偵測:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="卡死偵測:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_detection_var = tk.StringVar(value="靜止0/10 重試0/5")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_detection_var, width=18).grid(row=5, column=3, sticky=tk.W)
 
@@ -450,29 +450,29 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
 
         # 第九行：地城識別
-        ttk.Label(self.monitor_frame, text="地城:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="地城相似度:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_dung_var = tk.StringVar(value="0%")
         self.monitor_flag_dung_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_dung_var, width=6)
         self.monitor_flag_dung_label.grid(row=8, column=1, sticky=tk.W)
         
-        ttk.Label(self.monitor_frame, text="地圖:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=2, sticky=tk.W, padx=(10, 2))
+        ttk.Label(self.monitor_frame, text="地圖相似度:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=2, sticky=tk.W, padx=(10, 2))
         self.monitor_flag_map_var = tk.StringVar(value="0%")
         self.monitor_flag_map_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_map_var, width=6)
         self.monitor_flag_map_label.grid(row=8, column=3, sticky=tk.W)
 
         # 第十行：寶箱/戰鬥識別
-        ttk.Label(self.monitor_frame, text="寶箱:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="寶箱相似度:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_chest_var = tk.StringVar(value="0%")
         self.monitor_flag_chest_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_chest_var, width=6)
         self.monitor_flag_chest_label.grid(row=9, column=1, sticky=tk.W)
         
-        ttk.Label(self.monitor_frame, text="戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=2, sticky=tk.W, padx=(10, 2))
+        ttk.Label(self.monitor_frame, text="戰鬥相似度:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=2, sticky=tk.W, padx=(10, 2))
         self.monitor_flag_combat_var = tk.StringVar(value="0%")
         self.monitor_flag_combat_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_combat_var, width=6)
         self.monitor_flag_combat_label.grid(row=9, column=3, sticky=tk.W)
 
         # 第十一行：世界地圖識別
-        ttk.Label(self.monitor_frame, text="世界:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="世界相似度:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_world_var = tk.StringVar(value="0%")
         self.monitor_flag_world_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_world_var, width=6)
         self.monitor_flag_world_label.grid(row=10, column=1, sticky=tk.W)
