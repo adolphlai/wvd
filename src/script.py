@@ -4315,7 +4315,13 @@ def Factory():
                             logger.info(f"minimap_stair: 檢測到 Resume 按鈕，繼續移動 {resume_pos}")
                             Press(resume_pos)
                             Sleep(1)
-                            result_state = StateMoving_CheckFrozen()
+                            # 改用 DungeonMover 監控，避免舊超時邏輯
+                            dungeon_mover.reset()
+                            dungeon_mover.current_target = "minimap_stair"
+                            MonitorState.current_target = "minimap_stair"
+                            MonitorState.state_start_time = dungeon_mover.move_start_time
+                            MonitorState.is_gohome_mode = False
+                            result_state = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                             if not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
                                 # minimap_stair 完成（在 StateMoving_CheckFrozen 中清除 flag）
                                 logger.info("minimap_stair: 目標完成，彈出目標並返回 Map 狀態")
