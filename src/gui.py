@@ -375,6 +375,92 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.start_stop_btn.grid(row=0, column=0, sticky='ew', padx=5, pady=10)
 
+        # --- 即時監控面板 ---
+        row += 1
+        self.monitor_frame = ttk.LabelFrame(tab, text="即時監控", padding=5)
+        self.monitor_frame.grid(row=row, column=0, sticky="ew", pady=5)
+
+        # 第一行：狀態 / 目標
+        ttk.Label(self.monitor_frame, text="狀態:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=0, sticky=tk.W, padx=2)
+        self.monitor_state_var = tk.StringVar(value="-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_state_var, width=12).grid(row=0, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="目標:", font=("微軟雅黑", 9, "bold")).grid(row=0, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_target_var = tk.StringVar(value="-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_target_var, width=15).grid(row=0, column=3, sticky=tk.W)
+
+        # 第二行：完成地城 / 運行時間
+        ttk.Label(self.monitor_frame, text="完成:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=0, sticky=tk.W, padx=2)
+        self.monitor_dungeon_count_var = tk.StringVar(value="0 次")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_dungeon_count_var, width=12).grid(row=1, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="運行:", font=("微軟雅黑", 9, "bold")).grid(row=1, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_total_time_var = tk.StringVar(value="0 秒")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_total_time_var, width=15).grid(row=1, column=3, sticky=tk.W)
+
+        # 第三行：寶箱 / 寶箱效率
+        ttk.Label(self.monitor_frame, text="寶箱:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=0, sticky=tk.W, padx=2)
+        self.monitor_chest_count_var = tk.StringVar(value="0 個")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_chest_count_var, width=12).grid(row=2, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="箱效:", font=("微軟雅黑", 9, "bold")).grid(row=2, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_chest_efficiency_var = tk.StringVar(value="-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_chest_efficiency_var, width=15).grid(row=2, column=3, sticky=tk.W)
+
+        # 第四行：戰鬥 / 戰鬥效率
+        ttk.Label(self.monitor_frame, text="戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=0, sticky=tk.W, padx=2)
+        self.monitor_combat_count_var = tk.StringVar(value="0 次")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_combat_count_var, width=12).grid(row=3, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="戰效:", font=("微軟雅黑", 9, "bold")).grid(row=3, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_combat_efficiency_var = tk.StringVar(value="-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_combat_efficiency_var, width=15).grid(row=3, column=3, sticky=tk.W)
+
+        # 第五行：死亡 / 總效率
+        ttk.Label(self.monitor_frame, text="死亡:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=0, sticky=tk.W, padx=2)
+        self.monitor_death_count_var = tk.StringVar(value="0 次")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_death_count_var, width=12).grid(row=4, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="總效:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_total_efficiency_var = tk.StringVar(value="-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_total_efficiency_var, width=15).grid(row=4, column=3, sticky=tk.W)
+
+        # 第六行：本地戰鬥 / 靜止計數
+        ttk.Label(self.monitor_frame, text="本地:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=0, sticky=tk.W, padx=2)
+        self.monitor_battle_var = tk.StringVar(value="第 0 戰")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_battle_var, width=12).grid(row=5, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="偵測:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=2, sticky=tk.W, padx=(20, 2))
+        self.monitor_detection_var = tk.StringVar(value="靜止0/10 重試0/5")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_detection_var, width=18).grid(row=5, column=3, sticky=tk.W)
+
+        # 第七行：軟超時進度條
+        ttk.Label(self.monitor_frame, text="軟超時:", font=("微軟雅黑", 9, "bold")).grid(row=6, column=0, sticky=tk.W, padx=2)
+        self.monitor_soft_timeout_progress = ttk.Progressbar(self.monitor_frame, length=200, mode='determinate', maximum=100)
+        self.monitor_soft_timeout_progress.grid(row=6, column=1, columnspan=2, sticky=tk.W)
+        self.monitor_soft_timeout_label = tk.StringVar(value="0/30s")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_soft_timeout_label, width=8).grid(row=6, column=3, sticky=tk.W)
+
+        # 第八行：硬超時進度條
+        ttk.Label(self.monitor_frame, text="硬超時:", font=("微軟雅黑", 9, "bold")).grid(row=7, column=0, sticky=tk.W, padx=2)
+        self.monitor_hard_timeout_progress = ttk.Progressbar(self.monitor_frame, length=200, mode='determinate', maximum=100)
+        self.monitor_hard_timeout_progress.grid(row=7, column=1, columnspan=2, sticky=tk.W)
+        self.monitor_hard_timeout_label = tk.StringVar(value="0/60s")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
+
+        # 第九行：警告區域
+        self.monitor_warning_var = tk.StringVar(value="")
+        self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
+        self.monitor_warning_label.grid(row=8, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+
+        # 保留未顯示但被引用的變數
+        self.monitor_dungeon_state_var = tk.StringVar(value="-")
+        self.monitor_karma_var = tk.StringVar(value="-")
+        self.monitor_aoe_var = tk.StringVar(value="-")
+
+        # 啟動監控更新定時器
+        self._start_monitor_update()
+
     def _create_battle_tab(self):
         """戰鬥設定分頁：自動戰鬥模式、未設定預設、恢復設定"""
         tab = self.tab_battle
@@ -1006,6 +1092,108 @@ class ConfigPanelApp(tk.Toplevel):
 
         thread = threading.Thread(target=run_capture, daemon=True)
         thread.start()
+
+    def _start_monitor_update(self):
+        """啟動監控面板定時更新"""
+        self._update_monitor()
+
+    def _update_monitor(self):
+        """更新監控面板顯示（每秒執行一次）"""
+        try:
+            # 更新狀態資訊
+            self.monitor_state_var.set(MonitorState.current_state or "-")
+            self.monitor_dungeon_state_var.set(MonitorState.current_dungeon_state or "-")
+            self.monitor_target_var.set(MonitorState.current_target or "-")
+
+            # 更新戰鬥資訊
+            self.monitor_battle_var.set(f"第 {MonitorState.battle_count} 戰")
+
+            # 更新統計資訊
+            self.monitor_dungeon_count_var.set(f"{MonitorState.dungeon_count} 次")
+            self.monitor_combat_count_var.set(f"{MonitorState.combat_count} 次")
+            self.monitor_chest_count_var.set(f"{MonitorState.chest_count} 個")
+
+            # 更新死亡
+            self.monitor_death_count_var.set(f"{MonitorState.death_count} 次")
+            
+            # 更新卡死偵測指標
+            still_count = MonitorState.still_count
+            still_max = MonitorState.still_max
+            resume_count = MonitorState.resume_count
+            resume_max = MonitorState.resume_max
+            self.monitor_detection_var.set(f"靜止{still_count}/{still_max} 重試{resume_count}/{resume_max}")
+            
+            # 計算寶箱效率（秒/箱）
+            if MonitorState.chest_count > 0 and MonitorState.chest_time_total > 0:
+                chest_eff = MonitorState.chest_time_total / MonitorState.chest_count
+                self.monitor_chest_efficiency_var.set(f"{chest_eff:.1f}秒/箱")
+            else:
+                self.monitor_chest_efficiency_var.set("-")
+            
+            # 計算戰鬥效率（秒/戰）
+            if MonitorState.combat_count > 0 and MonitorState.combat_time_total > 0:
+                combat_eff = MonitorState.combat_time_total / MonitorState.combat_count
+                self.monitor_combat_efficiency_var.set(f"{combat_eff:.1f}秒/戰")
+            else:
+                self.monitor_combat_efficiency_var.set("-")
+            
+            # 計算總效率（箱/時）
+            if MonitorState.chest_count > 0 and MonitorState.total_time > 60:
+                # 轉換為每小時開箱數
+                chests_per_hour = MonitorState.chest_count / MonitorState.total_time * 3600
+                self.monitor_total_efficiency_var.set(f"{chests_per_hour:.1f}箱/時")
+            else:
+                self.monitor_total_efficiency_var.set("-")
+
+            # 更新運行時間
+            if MonitorState.total_time > 0:
+                total_seconds = int(MonitorState.total_time)
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                seconds = total_seconds % 60
+                if hours > 0:
+                    self.monitor_total_time_var.set(f"{hours}時{minutes}分{seconds}秒")
+                elif minutes > 0:
+                    self.monitor_total_time_var.set(f"{minutes}分{seconds}秒")
+                else:
+                    self.monitor_total_time_var.set(f"{seconds}秒")
+            else:
+                self.monitor_total_time_var.set("0 秒")
+            
+            # 更新軟/硬超時進度條
+            soft_timeout = 30  # 軟超時 30 秒
+            hard_timeout = 60  # 硬超時 60 秒
+            
+            # 當有 current_target 時表示正在移動，顯示進度
+            if MonitorState.state_start_time > 0 and MonitorState.current_target:
+                elapsed = time.time() - MonitorState.state_start_time
+                
+                # 軟超時進度
+                soft_progress = min(100, (elapsed / soft_timeout) * 100)
+                self.monitor_soft_timeout_progress['value'] = soft_progress
+                self.monitor_soft_timeout_label.set(f"{int(elapsed)}/{soft_timeout}s")
+                
+                # 硬超時進度
+                hard_progress = min(100, (elapsed / hard_timeout) * 100)
+                self.monitor_hard_timeout_progress['value'] = hard_progress
+                self.monitor_hard_timeout_label.set(f"{int(elapsed)}/{hard_timeout}s")
+            else:
+                # 不在移動狀態，重置進度條
+                self.monitor_soft_timeout_progress['value'] = 0
+                self.monitor_soft_timeout_label.set("0/30s")
+                self.monitor_hard_timeout_progress['value'] = 0
+                self.monitor_hard_timeout_label.set("0/60s")
+
+            # 更新警告
+            if MonitorState.warnings:
+                self.monitor_warning_var.set(" | ".join(MonitorState.warnings))
+            else:
+                self.monitor_warning_var.set("")
+        except Exception as e:
+            logger.debug(f"監控更新異常: {e}")
+
+        # 每秒更新一次
+        self.after(1000, self._update_monitor)
 
     def update_active_rest_state(self):
         if self.active_rest_var.get():

@@ -292,6 +292,89 @@ class FarmConfig:
     def __getattr__(self, name):
         # 當訪問不存在的屬性時，拋出AttributeError
         raise AttributeError(f"FarmConfig對象沒有屬性'{name}'")
+class MonitorState:
+    """即時監控狀態類別，供 GUI 讀取顯示"""
+    # 當前狀態
+    current_state: str = ""           # Inn/Dungeon/EoT/Quit
+    current_dungeon_state: str = ""   # Map/Combat/Chest/Dungeon
+    current_target: str = ""          # chest_auto/position/harken/gohome
+    target_detail: str = ""           # 目標詳情
+
+    # 時間追蹤
+    state_start_time: float = 0       # 狀態開始時間
+    soft_timeout_progress: float = 0  # 0-100%
+    hard_timeout_progress: float = 0  # 0-100%
+
+    # 卡死偵測
+    still_count: int = 0
+    still_max: int = 10
+    resume_count: int = 0
+    resume_max: int = 5
+    is_gohome_mode: bool = False
+    turn_attempt_count: int = 0
+
+    # 戰鬥資訊
+    battle_count: int = 0
+    action_count: int = 0
+    aoe_triggered: bool = False
+
+    # 統計
+    dungeon_count: int = 0
+    combat_count: int = 0
+    chest_count: int = 0
+    death_count: int = 0              # 死亡次數
+    karma_adjust: str = ""            # 善惡調整剩餘
+    total_time: float = 0
+    chest_time_total: float = 0       # 寶箱累計時間
+    combat_time_total: float = 0      # 戰鬥累計時間
+    adb_retry_count: int = 0          # ADB 重連次數
+    crash_counter: int = 0            # 崩潰計數
+
+    # 警告列表
+    warnings: list = []
+
+    @classmethod
+    def reset(cls):
+        """重置所有監控狀態"""
+        cls.current_state = ""
+        cls.current_dungeon_state = ""
+        cls.current_target = ""
+        cls.target_detail = ""
+        cls.state_start_time = 0
+        cls.soft_timeout_progress = 0
+        cls.hard_timeout_progress = 0
+        cls.still_count = 0
+        cls.resume_count = 0
+        cls.is_gohome_mode = False
+        cls.turn_attempt_count = 0
+        cls.battle_count = 0
+        cls.action_count = 0
+        cls.aoe_triggered = False
+        cls.dungeon_count = 0
+        cls.combat_count = 0
+        cls.chest_count = 0
+        cls.death_count = 0
+        cls.karma_adjust = ""
+        cls.total_time = 0
+        cls.adb_retry_count = 0
+        cls.crash_counter = 0
+        cls.warnings = []
+
+    @classmethod
+    def update_warnings(cls):
+        """根據當前狀態更新警告列表"""
+        cls.warnings = []
+        if cls.is_gohome_mode:
+            cls.warnings.append("⚠️ 軟超時觸發，正在撤離")
+        if cls.resume_count >= 3:
+            cls.warnings.append("⚠️ Resume 多次失敗")
+        if cls.still_count >= 8:
+            cls.warnings.append("⚠️ 畫面長時間靜止")
+        if cls.adb_retry_count > 0:
+            cls.warnings.append(f"⚠️ ADB 重連 {cls.adb_retry_count} 次")
+        if cls.crash_counter > 3:
+            cls.warnings.append(f"🔴 連續崩潰 {cls.crash_counter} 次")
+
 class RuntimeContext:
     #### 統計信息
     _LAPTIME = 0
@@ -305,6 +388,7 @@ class RuntimeContext:
     _TIME_COMBAT_TOTAL = 0
     _TIME_CHEST = 0
     _TIME_CHEST_TOTAL = 0
+    _COUNTERDEATH = 0         # 死亡次數（隊伍全滅/someonedead）
     #### 其他臨時參數
     _MEET_CHEST_OR_COMBAT = False
     _COMBATSPD = False
@@ -779,6 +863,33 @@ def Factory():
             sleep_time = min(interval, t - elapsed)
             time.sleep(sleep_time)
             elapsed += sleep_time
+            
+            # 更新監控狀態（每次 sleep 循環都更新）
+            try:
+                MonitorState.dungeon_count = runtimeContext._COUNTERDUNG
+                MonitorState.combat_count = runtimeContext._COUNTERCOMBAT
+                MonitorState.chest_count = runtimeContext._COUNTERCHEST
+                
+                # 計算即時運行時間：累計時間 + 當前這輪的時間
+                if runtimeContext._LAPTIME > 0:
+                    current_lap = time.time() - runtimeContext._LAPTIME
+                    MonitorState.total_time = runtimeContext._TOTALTIME + current_lap
+                else:
+                    MonitorState.total_time = runtimeContext._TOTALTIME
+                
+                # 寶箱/戰鬥累計時間
+                MonitorState.chest_time_total = runtimeContext._TIME_CHEST_TOTAL
+                MonitorState.combat_time_total = runtimeContext._TIME_COMBAT_TOTAL
+                
+                MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
+                MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+                MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
+                MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
+                MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
+                MonitorState.death_count = runtimeContext._COUNTERDEATH
+                MonitorState.update_warnings()
+            except:
+                pass  # 忽略更新錯誤
 
     _adb_mode_logged = False  # 追蹤是否已輸出 ADB 模式日誌
 
@@ -1587,6 +1698,8 @@ def Factory():
 
             if CheckIf(screen,'someonedead'):
                 AddImportantInfo("他們活了,活了!")
+                runtimeContext._COUNTERDEATH += 1  # 增加死亡計數
+                MonitorState.death_count = runtimeContext._COUNTERDEATH
                 for _ in range(5):
                     Press([400+random.randint(0,100),750+random.randint(0,100)])
                     Sleep(1)
@@ -1952,6 +2065,8 @@ def Factory():
         logger.info("揹包整理完成")
 
     def StateInn():
+        MonitorState.current_state = "Inn"
+        MonitorState.current_target = ""
         # 1. 住宿
         if not setting._ACTIVE_ROYALSUITE_REST:
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','Economy',[1,1]],2)
@@ -1981,6 +2096,8 @@ def Factory():
             PressReturn()
             Sleep(2)
     def StateEoT():
+        MonitorState.current_state = "EoT"
+        MonitorState.current_target = ""
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
                 pass
@@ -2597,6 +2714,7 @@ def Factory():
         return use_normal_attack()
 
     def StateCombat():
+        MonitorState.current_state = "Combat"
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
@@ -2985,6 +3103,11 @@ def Factory():
             self.last_chest_auto_click_time = time.time()
             self.is_gohome_mode = False
             self.current_target = None
+            
+            # 同步到 MonitorState
+            MonitorState.state_start_time = self.move_start_time
+            MonitorState.still_count = 0
+            MonitorState.resume_count = 0
         
         def initiate_move(self, targetInfoList: list, ctx):
             """
@@ -3002,6 +3125,11 @@ def Factory():
             self.reset()
             target_info = targetInfoList[0]
             self.current_target = target_info.target
+            
+            # 更新監控狀態
+            MonitorState.current_target = self.current_target
+            MonitorState.state_start_time = time.time()
+            MonitorState.is_gohome_mode = False
             
             logger.info(f"[DungeonMover] 啟動移動: 目標={self.current_target}")
             
@@ -3052,11 +3180,18 @@ def Factory():
                 logger.info(f"[DungeonMover] 找到 chest_auto 按鈕: {pos}")
                 Press(pos)
             else:
-                # 嘗試打開地圖面板尋找
-                logger.info("[DungeonMover] 主畫面找不到 chest_auto，嘗試打開地圖")
-                Press([777, 150])
-                Sleep(1)
-                screen = ScreenShot()
+                # 先檢查地圖是否已打開
+                map_already_open = CheckIf(screen, 'mapFlag')
+                
+                if not map_already_open:
+                    # 地圖未打開，嘗試打開
+                    logger.info("[DungeonMover] 主畫面找不到 chest_auto，嘗試打開地圖")
+                    Press([777, 150])
+                    Sleep(1)
+                    screen = ScreenShot()
+                else:
+                    logger.info("[DungeonMover] 地圖已打開但找不到 chest_auto")
+                
                 pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
                 if pos:
                     Press(pos)
@@ -3066,9 +3201,9 @@ def Factory():
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
                         return DungeonState.Map
-                    # 按鈕暫時不可見（可能正在移動中），進入監控循環等待
-                    # 根據設計規則：只有偵測到 notresure 時才結束 chest_auto
-                    logger.info("[DungeonMover] chest_auto 按鈕暫時不可見，進入監控等待")
+                    # 圖片匹配失敗，直接點擊預設座標
+                    logger.info("[DungeonMover] chest_auto 圖片匹配失敗，點擊預設座標 [459, 1248]")
+                    Press([459, 1248])
 
             return self._monitor_move(targetInfoList, ctx)
         
@@ -3172,6 +3307,7 @@ def Factory():
                 if elapsed > self.SOFT_TIMEOUT and not self.is_gohome_mode:
                     logger.warning(f"[DungeonMover] 軟超時 ({self.SOFT_TIMEOUT}s)，切換至 GoHome 模式")
                     self.is_gohome_mode = True
+                    MonitorState.is_gohome_mode = True
                     # 不重置計時器，讓硬超時繼續計時
                     return self._start_gohome(targetInfoList, ctx)
                 
@@ -3204,7 +3340,23 @@ def Factory():
                         continue
 
                 # ========== D. 狀態檢查 ==========
-                _, state, screen = IdentifyState()
+                main_state, state, screen = IdentifyState()
+                
+                # 首先檢查是否離開了地城（回到 Inn 或其他主狀態）
+                if main_state == State.Inn or main_state == State.EoT:
+                    logger.info(f"[DungeonMover] 偵測到離開地城 (State={main_state})，退出移動監控")
+                    MonitorState.current_target = ""  # 重置以停止進度條
+                    MonitorState.state_start_time = 0
+                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
+                    return DungeonState.Quit
+                
+                # 檢查是否進入世界地圖（離開地城）
+                if CheckIf(screen, 'openWorldMap'):
+                    logger.info("[DungeonMover] 偵測到世界地圖，退出移動監控")
+                    MonitorState.current_target = ""  # 重置以停止進度條
+                    MonitorState.state_start_time = 0
+                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
+                    return DungeonState.Quit
                 
                 # Harken 傳送完成檢測
                 if ctx._HARKEN_FLOOR_TARGET is None and state == DungeonState.Dungeon:
@@ -3218,11 +3370,20 @@ def Factory():
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
+                    MonitorState.current_target = ""  # 重置以停止進度條
+                    MonitorState.state_start_time = 0
+                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
                     return DungeonState.Combat
                 if state == DungeonState.Chest:
                     logger.info("[DungeonMover] 進入寶箱")
+                    MonitorState.current_target = ""  # 重置以停止進度條
+                    MonitorState.state_start_time = 0
+                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
                     return DungeonState.Chest
                 if state == DungeonState.Quit:
+                    MonitorState.current_target = ""  # 重置以停止進度條
+                    MonitorState.state_start_time = 0
+                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
                     return DungeonState.Quit
                 
                 # ========== D. chest_resume (chest_auto 專用) ==========
@@ -3267,6 +3428,7 @@ def Factory():
                     
                     if diff < 0.1:
                         self.still_count += 1
+                        MonitorState.still_count = self.still_count  # 同步到監控
                         logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
                         
                         if self.still_count >= self.STILL_REQUIRED:
@@ -3275,6 +3437,28 @@ def Factory():
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
                                 logger.info("[DungeonMover] 已在地圖狀態")
+                                
+                                # chest_auto 特殊處理：地圖已開但找不到按鈕
+                                if is_chest_auto:
+                                    # 增加地圖靜止計數（使用 resume_consecutive_count 復用）
+                                    self.resume_consecutive_count += 1
+                                    logger.info(f"[DungeonMover] chest_auto 地圖靜止 {self.resume_consecutive_count}/3")
+                                    
+                                    if self.resume_consecutive_count >= 3:
+                                        # 連續 3 次找不到，移除 chest_auto 目標
+                                        logger.warning("[DungeonMover] chest_auto 連續 3 次找不到，移除目標繼續")
+                                        if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                            targetInfoList.pop(0)
+                                        return DungeonState.Map
+                                    
+                                    # 嘗試再次點擊預設位置
+                                    logger.info("[DungeonMover] 嘗試點擊 chest_auto 預設區域")
+                                    Press([800, 340])  # 預設位置
+                                    Sleep(1)
+                                    self.still_count = 0  # 重置靜止計數
+                                    self.last_screen = None
+                                    continue
+                                
                                 return DungeonState.Map
                             
                             # Resume 檢查 (非 chest_auto)
@@ -3283,6 +3467,7 @@ def Factory():
                                 if resume_pos:
                                     if self.resume_consecutive_count < self.MAX_RESUME_RETRIES:
                                         self.resume_consecutive_count += 1
+                                        MonitorState.resume_count = self.resume_consecutive_count  # 同步到監控
                                         logger.info(f"[DungeonMover] 點擊 Resume ({self.resume_consecutive_count}/{self.MAX_RESUME_RETRIES})")
                                         Press(resume_pos)
                                         Sleep(1)
@@ -3678,6 +3863,7 @@ def Factory():
         return DungeonState.Map,  targetInfoList
     def StateChest():
         nonlocal runtimeContext
+        MonitorState.current_state = "Chest"
         availableChar = [0, 1, 2, 3, 4, 5]
         disarm = [515,934]  # 527,920會按到接受死亡 450 1000會按到技能 445,1050還是會按到技能
         haveBeenTried = False
@@ -3837,6 +4023,10 @@ def Factory():
         
         nonlocal runtimeContext
         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True
+        
+        # 更新監控狀態
+        MonitorState.current_state = "Dungeon"
+        
         while 1:
             state_handle_start = time.time()
             state_handle_name = dungState
@@ -3845,6 +4035,9 @@ def Factory():
                 logger.info("即將停止腳本...")
                 dungState = DungeonState.Quit
             logger.info(f"當前狀態(地下城): {dungState}")
+            
+            # 更新監控狀態 - 地城子狀態
+            MonitorState.current_dungeon_state = str(dungState.value) if dungState else "識別中"
 
             match dungState:
                 case None:
@@ -4281,6 +4474,10 @@ def Factory():
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._COMBAT_BATTLE_COUNT = 0
 
+        # 初始化監控狀態
+        MonitorState.reset()
+        MonitorState.karma_adjust = str(setting._KARMAADJUST)
+
         state = None
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
         while 1:
@@ -4289,6 +4486,20 @@ def Factory():
             if setting._FORCESTOPING.is_set():
                 logger.info("即將停止腳本...")
                 break
+            
+            # 更新監控狀態
+            MonitorState.current_state = str(state.value) if state else "識別中"
+            MonitorState.dungeon_count = runtimeContext._COUNTERDUNG
+            MonitorState.combat_count = runtimeContext._COUNTERCOMBAT
+            MonitorState.chest_count = runtimeContext._COUNTERCHEST
+            MonitorState.total_time = runtimeContext._TOTALTIME
+            MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
+            MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+            MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
+            MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
+            MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
+            MonitorState.update_warnings()
+
             logger.info(f"當前狀態: {state}")
             match state:
                 case None:
