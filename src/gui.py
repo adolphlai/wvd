@@ -449,15 +449,32 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_hard_timeout_label = tk.StringVar(value="0/60s")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
 
-        # 第九行：Flag 相似度顯示
-        ttk.Label(self.monitor_frame, text="識別:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
-        self.monitor_flag_similarity_var = tk.StringVar(value="D:- M:- C:- B:-")
-        ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_similarity_var, width=28).grid(row=8, column=1, columnspan=3, sticky=tk.W)
+        # 第九行：地城識別
+        ttk.Label(self.monitor_frame, text="地城:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
+        self.monitor_flag_dung_var = tk.StringVar(value="0%")
+        self.monitor_flag_dung_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_dung_var, width=6)
+        self.monitor_flag_dung_label.grid(row=8, column=1, sticky=tk.W)
+        
+        ttk.Label(self.monitor_frame, text="地圖:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=2, sticky=tk.W, padx=(10, 2))
+        self.monitor_flag_map_var = tk.StringVar(value="0%")
+        self.monitor_flag_map_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_map_var, width=6)
+        self.monitor_flag_map_label.grid(row=8, column=3, sticky=tk.W)
 
-        # 第十行：警告區域
+        # 第十行：寶箱/戰鬥識別
+        ttk.Label(self.monitor_frame, text="寶箱:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=0, sticky=tk.W, padx=2)
+        self.monitor_flag_chest_var = tk.StringVar(value="0%")
+        self.monitor_flag_chest_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_chest_var, width=6)
+        self.monitor_flag_chest_label.grid(row=9, column=1, sticky=tk.W)
+        
+        ttk.Label(self.monitor_frame, text="戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=2, sticky=tk.W, padx=(10, 2))
+        self.monitor_flag_combat_var = tk.StringVar(value="0%")
+        self.monitor_flag_combat_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_combat_var, width=6)
+        self.monitor_flag_combat_label.grid(row=9, column=3, sticky=tk.W)
+
+        # 第十一行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
-        self.monitor_warning_label.grid(row=9, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+        self.monitor_warning_label.grid(row=10, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
 
         # 保留未顯示但被引用的變數
         self.monitor_dungeon_state_var = tk.StringVar(value="-")
@@ -1190,12 +1207,27 @@ class ConfigPanelApp(tk.Toplevel):
                 self.monitor_hard_timeout_progress['value'] = 0
                 self.monitor_hard_timeout_label.set("0/60s")
 
-            # 更新 Flag 相似度顯示
+            # 更新 Flag 相似度顯示（超過門檻值變紅）
             d = MonitorState.flag_dungFlag
             m = MonitorState.flag_mapFlag
             c = MonitorState.flag_chestFlag
             b = MonitorState.flag_combatActive
-            self.monitor_flag_similarity_var.set(f"D:{d}% M:{m}% C:{c}% B:{b}%")
+            
+            # 地城：閾值 75%
+            self.monitor_flag_dung_var.set(f"{d}%")
+            self.monitor_flag_dung_label.configure(foreground="red" if d >= 75 else "black")
+            
+            # 地圖：閾值 80%
+            self.monitor_flag_map_var.set(f"{m}%")
+            self.monitor_flag_map_label.configure(foreground="red" if m >= 80 else "black")
+            
+            # 寶箱：閾值 80%
+            self.monitor_flag_chest_var.set(f"{c}%")
+            self.monitor_flag_chest_label.configure(foreground="red" if c >= 80 else "black")
+            
+            # 戰鬥：閾值 70%
+            self.monitor_flag_combat_var.set(f"{b}%")
+            self.monitor_flag_combat_label.configure(foreground="red" if b >= 70 else "black")
 
             # 更新警告
             if MonitorState.warnings:
