@@ -330,6 +330,12 @@ class MonitorState:
     adb_retry_count: int = 0          # ADB 重連次數
     crash_counter: int = 0            # 崩潰計數
 
+    # Flag 相似度 (0-100%)
+    flag_dungFlag: int = 0
+    flag_mapFlag: int = 0
+    flag_chestFlag: int = 0
+    flag_combatActive: int = 0
+
     # 警告列表
     warnings: list = []
 
@@ -358,6 +364,10 @@ class MonitorState:
         cls.total_time = 0
         cls.adb_retry_count = 0
         cls.crash_counter = 0
+        cls.flag_dungFlag = 0
+        cls.flag_mapFlag = 0
+        cls.flag_chestFlag = 0
+        cls.flag_combatActive = 0
         cls.warnings = []
 
     @classmethod
@@ -1105,6 +1115,31 @@ def Factory():
             logger.debug(f"[黑屏偵測] 平均亮度: {mean_brightness:.2f} < {threshold}，判定為黑屏")
         return is_black
 
+    def GetMatchValue(screenImage, shortPathOfTarget, roi=None):
+        """獲取模板匹配的相似度值（0-100%）
+        
+        用於監控面板即時顯示 Flag 匹配度
+        """
+        templates_to_try = get_multi_templates(shortPathOfTarget)
+        best_val = 0
+        
+        for template_name in templates_to_try:
+            template = _get_cached_template(template_name)
+            if template is None:
+                continue
+            
+            screenshot = screenImage.copy()
+            search_area = CutRoI(screenshot, roi)
+            try:
+                result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                if max_val > best_val:
+                    best_val = max_val
+            except:
+                continue
+        
+        return int(best_val * 100)
+
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
         # 檢查是否需要多模板匹配
         templates_to_try = get_multi_templates(shortPathOfTarget)
@@ -1674,6 +1709,15 @@ def Factory():
                 ('dungFlag',      DungeonState.Dungeon),
                 ('mapFlag',       DungeonState.Map),
                 ]
+
+            # 更新 Flag 相似度到 MonitorState（供 GUI 即時顯示）
+            MonitorState.flag_dungFlag = GetMatchValue(screen, 'dungFlag')
+            MonitorState.flag_mapFlag = GetMatchValue(screen, 'mapFlag')
+            MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
+            # combatActive 使用第一個模板的匹配度
+            combat_templates = get_combat_active_templates()
+            if combat_templates:
+                MonitorState.flag_combatActive = GetMatchValue(screen, combat_templates[0])
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
@@ -3069,12 +3113,12 @@ def Factory():
         """
         統一的地城移動管理器
         - 整合 chest_auto, position, harken, gohome 的處理邏輯
-        - 實現分層超時機制 (Soft 30s -> GoHome, Hard 60s -> Restart)
+        - 實現分層超時機制 (Soft 40s -> GoHome, Hard 60s -> Restart)
         - 統一 Resume 和 Chest_Resume 處理
         """
         
         # 超時設定
-        SOFT_TIMEOUT = 30  # 軟超時：觸發 GoHome
+        SOFT_TIMEOUT = 40  # 軟超時：觸發 GoHome
         HARD_TIMEOUT = 60  # 硬超時：觸發重啟
         
         # 輪詢設定

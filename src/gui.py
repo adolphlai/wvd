@@ -435,10 +435,11 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(self.monitor_frame, textvariable=self.monitor_detection_var, width=18).grid(row=5, column=3, sticky=tk.W)
 
         # 第七行：軟超時進度條
+        # 第七行：軟超時進度條
         ttk.Label(self.monitor_frame, text="軟超時:", font=("微軟雅黑", 9, "bold")).grid(row=6, column=0, sticky=tk.W, padx=2)
         self.monitor_soft_timeout_progress = ttk.Progressbar(self.monitor_frame, length=200, mode='determinate', maximum=100)
         self.monitor_soft_timeout_progress.grid(row=6, column=1, columnspan=2, sticky=tk.W)
-        self.monitor_soft_timeout_label = tk.StringVar(value="0/30s")
+        self.monitor_soft_timeout_label = tk.StringVar(value="0/40s")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_soft_timeout_label, width=8).grid(row=6, column=3, sticky=tk.W)
 
         # 第八行：硬超時進度條
@@ -448,10 +449,15 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_hard_timeout_label = tk.StringVar(value="0/60s")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
 
-        # 第九行：警告區域
+        # 第九行：Flag 相似度顯示
+        ttk.Label(self.monitor_frame, text="識別:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
+        self.monitor_flag_similarity_var = tk.StringVar(value="D:- M:- C:- B:-")
+        ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_similarity_var, width=28).grid(row=8, column=1, columnspan=3, sticky=tk.W)
+
+        # 第十行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
-        self.monitor_warning_label.grid(row=8, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+        self.monitor_warning_label.grid(row=9, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
 
         # 保留未顯示但被引用的變數
         self.monitor_dungeon_state_var = tk.StringVar(value="-")
@@ -1161,7 +1167,7 @@ class ConfigPanelApp(tk.Toplevel):
                 self.monitor_total_time_var.set("0 秒")
             
             # 更新軟/硬超時進度條
-            soft_timeout = 30  # 軟超時 30 秒
+            soft_timeout = 40  # 軟超時 40 秒
             hard_timeout = 60  # 硬超時 60 秒
             
             # 當有 current_target 時表示正在移動，顯示進度
@@ -1180,9 +1186,16 @@ class ConfigPanelApp(tk.Toplevel):
             else:
                 # 不在移動狀態，重置進度條
                 self.monitor_soft_timeout_progress['value'] = 0
-                self.monitor_soft_timeout_label.set("0/30s")
+                self.monitor_soft_timeout_label.set("0/40s")
                 self.monitor_hard_timeout_progress['value'] = 0
                 self.monitor_hard_timeout_label.set("0/60s")
+
+            # 更新 Flag 相似度顯示
+            d = MonitorState.flag_dungFlag
+            m = MonitorState.flag_mapFlag
+            c = MonitorState.flag_chestFlag
+            b = MonitorState.flag_combatActive
+            self.monitor_flag_similarity_var.set(f"D:{d}% M:{m}% C:{c}% B:{b}%")
 
             # 更新警告
             if MonitorState.warnings:
