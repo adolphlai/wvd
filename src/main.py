@@ -1,7 +1,7 @@
 from gui import *
 import argparse
 
-__version__ = '1.10.31'
+__version__ = '1.10.47'
 OWNER = "arnold2957"
 REPO = "wvd"
 
@@ -30,7 +30,7 @@ class AppController(tk.Tk):
             github_repo=REPO,
             current_version=__version__
         )
-        # 禁用自动更新检查以避免卡死问题
+        # 禁用自動更新檢查以避免卡死問題
         # self.schedule_periodic_update_check()
         self.check_queue()
 
@@ -38,14 +38,14 @@ class AppController(tk.Tk):
         thread = threading.Thread(target=target_func, args=args, daemon=True)
         thread.start()
     def schedule_periodic_update_check(self):
-        # 如果当前没有在检查或下载，则启动一个新的检查
+        # 如果當前沒有在檢查或下載，則啓動一個新的檢查
         if not self.is_checking_for_update:
-            # print("调度器：正在启动一小时一次的后台更新检查...")
-            self.is_checking_for_update = True  # 设置标志，防止重复
+            # print("調度器：正在啓動一小時一次的後臺更新檢查...")
+            self.is_checking_for_update = True  # 設置標誌，防止重複
             self.run_in_thread(self.updater.check_for_updates)
             self.is_checking_for_update = False
         else:
-            # print("调度器：上一个检查/下载任务尚未完成，跳过本次检查。")
+            # print("調度器：上一個檢查/下載任務尚未完成，跳過本次檢查。")
             None
         self.after(3600000, self.schedule_periodic_update_check)
 
@@ -99,12 +99,12 @@ class AppController(tk.Tk):
             os._exit(0)
 
     def check_queue(self):
-        """处理来自AutoUpdater和其他服务的消息"""
+        """處理來自AutoUpdater和其他服務的消息"""
         try:
             message = self.msg_queue.get_nowait()
             command, value = message
             
-            # --- 这是处理更新逻辑的核心部分 ---
+            # --- 這是處理更新邏輯的核心部分 ---
             match command:
                 case 'start_quest':
                     self.quest_setting = value
@@ -113,16 +113,16 @@ class AppController(tk.Tk):
                     Farm = Factory()
                     self.quest_threading = Thread(target=Farm,args=(self.quest_setting,), daemon=True)
                     self.quest_threading.start()
-                    logger.info(f'启动任务\"{self.quest_setting._FARMTARGET_TEXT}\"...')
+                    logger.info(f'啓動任務\"{self.quest_setting._FARMTARGET_TEXT}\"...')
 
                 case 'stop_quest':
-                    logger.info('停止任务...')
+                    logger.info('停止任務...')
                     if hasattr(self, 'quest_threading') and self.quest_threading.is_alive():
                         if hasattr(self.quest_setting, '_FORCESTOPING'):
                             self.quest_setting._FORCESTOPING.set()
                 
                 case 'turn_to_7000G':
-                    logger.info('开始要钱...')
+                    logger.info('開始要錢...')
                     self.quest_setting._FARMTARGET = "7000G"
                     self.quest_setting._COUNTERDUNG = 0
                     while 1:
@@ -135,7 +135,7 @@ class AppController(tk.Tk):
                         self.main_window.turn_to_7000G()
 
                 case 'update_available':
-                    # 在面板上显示提示
+                    # 在面板上顯示提示
                     update_data = value
                     version = update_data['version']
                     if self.main_window:
@@ -151,33 +151,33 @@ class AppController(tk.Tk):
 
                         self.main_window.button_auto_download.config(command=lambda:self.run_in_thread(self.updater.download))          
                 case 'download_started':
-                    # 控制器决定创建并显示进度条窗口
+                    # 控制器決定創建並顯示進度條窗口
                     if not hasattr(self, 'progress_window') or not self.progress_window.winfo_exists():
-                        self.progress_window = Progressbar(self.main_window,title="下载中...",max_size = value)
+                        self.progress_window = Progressbar(self.main_window,title="下載中...",max_size = value)
 
                 case 'progress':
-                    # 控制器更新进度条UI
+                    # 控制器更新進度條UI
                     if hasattr(self, 'progress_window') and self.progress_window.winfo_exists():
                         self.progress_window.update_progress(value)
                         self.update()
                         None
 
                 case 'download_complete':
-                    # 控制器关闭进度条并显示成功信息
+                    # 控制器關閉進度條並顯示成功信息
                     if hasattr(self, 'progress_window') and self.progress_window.winfo_exists():
                         self.progress_window.destroy()
 
                 case 'error':
-                    # 控制器处理错误显示
+                    # 控制器處理錯誤顯示
                     if hasattr(self, 'progress_window') and self.progress_window.winfo_exists():
                         self.progress_window.destroy()
-                    messagebox.showerror("错误", value, parent=self.main_window)
+                    messagebox.showerror("錯誤", value, parent=self.main_window)
 
                 case 'restart_ready':
                     script_path = value
                     messagebox.showinfo(
                         "更新完成",
-                        "新版本已准备就绪，应用程序即将重启！",
+                        "新版本已準備就緒，應用程序即將重啓！",
                         parent=self.main_window
                     )
                     
@@ -189,34 +189,34 @@ class AppController(tk.Tk):
                     self.destroy()
                     
                 case 'no_update_found':
-                    # （可选）可以给个安静的提示，或什么都不做
-                    print("UI: 未发现更新。")
+                    # （可選）可以給個安靜的提示，或什麼都不做
+                    print("UI: 未發現更新。")
 
         except queue.Empty:
             pass
         finally:
-            # 持续监听
+            # 持續監聽
             self.after(100, self.check_queue)
 
 def parse_args():
-    """解析命令行参数"""
-    parser = argparse.ArgumentParser(description='WvDAS命令行参数')
+    """解析命令行參數"""
+    parser = argparse.ArgumentParser(description='WvDAS命令行參數')
     
-    # 添加-headless标志参数
+    # 添加-headless標誌參數
     parser.add_argument(
         '-headless', 
         '--headless', 
-        action='store_true',  # 检测到参数即标记为True
-        help='以无头模式运行程序'
+        action='store_true',  # 檢測到參數即標記爲True
+        help='以無頭模式運行程序'
     )
     
-    # 添加可选的config_path参数
+    # 添加可選的config_path參數
     parser.add_argument(
         '-config', 
         '--config', 
-        type=str,  # 自动转换为字符串
-        default=None,  # 默认值设为None
-        help='配置文件路径 (例如: c:/config.json)'
+        type=str,  # 自動轉換爲字符串
+        default=None,  # 默認值設爲None
+        help='配置文件路徑 (例如: c:/config.json)'
     )
     
     return parser.parse_args()
@@ -239,7 +239,7 @@ def HeadlessActive(config_path,msg_queue):
     msg_queue.put(('start_quest', setting))
 
 
-    logger.info(f"WvDAS 巫术daphne自动刷怪 v{__version__} @德德Dellyla(B站)")
+    logger.info(f"WvDAS 巫術daphne自動刷怪 v{__version__} @德德Dellyla(B站)")
 
 if __name__ == "__main__":
     main()

@@ -5,12 +5,16 @@
 目前的邏輯中，`chest_auto` 在 `StateDungeon` 中有獨立的處理區塊，而其他移動目標則使用 `StateSearch` 和 `StateMoving_CheckFrozen`。
 本計畫旨在將這些整合為一個統一的移動管理器，一致地處理移動的啟動、監控和恢復（Resume/重啟）。
 
+## 漸進式調整說明
+本文件描述的最終目標為「完全由 `DungeonMover` 統一移動監控」。
+目前代碼仍保留部分 `StateMoving_CheckFrozen` 呼叫點，建議以小步驟逐一替換並驗證。
+
 ## 需要使用者審查
 > [!IMPORTANT]
 > 此次重構將大幅修改 `StateDungeon`、`StateSearch` 和 `StateMoving_CheckFrozen`。核心移動決策邏輯將被集中化。
 > **分層超時機制**：
 > 1. **軟超時 (Soft Timeout, ~60s)**: 判定為移動卡住，觸發 `gohome` 嘗試撤離。
-> 2. **硬超時 (Hard Timeout, ~400s)**: 判定為系統嚴重卡死（轉圈/無回應），觸發 `restartGame`。
+> 2. **硬超時 (Hard Timeout, ~90s)**: 判定為系統嚴重卡死（轉圈/無回應），觸發 `restartGame`。
 
 ## 邏輯流程圖 (Mermaid)
 
@@ -44,8 +48,7 @@ flowchart TD
 
     %% 一般移動邏輯 (Resume 檢查)
     CheckResume -- Yes --> ClickResume[點擊 Resume]
-    CheckResume -- No --> MapState[**[Fix] 直接返回 Map 狀態**<br/>(不進入監控, 恢復即時響應)]
-    MapState --> End
+    CheckResume -- No --> OpenMap
     
     %% 地圖導航邏輯
     OpenMap --> FindTarget{"在地圖找到目標?<br/>(Position/Harken/Stair)"}
@@ -61,7 +64,7 @@ flowchart TD
     
     subgraph MonitorLoop ["移動監控迴圈 (Unified Monitor)"]
         direction TB
-        MonitorLoopStart(開始監控) --> CheckHardTimeout{"檢查硬超時<br/>(Hard Timeout > 400s)"}
+        MonitorLoopStart(開始監控) --> CheckHardTimeout{"檢查硬超時<br/>(Hard Timeout > 90s)"}
         CheckHardTimeout -- Yes --> RestartGame[觸發重啟]
         
         CheckHardTimeout -- No --> CheckSoftTimeout{"檢查軟超時<br/>(Soft Timeout > 60s)"}
@@ -116,16 +119,15 @@ flowchart TD
 這是一個統一的 `while` 循環，取代原本分散在 `StateMoving_CheckFrozen` 和 `StateDungeon` (chest_auto區塊) 的邏輯。
 
 1.  **分層超時管理 (Tiered Timeout)**:
-    - **監控依據**: 地城怪物密集，正常移動不可能超過 30 秒不遇到戰鬥或寶箱。
-    - **Soft Timeout (軟超時 - 30s)**:
-        - 定義: 單次移動指令執行超過 30 秒。
+    - **監控依據**: 地城怪物密集，正常移動不可能超過 60 秒不遇到戰鬥或寶箱。
+    - **Soft Timeout (軟超時 - 60s)**:
+        - 定義: 單次移動指令執行超過 60 秒。
         - 判定: 角色卡住（撞牆、路徑規劃失敗）。
         - 行為: **切換目標為 `gohome`**。
-    - **Hard Timeout (硬超時 - 60s)**:
-        - 定義: 總移動時間超過 60 秒（含 GoHome 執行時間）。
+    - **Hard Timeout (硬超時 - 90s)**:
+        - 定義: 總移動時間超過 90 秒（含 GoHome 執行時間）。
         - 判定: 即使 GoHome 也無法解決，視為系統卡死。
         - 行為: **觸發 `restartGame`**。
-        - **[Fix] 立即退出優化**: 若偵測到開啟世界地圖(`openworldmap`)或點擊回城(`Deepsnow` / `worldmapflag`)，立即判定為 **DungeonState.Quit**，停止監控與計時，防止在回城過程中觸發超時。
 
 2.  **狀態檢查 (`IdentifyState`)**:
     - 定期截圖並檢查是否進入 **戰鬥 (Combat)**、**寶箱 (Chest)** 或 **退出 (Quit)** 狀態。
@@ -173,7 +175,7 @@ flowchart TD
 *   程式碼語法檢查。
 
 ### 手動驗證
-*   **場景 1 - 一般移動**: 測試 `position` 目標在 30s 內完成。
-*   **場景 2 - 軟超時**: 模擬移動超過 30s，確認目標自動切換為 `gohome` 並開始撤離。
-*   **場景 3 - 硬超時**: 模擬 `gohome` 也卡住，總時間超過設定值 (60s)，人為觸發重啟。
+*   **場景 1 - 一般移動**: 測試 `position` 目標在 60s 內完成。
+*   **場景 2 - 軟超時**: 模擬移動超過 60s，確認目標自動切換為 `gohome` 並開始撤離。
+*   **場景 3 - 硬超時**: 模擬 `gohome` 也卡住，總時間超過設定值 (90s)，人為觸發重啟。
 *   **場景 4 - 正常 Resume**: 模擬移動中出現 Resume 按鈕，確認能點擊並繼續移動，且不會誤觸超時（如果設計為 Resume 成功重置計時器，或者計時器夠長）。

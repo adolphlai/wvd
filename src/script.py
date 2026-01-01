@@ -1,4 +1,4 @@
-from ppadb.client import Client as AdbClient
+﻿from ppadb.client import Client as AdbClient
 from win10toast import ToastNotifier
 
 from enum import Enum
@@ -132,24 +132,106 @@ def get_scrcpy_stream():
     return _scrcpy_stream
 
 
-CC_SKILLS = ["KANTIOS"]
-SECRET_AOE_SKILLS = ["SAoLABADIOS","SAoLAERLIK","SAoLAFOROS"]
-FULL_AOE_SKILLS = ["LAERLIK", "LAMIGAL","LAZELOS", "LACONES", "LAFOROS","LAHALITO", "LAFERU", "千恋万花"]
-ROW_AOE_SKILLS = ["maerlik", "mahalito", "mamigal","mazelos","maferu", "macones","maforos","终焉之刻"]
-PHYSICAL_SKILLS = ["unendingdeaths","動靜斬","地裂斬","全力一击","tzalik","居合","精密攻击","锁腹刺","破甲","星光裂","迟钝连携击","强袭","重装一击","眩晕打击","幻影狩猎"]
+# ==================== 技能分類與載入 ====================
+
+# 技能類別與施放方式對應
+SKILL_CATEGORIES = {
+    "普攻": {"cast_type": "target", "folder": "普攻"},
+    "單體": {"cast_type": "target", "folder": "單體"},
+    "橫排": {"cast_type": "target", "folder": "橫排"},
+    "全體": {"cast_type": "ok", "folder": "全體"},
+    "秘術": {"cast_type": "ok", "folder": "秘術"},
+    "群控": {"cast_type": "target", "folder": "群控"},
+}
+
+def load_skills_from_folder():
+    """從資料夾結構載入技能列表
+    
+    掃描 resources/images/spellskill/ 下的分類資料夾，
+    按數字前綴排序返回技能名稱列表。
+    
+    Returns:
+        dict: {類別名: [技能名列表], ...}
+    """
+    skills_by_category = {}
+    spellskill_dir = ResourcePath("resources/images/spellskill")
+    
+    for category, info in SKILL_CATEGORIES.items():
+        folder_path = os.path.join(spellskill_dir, info["folder"])
+        skills = []
+        
+        if os.path.isdir(folder_path):
+            files = os.listdir(folder_path)
+            # 過濾只取 .png 檔案
+            png_files = [f for f in files if f.lower().endswith('.png')]
+            # 依檔名排序（數字前綴會自然排序）
+            png_files.sort()
+            
+            for filename in png_files:
+                # 移除數字前綴和副檔名，取得技能名稱
+                # 例：01_attack.png → attack
+                skill_name = filename.rsplit('.', 1)[0]  # 移除副檔名
+                if '_' in skill_name:
+                    skill_name = skill_name.split('_', 1)[1]  # 移除數字前綴
+                skills.append(skill_name)
+        
+        skills_by_category[category] = skills
+        logger.debug(f"[技能載入] {category}: {len(skills)} 個技能")
+    
+    return skills_by_category
+
+def get_skill_cast_type(category):
+    """取得技能類別的施放方式
+    
+    Args:
+        category: 技能類別名稱
+        
+    Returns:
+        str: "target" (需選目標) 或 "ok" (OK 確認)
+    """
+    return SKILL_CATEGORIES.get(category, {}).get("cast_type", "target")
+
+def get_skill_image_path(category, skill_name):
+    """取得技能圖片的完整路徑
+    
+    Args:
+        category: 技能類別名稱
+        skill_name: 技能名稱（不含前綴）
+        
+    Returns:
+        str: 圖片路徑，若找不到則返回 None
+    """
+    folder = SKILL_CATEGORIES.get(category, {}).get("folder", "")
+    if not folder:
+        return None
+    
+    spellskill_dir = ResourcePath("resources/images/spellskill")
+    folder_path = os.path.join(spellskill_dir, folder)
+    
+    if os.path.isdir(folder_path):
+        for filename in os.listdir(folder_path):
+            if filename.lower().endswith('.png'):
+                # 檢查是否匹配技能名稱
+                name_part = filename.rsplit('.', 1)[0]
+                if '_' in name_part:
+                    name_part = name_part.split('_', 1)[1]
+                if name_part == skill_name:
+                    return os.path.join(folder_path, filename)
+    
+    return None
+
+# 載入技能列表（程式啟動時執行）
+SKILLS_BY_CATEGORY = load_skills_from_folder()
+
+# 相容性：維持舊常數供現有程式碼使用（之後會移除）
+CC_SKILLS = SKILLS_BY_CATEGORY.get("群控", ["KANTIOS"])
+SECRET_AOE_SKILLS = SKILLS_BY_CATEGORY.get("秘術", ["SAoLABADIOS", "SAoLAERLIK", "SAoLAFOROS"])
+FULL_AOE_SKILLS = SKILLS_BY_CATEGORY.get("全體", ["LAERLIK", "LAMIGAL", "LAZELOS", "LACONES", "LAFOROS", "LAHALITO", "LAFERU"])
+ROW_AOE_SKILLS = SKILLS_BY_CATEGORY.get("橫排", ["maerlik", "mahalito", "mamigal", "mazelos", "maferu", "macones", "maforos"])
+PHYSICAL_SKILLS = SKILLS_BY_CATEGORY.get("單體", ["unendingdeaths", "動靜斬", "地裂斬", "全力一擊", "tzalik", "居合"])
 ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
+ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS + PHYSICAL_SKILLS
 
-ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS +  PHYSICAL_SKILLS
-ALL_SKILLS = [s for s in ALL_SKILLS if s in list(set(ALL_SKILLS))]
-
-SPELLSEKILL_TABLE = [
-            ["btn_enable_all","所有技能",ALL_SKILLS,0,0],
-            ["btn_enable_horizontal_aoe","橫排AOE",ROW_AOE_SKILLS,0,1],
-            ["btn_enable_full_aoe","全體AOE",FULL_AOE_SKILLS,1,0],
-            ["btn_enable_secret_aoe","秘術AOE",SECRET_AOE_SKILLS,1,1],
-            ["btn_enable_physical","強力單體",PHYSICAL_SKILLS,2,0],
-            ["btn_enable_cc","群體控制",CC_SKILLS,2,1]
-            ]
 
 DUNGEON_TARGETS = BuildQuestReflection()
 
@@ -161,13 +243,13 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
-            # AE 手設定
-            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 1],  # 單位數量：1~6
-            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # AE 手觸發間隔：0=每場觸發
+            # 戰鬥順序設定 (AE 手)
+            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 6],  # 設定單位數量：1~6
+            ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             ["ae_caster_1_skill_var", tk.StringVar, "_AE_CASTER_1_SKILL", ""],      # 順序 1 技能
             ["ae_caster_1_level_var", tk.StringVar, "_AE_CASTER_1_LEVEL", "關閉"],  # 順序 1 技能等級：關閉/LV2~LV5
             ["ae_caster_2_skill_var", tk.StringVar, "_AE_CASTER_2_SKILL", ""],      # 順序 2 技能
-            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級：關閉/LV2~LV5
+            ["ae_caster_2_level_var", tk.StringVar, "_AE_CASTER_2_LEVEL", "關閉"],  # 順序 2 技能等級
             ["ae_caster_3_skill_var", tk.StringVar, "_AE_CASTER_3_SKILL", ""],      # 順序 3 技能
             ["ae_caster_3_level_var", tk.StringVar, "_AE_CASTER_3_LEVEL", "關閉"],  # 順序 3 技能等級
             ["ae_caster_4_skill_var", tk.StringVar, "_AE_CASTER_4_SKILL", ""],      # 順序 4 技能
@@ -176,10 +258,11 @@ CONFIG_VAR_LIST = [
             ["ae_caster_5_level_var", tk.StringVar, "_AE_CASTER_5_LEVEL", "關閉"],  # 順序 5 技能等級
             ["ae_caster_6_skill_var", tk.StringVar, "_AE_CASTER_6_SKILL", ""],      # 順序 6 技能
             ["ae_caster_6_level_var", tk.StringVar, "_AE_CASTER_6_LEVEL", "關閉"],  # 順序 6 技能等級
-            ["system_auto_combat_var",      tk.BooleanVar, "_SYSTEMAUTOCOMBAT",          False],
-            ["aoe_once_var",                tk.BooleanVar, "_AOE_ONCE",                  False],
-            ["custom_aoe_time_var",         tk.IntVar,     "_AOE_TIME",                  1],
-            ["auto_after_aoe_var",          tk.BooleanVar, "_AUTO_AFTER_AOE",            False],
+            # 自動戰鬥模式設定 (新)
+            ["auto_combat_mode_var",        tk.StringVar,  "_AUTO_COMBAT_MODE",          "2 場後自動"],  # 完全自動/1場後自動/2場後自動/完全手動
+            ["unconfigured_default_var",    tk.StringVar,  "_UNCONFIGURED_DEFAULT",      "單體"],        # 未設定預設類別：普攻/單體/橫排/全體/秘術/群控
+            ["dungeon_repeat_limit_var",    tk.IntVar,     "_DUNGEON_REPEAT_LIMIT",      0],             # 連續刷地城次數：0=每次回村
+            # 系統設定
             ["active_rest_var",             tk.BooleanVar, "_ACTIVE_REST",               True],
             ["active_royalsuite_rest_var",  tk.BooleanVar, "_ACTIVE_ROYALSUITE_REST",    False],
             ["active_triumph_var",          tk.BooleanVar, "_ACTIVE_TRIUMPH",            False],
@@ -189,12 +272,12 @@ CONFIG_VAR_LIST = [
             ["adb_port_var",                tk.StringVar,  "_ADBPORT",                   5555],
             ["last_version",                tk.StringVar,  "LAST_VERSION",               ""],
             ["latest_version",              tk.StringVar,  "LATEST_VERSION",             None],
-            ["_spell_skill_config_internal",list,          "_SPELLSKILLCONFIG",          []],
             ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True],
             ["organize_backpack_enabled_var", tk.BooleanVar, "_ORGANIZE_BACKPACK_ENABLED", False],
             ["organize_backpack_count_var",  tk.IntVar,     "_ORGANIZE_BACKPACK_COUNT",   0],
             ["auto_refill_var",              tk.BooleanVar, "_AUTO_REFILL",               True],  # 自動補給
             ]
+
 
 class FarmConfig:
     for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
@@ -204,30 +287,128 @@ class FarmConfig:
         self._FORCESTOPING = None
         self._FINISHINGCALLBACK = None
         self._MSGQUEUE = None
-        #### 底层接口
+        #### 底層接口
         self._ADBDEVICE = None
     def __getattr__(self, name):
-        # 当访问不存在的属性时，抛出AttributeError
-        raise AttributeError(f"FarmConfig对象没有属性'{name}'")
+        # 當訪問不存在的屬性時，拋出AttributeError
+        raise AttributeError(f"FarmConfig對象沒有屬性'{name}'")
+class MonitorState:
+    """即時監控狀態類別，供 GUI 讀取顯示"""
+    # 當前狀態
+    current_state: str = "Idle"           # Inn/Dungeon/EoT/Quit
+    current_dungeon_state: str = ""   # Map/Combat/Chest/Dungeon
+    current_target: str = ""          # chest_auto/position/harken/gohome
+    target_detail: str = ""           # 目標詳情
+
+    # 時間追蹤
+    state_start_time: float = 0       # 狀態開始時間
+    soft_timeout_progress: float = 0  # 0-100%
+    hard_timeout_progress: float = 0  # 0-100%
+
+    # 卡死偵測
+    still_count: int = 0
+    still_max: int = 10
+    resume_count: int = 0
+    resume_max: int = 5
+    is_gohome_mode: bool = False
+    turn_attempt_count: int = 0
+
+    # 戰鬥資訊
+    battle_count: int = 0
+    action_count: int = 0
+    aoe_triggered: bool = False
+
+    # 統計
+    dungeon_count: int = 0
+    combat_count: int = 0
+    chest_count: int = 0
+    death_count: int = 0              # 死亡次數
+    karma_adjust: str = ""            # 善惡調整剩餘
+    total_time: float = 0
+    chest_time_total: float = 0       # 寶箱累計時間
+    combat_time_total: float = 0      # 戰鬥累計時間
+    adb_retry_count: int = 0          # ADB 重連次數
+    crash_counter: int = 0            # 崩潰計數
+
+    # Flag 相似度 (0-100%)
+    flag_dungFlag: int = 0
+    flag_mapFlag: int = 0
+    flag_chestFlag: int = 0
+    flag_combatActive: int = 0
+    flag_worldMap: int = 0
+    flag_chest_auto: int = 0
+    flag_auto_text: int = 0
+
+    # 警告列表
+    warnings: list = []
+
+    @classmethod
+    def reset(cls):
+        """重置所有監控狀態"""
+        cls.current_state = "Idle"
+        cls.current_dungeon_state = ""
+        cls.current_target = ""
+        cls.target_detail = ""
+        cls.state_start_time = 0
+        cls.soft_timeout_progress = 0
+        cls.hard_timeout_progress = 0
+        cls.still_count = 0
+        cls.resume_count = 0
+        cls.is_gohome_mode = False
+        cls.turn_attempt_count = 0
+        cls.battle_count = 0
+        cls.action_count = 0
+        cls.aoe_triggered = False
+        cls.dungeon_count = 0
+        cls.combat_count = 0
+        cls.chest_count = 0
+        cls.death_count = 0
+        cls.karma_adjust = ""
+        cls.total_time = 0
+        cls.adb_retry_count = 0
+        cls.crash_counter = 0
+        cls.flag_dungFlag = 0
+        cls.flag_mapFlag = 0
+        cls.flag_chestFlag = 0
+        cls.flag_combatActive = 0
+        cls.flag_worldMap = 0
+        cls.flag_chest_auto = 0
+        cls.flag_auto_text = 0
+        cls.warnings = []
+
+    @classmethod
+    def update_warnings(cls):
+        """根據當前狀態更新警告列表"""
+        cls.warnings = []
+        if cls.is_gohome_mode:
+            cls.warnings.append("⚠️ 軟超時觸發，正在撤離")
+        if cls.resume_count >= 3:
+            cls.warnings.append("⚠️ Resume 多次失敗")
+        if cls.still_count >= 8:
+            cls.warnings.append("⚠️ 畫面長時間靜止")
+        if cls.adb_retry_count > 0:
+            cls.warnings.append(f"⚠️ ADB 重連 {cls.adb_retry_count} 次")
+        if cls.crash_counter > 3:
+            cls.warnings.append(f"🔴 連續崩潰 {cls.crash_counter} 次")
+
 class RuntimeContext:
-    #### 统计信息
+    #### 統計信息
     _LAPTIME = 0
     _TOTALTIME = 0
     _COUNTERDUNG = 0
     _COUNTERCOMBAT = 0
     _COUNTERCHEST = 0
-    _COUNTERADBRETRY = 0      # ADB 重启次数（闪退/连接失败）
-    _COUNTEREMULATORCRASH = 0 # 模拟器崩溃次数（需完全重启模拟器）
+    _COUNTERADBRETRY = 0      # ADB 重啓次數（閃退/連接失敗）
+    _COUNTEREMULATORCRASH = 0 # 模擬器崩潰次數（需完全重啓模擬器）
     _TIME_COMBAT= 0
     _TIME_COMBAT_TOTAL = 0
     _TIME_CHEST = 0
     _TIME_CHEST_TOTAL = 0
-    #### 其他临时参数
+    _COUNTERDEATH = 0         # 死亡次數（隊伍全滅/someonedead）
+    #### 其他臨時參數
     _MEET_CHEST_OR_COMBAT = False
-    _ENOUGH_AOE = False
-    _AOE_CAST_TIME = 0  # AOE 釋放次數計數器
     _COMBATSPD = False
-    _SUICIDE = False # 当有两个人死亡的时候(multipeopledead), 在战斗中尝试自杀.
+    _SUICIDE = False # 當有兩個人死亡的時候(multipeopledead), 在戰鬥中嘗試自殺.
     _MAXRETRYLIMIT = 20
     _ACTIVESPELLSEQUENCE = None
     _SHOULDAPPLYSPELLSEQUENCE = True
@@ -235,19 +416,21 @@ class RuntimeContext:
     _ZOOMWORLDMAP = False
     _CRASHCOUNTER = 0
     _IMPORTANTINFO = ""
-    _FIRST_DUNGEON_ENTRY = True  # 第一次进入地城标志，进入后打开地图时重置
+    _FIRST_DUNGEON_ENTRY = True  # 第一次進入地城標誌，進入後打開地圖時重置
     _DUNGEON_CONFIRMED = False  # 已確認進入地城（偵測到地城狀態後設為 True）
-    _STEPAFTERRESTART = True  # 重启后左右平移标志，False=需要執行防轉圈，True=已執行或無需執行
+    _STEPAFTERRESTART = True  # 重啓後左右平移標誌，False=需要執行防轉圈，True=已執行或無需執行
     _COMBAT_ACTION_COUNT = 0  # 每場戰鬥的行動次數（進入 StateCombat +1，戰鬥結束重置）
     _COMBAT_BATTLE_COUNT = 0  # 當前第幾戰 (1=第一戰, 2=第二戰...)
-    _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發 AOE 開自動
+    _AOE_TRIGGERED_THIS_DUNGEON = False  # 本次地城是否已觸發自動戰鬥
     _AE_CASTER_FIRST_ATTACK_DONE = False  # AE 手是否已完成首次普攻
     _HARKEN_FLOOR_TARGET = None  # harken 樓層選擇目標（字符串圖片名），None 表示返回村莊
     _HARKEN_TELEPORT_JUST_COMPLETED = False  # harken 樓層傳送剛剛完成標記
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
     _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
-    _RESTART_OPEN_MAP_PENDING = False  # 重启后待打开地图标志，跳过Resume优化
+    _RESTART_OPEN_MAP_PENDING = False  # 重啓後待打開地圖標誌，跳過Resume優化
     _MID_DUNGEON_START = False  # 地城內啟動標記，用於跳過黑屏打斷（因為不知道已打幾戰）
+    _DUNGEON_REPEAT_COUNT = 0  # 連續刷地城次數計數器，達到設定值後回村
+    _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -258,13 +441,13 @@ class FarmQuest:
     _SPELLSEQUENCE = None
     _TYPE = None
     def __getattr__(self, name):
-        # 当访问不存在的属性时，抛出AttributeError
-        raise AttributeError(f"FarmQuest对象没有属性'{name}'")
+        # 當訪問不存在的屬性時，拋出AttributeError
+        raise AttributeError(f"FarmQuest對象沒有屬性'{name}'")
 class TargetInfo:
     def __init__(self, target: str, swipeDir: list = None, roi=None, floorImage=None, activeSpellSequenceOverride = False):
         self.target = target
         self.swipeDir = swipeDir
-        # 注意 roi校验需要target的值. 请严格保证roi在最后.
+        # 注意 roi校驗需要target的值. 請嚴格保證roi在最後.
         self.roi = roi
         self.floorImage = floorImage  # 用於 harken 樓層選擇
         self.activeSpellSequenceOverride = activeSpellSequenceOverride
@@ -316,15 +499,15 @@ class TargetInfo:
 def KillAdb(setting : FarmConfig):
     adb_path = GetADBPath(setting)
     try:
-        logger.info(f"正在检查并关闭adb...")
-        # Windows 系统使用 taskkill 命令
+        logger.info(f"正在檢查並關閉adb...")
+        # Windows 系統使用 taskkill 命令
         if os.name == 'nt':
             subprocess.run(
                 f"taskkill /f /im adb.exe", 
                 shell=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=False  # 不检查命令是否成功（进程可能不存在）
+                check=False  # 不檢查命令是否成功（進程可能不存在）
             )
             time.sleep(1)
             subprocess.run(
@@ -332,7 +515,7 @@ def KillAdb(setting : FarmConfig):
                 shell=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=False  # 不检查命令是否成功（进程可能不存在）
+                check=False  # 不檢查命令是否成功（進程可能不存在）
             )
         else:
             subprocess.run(
@@ -342,23 +525,23 @@ def KillAdb(setting : FarmConfig):
                 stderr=subprocess.DEVNULL,
                 check=False
             )
-        logger.info(f"已尝试终止adb")
+        logger.info(f"已嘗試終止adb")
     except Exception as e:
-        logger.error(f"终止模拟器进程时出错: {str(e)}")
+        logger.error(f"終止模擬器進程時出錯: {str(e)}")
     
 def KillEmulator(setting : FarmConfig):
     emulator_name = os.path.basename(setting._EMUPATH)
     emulator_SVC = "MuMuVMMSVC.exe"
     try:
-        logger.info(f"正在检查并关闭已运行的模拟器实例{emulator_name}...")
-        # Windows 系统使用 taskkill 命令
+        logger.info(f"正在檢查並關閉已運行的模擬器實例{emulator_name}...")
+        # Windows 系統使用 taskkill 命令
         if os.name == 'nt':
             subprocess.run(
                 f"taskkill /f /im {emulator_name}", 
                 shell=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=False  # 不检查命令是否成功（进程可能不存在）
+                check=False  # 不檢查命令是否成功（進程可能不存在）
             )
             time.sleep(1)
             subprocess.run(
@@ -366,11 +549,11 @@ def KillEmulator(setting : FarmConfig):
                 shell=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=False  # 不检查命令是否成功（进程可能不存在）
+                check=False  # 不檢查命令是否成功（進程可能不存在）
             )
             time.sleep(1)
 
-        # Unix/Linux 系统使用 pkill 命令
+        # Unix/Linux 系統使用 pkill 命令
         else:
             subprocess.run(
                 f"pkill -f {emulator_name}", 
@@ -386,17 +569,17 @@ def KillEmulator(setting : FarmConfig):
                 stderr=subprocess.DEVNULL,
                 check=False
             )
-        logger.info(f"已尝试终止模拟器进程: {emulator_name}")
+        logger.info(f"已嘗試終止模擬器進程: {emulator_name}")
     except Exception as e:
-        logger.error(f"终止模拟器进程时出错: {str(e)}")
+        logger.error(f"終止模擬器進程時出錯: {str(e)}")
 def StartEmulator(setting):
     hd_player_path = setting._EMUPATH
     if not os.path.exists(hd_player_path):
-        logger.error(f"模拟器启动程序不存在: {hd_player_path}")
+        logger.error(f"模擬器啓動程序不存在: {hd_player_path}")
         return False
 
     try:
-        logger.info(f"启动模拟器: {hd_player_path}")
+        logger.info(f"啓動模擬器: {hd_player_path}")
         subprocess.Popen(
             hd_player_path, 
             shell=True,
@@ -404,14 +587,14 @@ def StartEmulator(setting):
             stderr=subprocess.DEVNULL,
             cwd=os.path.dirname(hd_player_path))
     except Exception as e:
-        logger.error(f"启动模拟器失败: {str(e)}")
+        logger.error(f"啓動模擬器失敗: {str(e)}")
         return False
     
-    logger.info("等待模拟器启动...")
+    logger.info("等待模擬器啓動...")
     time.sleep(15)
 def GetADBPath(setting):
     adb_path = setting._EMUPATH
-    adb_path = adb_path.replace("HD-Player.exe", "HD-Adb.exe") # 蓝叠
+    adb_path = adb_path.replace("HD-Player.exe", "HD-Adb.exe") # 藍疊
     adb_path = adb_path.replace("MuMuPlayer.exe", "adb.exe") # mumu
     adb_path = adb_path.replace("MuMuNxDevice.exe", "adb.exe") # mumu
     if not os.path.exists(adb_path):
@@ -435,22 +618,22 @@ def CheckRestartConnectADB(setting: FarmConfig):
             logger.info("CheckRestartConnectADB 檢測到停止信號，中斷 ADB 連接")
             return None
 
-        logger.info(f"-----------------------\n开始尝试连接adb. 次数:{attempt + 1}/{MAXRETRIES}...")
+        logger.info(f"-----------------------\n開始嘗試連接adb. 次數:{attempt + 1}/{MAXRETRIES}...")
 
         if attempt == 3:
-            logger.info(f"失败次数过多, 尝试关闭adb.")
+            logger.info(f"失敗次數過多, 嘗試關閉adb.")
             KillAdb(setting)
 
-            # 我们不起手就关, 但是如果2次链接还是尝试失败, 那就触发一次强制重启.
+            # 我們不起手就關, 但是如果2次鏈接還是嘗試失敗, 那就觸發一次強制重啓.
 
         try:
-            logger.info("检查adb服务...")
+            logger.info("檢查adb服務...")
             result = CMDLine(f"\"{adb_path}\" devices")
-            logger.debug(f"adb链接返回(输出信息):{result.stdout}")
-            logger.debug(f"adb链接返回(错误信息):{result.stderr}")
+            logger.debug(f"adb鏈接返回(輸出信息):{result.stdout}")
+            logger.debug(f"adb鏈接返回(錯誤信息):{result.stderr}")
 
             if ("daemon not running" in result.stderr) or ("offline" in result.stdout):
-                logger.info("adb服务未启动!\n启动adb服务...")
+                logger.info("adb服務未啓動!\n啓動adb服務...")
                 CMDLine(f"\"{adb_path}\" kill-server")
                 CMDLine(f"\"{adb_path}\" start-server")
 
@@ -461,26 +644,26 @@ def CheckRestartConnectADB(setting: FarmConfig):
                         return None
                     time.sleep(0.5)
 
-            logger.debug(f"尝试连接到adb...")
+            logger.debug(f"嘗試連接到adb...")
             result = CMDLine(f"\"{adb_path}\" connect 127.0.0.1:{setting._ADBPORT}")
-            logger.debug(f"adb链接返回(输出信息):{result.stdout}")
-            logger.debug(f"adb链接返回(错误信息):{result.stderr}")
+            logger.debug(f"adb鏈接返回(輸出信息):{result.stdout}")
+            logger.debug(f"adb鏈接返回(錯誤信息):{result.stderr}")
 
             if result.returncode == 0 and ("connected" in result.stdout or "already" in result.stdout):
-                logger.info("成功连接到模拟器")
+                logger.info("成功連接到模擬器")
                 break
             if ("refused" in result.stderr) or ("cannot connect" in result.stdout):
-                logger.info("模拟器未运行，尝试启动...")
+                logger.info("模擬器未運行，嘗試啓動...")
                 StartEmulator(setting)
-                logger.info("模拟器(应该)启动完毕.")
-                logger.info("尝试连接到模拟器...")
+                logger.info("模擬器(應該)啓動完畢.")
+                logger.info("嘗試連接到模擬器...")
                 result = CMDLine(f"\"{adb_path}\" connect 127.0.0.1:{setting._ADBPORT}")
                 if result.returncode == 0 and ("connected" in result.stdout or "already" in result.stdout):
-                    logger.info("成功连接到模拟器")
+                    logger.info("成功連接到模擬器")
                     break
-                logger.info("无法连接. 检查adb端口.")
+                logger.info("無法連接. 檢查adb端口.")
 
-            logger.info(f"连接失败: {result.stderr.strip()}")
+            logger.info(f"連接失敗: {result.stderr.strip()}")
 
             # 檢查停止信號的 sleep（2秒拆成4次）
             for _ in range(4):
@@ -499,7 +682,7 @@ def CheckRestartConnectADB(setting: FarmConfig):
                     return None
                 time.sleep(0.5)
         except Exception as e:
-            logger.error(f"重启ADB服务时出错: {e}")
+            logger.error(f"重啓ADB服務時出錯: {e}")
 
             # 檢查停止信號的 sleep（2秒拆成4次）
             for _ in range(4):
@@ -519,21 +702,21 @@ def CheckRestartConnectADB(setting: FarmConfig):
                 time.sleep(0.5)
             return None
     else:
-        logger.info("达到最大重试次数，连接失败")
+        logger.info("達到最大重試次數，連接失敗")
         return None
 
     try:
         client = AdbClient(host="127.0.0.1", port=5037)
         devices = client.devices()
 
-        # 查找匹配的设备
+        # 查找匹配的設備
         target_device = f"127.0.0.1:{setting._ADBPORT}"
         for device in devices:
             if device.serial == target_device:
-                logger.info(f"成功获取设备对象: {device.serial}")
+                logger.info(f"成功獲取設備對象: {device.serial}")
                 return device
     except Exception as e:
-        logger.error(f"获取ADB设备时出错: {e}")
+        logger.error(f"獲取ADB設備時出錯: {e}")
 
     return None
 ##################################################################
@@ -543,7 +726,7 @@ def CutRoI(screenshot,roi):
 
     img_height, img_width = screenshot.shape[:2]
     roi_copy = roi.copy()
-    roi1_rect = roi_copy.pop(0)  # 第一个矩形 (x, y, width, height)
+    roi1_rect = roi_copy.pop(0)  # 第一個矩形 (x, y, width, height)
 
     x1, y1, w1, h1 = roi1_rect
 
@@ -571,8 +754,8 @@ def CutRoI(screenshot,roi):
                 pixels_in_roi2_mask_for_current_op = np.zeros((img_height, img_width), dtype=bool)
                 pixels_in_roi2_mask_for_current_op[roi2_y_start_clipped:roi2_y_end_clipped, roi2_x_start_clipped:roi2_x_end_clipped] = True
 
-                # 将位于 roi2 中的像素设置为0
-                # (如果这些像素之前因为不在roi1中已经被设为0，则此操作无额外效果)
+                # 將位於 roi2 中的像素設置爲0
+                # (如果這些像素之前因爲不在roi1中已經被設爲0，則此操作無額外效果)
                 screenshot[pixels_in_roi2_mask_for_current_op] = 0
 
     # cv2.imwrite(f'CutRoI_{time.time()}.png', screenshot)
@@ -598,16 +781,16 @@ def Factory():
         return _template_cache.get(template_name)
     
     def LoadQuest(farmtarget):
-        # 构建文件路径
+        # 構建文件路徑
         jsondict = LoadJson(ResourcePath(QUEST_FILE))
         if setting._FARMTARGET in jsondict:
             data = jsondict[setting._FARMTARGET]
         else:
-            logger.error("任务列表已更新.请重新手动选择地下城任务.")
+            logger.error("任務列表已更新.請重新手動選擇地下城任務.")
             return
         
         
-        # 创建 Quest 实例并填充属性
+        # 創建 Quest 實例並填充屬性
         quest = FarmQuest()
         for key, value in data.items():
             if key == '_TARGETINFOLIST':
@@ -617,7 +800,7 @@ def Factory():
             elif key in ["type","questName","questId",'extraConfig']:
                 pass
             else:
-                logger.info(f"'{key}'并不存在于FarmQuest中.")
+                logger.info(f"'{key}'並不存在於FarmQuest中.")
         
         if 'extraConfig' in data and isinstance(data['extraConfig'], dict):
             for key, value in data['extraConfig'].items():
@@ -629,9 +812,10 @@ def Factory():
     ##################################################################
     def ResetADBDevice():
         nonlocal setting # 修改device
+        MonitorState.current_state = "Connecting"
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
-            logger.info("ADB服务成功启动，设备已连接.")
+            logger.info("ADB服務成功啓動，設備已連接.")
 
             # ADB 重連後，嘗試重啟 pyscrcpy 串流
             stream = get_scrcpy_stream()
@@ -663,39 +847,66 @@ def Factory():
             
             try:
                 if not completed.wait(timeout=7):
-                    # 线程超时未完成
-                    logger.warning(f"ADB命令执行超时: {cmdStr}")
-                    raise TimeoutError(f"ADB命令在{7}秒内未完成")
+                    # 線程超時未完成
+                    logger.warning(f"ADB命令執行超時: {cmdStr}")
+                    raise TimeoutError(f"ADB命令在{7}秒內未完成")
                 
                 if exception is not None:
                     raise exception
                     
                 return result
             except (TimeoutError, RuntimeError, ConnectionResetError, cv2.error) as e:
-                logger.warning(f"ADB操作失败 ({type(e).__name__}): {e}")
-                logger.info("尝试重启ADB服务...")
+                logger.warning(f"ADB操作失敗 ({type(e).__name__}): {e}")
+                logger.info("嘗試重啓ADB服務...")
                 
                 ResetADBDevice()
                 time.sleep(1)
 
                 continue
             except Exception as e:
-                # 非预期异常直接抛出
-                logger.error(f"非预期的ADB异常: {type(e).__name__}: {e}")
+                # 非預期異常直接拋出
+                logger.error(f"非預期的ADB異常: {type(e).__name__}: {e}")
                 raise
     
     def Sleep(t=1):
-        """可响应停止信号的 sleep 函数"""
-        # 将长时间 sleep 分割成小段，每段检查停止标志
-        interval = 0.5  # 每 0.5 秒检查一次
+        """可響應停止信號的 sleep 函數"""
+        # 將長時間 sleep 分割成小段，每段檢查停止標誌
+        interval = 0.5  # 每 0.5 秒檢查一次
         elapsed = 0
         while elapsed < t:
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                logger.debug(f"Sleep 中检测到停止信号，提前退出")
+                logger.debug(f"Sleep 中檢測到停止信號，提前退出")
                 return
             sleep_time = min(interval, t - elapsed)
             time.sleep(sleep_time)
             elapsed += sleep_time
+            
+            # 更新監控狀態（每次 sleep 循環都更新）
+            try:
+                MonitorState.dungeon_count = runtimeContext._COUNTERDUNG
+                MonitorState.combat_count = runtimeContext._COUNTERCOMBAT
+                MonitorState.chest_count = runtimeContext._COUNTERCHEST
+                
+                # 計算即時運行時間：累計時間 + 當前這輪的時間
+                if runtimeContext._LAPTIME > 0:
+                    current_lap = time.time() - runtimeContext._LAPTIME
+                    MonitorState.total_time = runtimeContext._TOTALTIME + current_lap
+                else:
+                    MonitorState.total_time = runtimeContext._TOTALTIME
+                
+                # 寶箱/戰鬥累計時間
+                MonitorState.chest_time_total = runtimeContext._TIME_CHEST_TOTAL
+                MonitorState.combat_time_total = runtimeContext._TIME_COMBAT_TOTAL
+                
+                MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
+                MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+                MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
+                MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
+                MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
+                MonitorState.death_count = runtimeContext._COUNTERDEATH
+                MonitorState.update_warnings()
+            except:
+                pass  # 忽略更新錯誤
 
     _adb_mode_logged = False  # 追蹤是否已輸出 ADB 模式日誌
 
@@ -825,26 +1036,26 @@ def Factory():
                 logger.trace(f'[ScreenShot] numpy 陣列大小: {screenshot_np.size}')
 
                 if screenshot_np.size == 0:
-                    logger.error("截图数据为空！")
-                    raise RuntimeError("截图数据为空")
+                    logger.error("截圖數據爲空！")
+                    raise RuntimeError("截圖數據爲空")
 
                 logger.trace('[ScreenShot] 解碼圖像...')
                 image = cv2.imdecode(screenshot_np, cv2.IMREAD_COLOR)
 
                 if image is None:
-                    logger.error("OpenCV解码失败：图像数据损坏")
-                    raise RuntimeError("图像解码失败")
+                    logger.error("OpenCV解碼失敗：圖像數據損壞")
+                    raise RuntimeError("圖像解碼失敗")
 
                 logger.trace(f'[ScreenShot] 解碼完成，尺寸: {image.shape}')
 
-                if image.shape != (1600, 900, 3):  # OpenCV格式为(高, 宽, 通道)
+                if image.shape != (1600, 900, 3):  # OpenCV格式爲(高, 寬, 通道)
                     if image.shape == (900, 1600, 3):
-                        logger.error(f"截图尺寸错误: 当前{image.shape}, 为横屏.")
+                        logger.error(f"截圖尺寸錯誤: 當前{image.shape}, 爲橫屏.")
                         image = cv2.transpose(image)
-                        restartGame(skipScreenShot = True) # 这里直接重启, 会被外部接收到重启的exception
+                        restartGame(skipScreenShot = True) # 這裏直接重啓, 會被外部接收到重啓的exception
                     else:
-                        logger.error(f"截图尺寸错误: 期望(1600,900,3), 实际{image.shape}.")
-                        raise RuntimeError("截图尺寸异常")
+                        logger.error(f"截圖尺寸錯誤: 期望(1600,900,3), 實際{image.shape}.")
+                        raise RuntimeError("截圖尺寸異常")
 
                 #cv2.imwrite('screen.png', image)
                 logger.trace('[ScreenShot] 成功')
@@ -858,7 +1069,7 @@ def Factory():
                 logger.warning(f"截圖失敗: {e}")
                 if isinstance(e, (AttributeError,RuntimeError, ConnectionResetError, cv2.error)):
                     if retry_count < max_retries:
-                        logger.info(f"adb重启中... (重試 {retry_count}/{max_retries})")
+                        logger.info(f"adb重啓中... (重試 {retry_count}/{max_retries})")
                         runtimeContext._COUNTERADBRETRY += 1
                         ResetADBDevice()
                         logger.info("ADB 重置完成，準備重試")
@@ -911,6 +1122,31 @@ def Factory():
             logger.debug(f"[黑屏偵測] 平均亮度: {mean_brightness:.2f} < {threshold}，判定為黑屏")
         return is_black
 
+    def GetMatchValue(screenImage, shortPathOfTarget, roi=None):
+        """獲取模板匹配的相似度值（0-100%）
+        
+        用於監控面板即時顯示 Flag 匹配度
+        """
+        templates_to_try = get_multi_templates(shortPathOfTarget)
+        best_val = 0
+        
+        for template_name in templates_to_try:
+            template = _get_cached_template(template_name)
+            if template is None:
+                continue
+            
+            screenshot = screenImage.copy()
+            search_area = CutRoI(screenshot, roi)
+            try:
+                result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                if max_val > best_val:
+                    best_val = max_val
+            except:
+                continue
+        
+        return int(best_val * 100)
+
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
         # 檢查是否需要多模板匹配
         templates_to_try = get_multi_templates(shortPathOfTarget)
@@ -935,7 +1171,7 @@ def Factory():
                 logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}): {e}")
                 logger.info(f"{e}")
                 if isinstance(e, (cv2.error)):
-                    logger.info(f"cv2异常.")
+                    logger.info(f"cv2異常.")
                     continue  # 嘗試下一個模板
 
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
@@ -986,7 +1222,7 @@ def Factory():
 
         for (x, y) in zip(xs, ys):
             rectangles.append([x, y, w, h])
-            rectangles.append([x, y, w, h]) # 复制两次, 这样groupRectangles可以保留那些单独的矩形.
+            rectangles.append([x, y, w, h]) # 複製兩次, 這樣groupRectangles可以保留那些單獨的矩形.
         rectangles, _ = cv2.groupRectangles(rectangles, groupThreshold=1, eps=0.5)
         pos_list = []
         for rect in rectangles:
@@ -1010,7 +1246,7 @@ def Factory():
                 logger.trace(f"[CheckIf_FocusCursor] {shortPathOfTarget} 邊界值 (80-90%)")
 
             cropped = screenshot[max_loc[1]:max_loc[1]+template.shape[0], max_loc[0]:max_loc[0]+template.shape[1]]
-            SIZE = 15 # size of cursor 光标就是这么大
+            SIZE = 15 # size of cursor 光標就是這麼大
             left = (template.shape[1] - SIZE) // 2
             right =  left+ SIZE
             top = (template.shape[0] - SIZE) // 2
@@ -1051,7 +1287,7 @@ def Factory():
         cropped = screenshot[position[1]-33:position[1]+33, position[0]-33:position[0]+33]
         
         if (targetInfo.target not in stair_img):
-            # 验证楼层
+            # 驗證樓層
             template = LoadTemplateImage(targetInfo.target)
             result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
             threshold = 0.80
@@ -1059,7 +1295,7 @@ def Factory():
 
             logger.trace(f"[樓層檢測] {targetInfo.target}: {max_val*100:.2f}%")
             if max_val > threshold:
-                logger.info("楼层正确, 判定为已通过")
+                logger.info("樓層正確, 判定爲已通過")
                 return None
             return position
             
@@ -1071,7 +1307,7 @@ def Factory():
 
             logger.trace(f"[樓梯檢測] {targetInfo.target}: {max_val*100:.2f}%")
             if max_val > threshold:
-                logger.info("判定为楼梯存在, 尚未通过.")
+                logger.info("判定爲樓梯存在, 尚未通過.")
                 return position
             return None
 
@@ -1129,7 +1365,7 @@ def Factory():
         pos=[position[0]+max_loc[0] - cropped.shape[1]//2, position[1]+max_loc[1] -cropped.shape[0]//2]
 
         if max_val > threshold:
-            logger.info(f"快进未开启, 即将开启.{pos}")
+            logger.info(f"快進未開啓, 即將開啓.{pos}")
             return pos
         return None
     def Press(pos):
@@ -1149,22 +1385,22 @@ def Factory():
         return np.clip(scn_b, 0, 255).astype(np.uint8)
     def TryPressRetry(scn):
         if Press(CheckIf(scn,'retry')):
-            logger.info("发现并点击了\"重试\". 你遇到了网络波动.")
+            logger.info("發現並點擊了\"重試\". 你遇到了網絡波動.")
             return True
         if pos:=(CheckIf(scn,'retry_blank')):
             Press([pos[0], pos[1]+103])
-            logger.info("发现并点击了\"重试\". 你遇到了网络波动.")
+            logger.info("發現並點擊了\"重試\". 你遇到了網絡波動.")
             return True
         return False
     def AddImportantInfo(str):
         nonlocal runtimeContext
         if runtimeContext._IMPORTANTINFO == "":
-            runtimeContext._IMPORTANTINFO = "👆向上滑动查看重要信息👆\n"
+            runtimeContext._IMPORTANTINFO = "👆向上滑動查看重要信息👆\n"
         time_str = datetime.now().strftime("%Y%m%d-%H%M%S") 
         runtimeContext._IMPORTANTINFO = f"{time_str} {str}\n{runtimeContext._IMPORTANTINFO}"
     ##################################################################
     def FindCoordsOrElseExecuteFallbackAndWait(targetPattern, fallback,waitTime):
-        # fallback可以是坐标[x,y]或者字符串. 当为字符串的时候, 视为图片地址
+        # fallback可以是座標[x,y]或者字符串. 當爲字符串的時候, 視爲圖片地址
         while True:
             for _ in range(runtimeContext._MAXRETRYLIMIT):
                 if setting._FORCESTOPING.is_set():
@@ -1209,42 +1445,42 @@ def Factory():
                                     if (waittime:=(time.time()-t)) < 0.1:
                                         Sleep(0.1-waittime)
                                 else:
-                                    logger.debug(f"错误: 非法的目标{p}.")
+                                    logger.debug(f"錯誤: 非法的目標{p}.")
                                     setting._FORCESTOPING.set()
                                     return None
                     else:
                         if isinstance(fallback, str):
                             pressTarget(fallback)
                         else:
-                            logger.debug("错误: 非法的目标.")
+                            logger.debug("錯誤: 非法的目標.")
                             setting._FORCESTOPING.set()
                             return None
                 Sleep(waitTime) # and wait
 
-            logger.info(f"{runtimeContext._MAXRETRYLIMIT}次截图依旧没有找到目标{targetPattern}, 疑似卡死. 重启游戏.")
+            logger.info(f"{runtimeContext._MAXRETRYLIMIT}次截圖依舊沒有找到目標{targetPattern}, 疑似卡死. 重啓遊戲.")
             Sleep()
             restartGame()
-            return None # restartGame会抛出异常 所以直接返回none就行了
+            return None # restartGame會拋出異常 所以直接返回none就行了
     def restartGame(skipScreenShot = False):
         nonlocal runtimeContext
-        runtimeContext._COMBATSPD = False # 重启会重置2倍速, 所以重置标识符以便重新打开.
-        runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重启后都会增加5次尝试次数, 以避免不同电脑导致的反复重启问题.
+        runtimeContext._COMBATSPD = False # 重啓會重置2倍速, 所以重置標識符以便重新打開.
+        runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重啓後都會增加5次嘗試次數, 以避免不同電腦導致的反覆重啓問題.
         runtimeContext._TIME_CHEST = 0
-        runtimeContext._TIME_COMBAT = 0 # 因为重启了, 所以清空战斗和宝箱计时器.
+        runtimeContext._TIME_COMBAT = 0 # 因爲重啓了, 所以清空戰鬥和寶箱計時器.
         runtimeContext._ZOOMWORLDMAP = False
-        runtimeContext._STEPAFTERRESTART = False  # 重启后重置防止转圈标志，确保会执行左右平移
-        runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重启后待打开地图，跳过Resume优化
-        runtimeContext._DUNGEON_CONFIRMED = False  # 重启后重置地城確認標記
-        reset_ae_caster_flags()  # 重启后重置 AE 手旗標
+        runtimeContext._STEPAFTERRESTART = False  # 重啓後重置防止轉圈標誌，確保會執行左右平移
+        runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重啓後待打開地圖，跳過Resume優化
+        runtimeContext._DUNGEON_CONFIRMED = False  # 重啓後重置地城確認標記
+        reset_ae_caster_flags()  # 重啓後重置 AE 手旗標
 
         if not skipScreenShot:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # 格式：20230825_153045
             file_path = os.path.join(LOGS_FOLDER_NAME, f"{timestamp}.png")
             cv2.imwrite(file_path, ScreenShot())
-            logger.info(f"重启前截图已保存在{file_path}中.")
+            logger.info(f"重啓前截圖已保存在{file_path}中.")
         else:
             runtimeContext._CRASHCOUNTER +=1
-            logger.info(f"跳过了重启前截图.\n崩溃计数器: {runtimeContext._CRASHCOUNTER}\n崩溃计数器超过5次后会重启模拟器.")
+            logger.info(f"跳過了重啓前截圖.\n崩潰計數器: {runtimeContext._CRASHCOUNTER}\n崩潰計數器超過5次後會重啓模擬器.")
             if runtimeContext._CRASHCOUNTER > 5:
                 runtimeContext._CRASHCOUNTER = 0
                 runtimeContext._COUNTEREMULATORCRASH += 1
@@ -1255,27 +1491,28 @@ def Factory():
         mainAct = DeviceShell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
         DeviceShell(f"am force-stop {package_name}")
         Sleep(2)
-        logger.info("巫术, 启动!")
+        logger.info("巫術, 啓動!")
         logger.debug(DeviceShell(f"am start -n {mainAct}"))
         Sleep(10)
         raise RestartSignal()
     class RestartSignal(Exception):
         pass
     def RestartableSequenceExecution(*operations):
+        MonitorState.current_state = "Starting"
         while True:
             try:
                 for op in operations:
-                    # 在每个操作之前检查停止信号
+                    # 在每個操作之前檢查停止信號
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        logger.info("RestartableSequenceExecution 检测到停止信号")
+                        logger.info("RestartableSequenceExecution 檢測到停止信號")
                         return
                     op()
                 return
             except RestartSignal:
-                logger.info("任务进度重置中...")
-                # 重置前也检查停止信号
+                logger.info("任務進度重置中...")
+                # 重置前也檢查停止信號
                 if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                    logger.info("重置过程中检测到停止信号")
+                    logger.info("重置過程中檢測到停止信號")
                     return
                 continue
     ##################################################################
@@ -1297,18 +1534,18 @@ def Factory():
         FindCoordsOrElseExecuteFallbackAndWait(['intoWorldMap','dungFlag','worldmapflag'],['closePartyInfo','closePartyInfo_fortress',[550,1]],1)
         
         if CheckIf(scn:=ScreenShot(), 'dungflag'):
-            # 如果已经在副本里了 直接结束.
-            # 因为该函数预设了是从城市开始的.
+            # 如果已經在副本里了 直接結束.
+            # 因爲該函數預設了是從城市開始的.
             return
         elif Press(CheckIf(scn,'intoWorldMap')):
-            # 如果在城市, 尝试进入世界地图
+            # 如果在城市, 嘗試進入世界地圖
             Sleep(0.5)
             FindCoordsOrElseExecuteFallbackAndWait('worldmapflag','intoWorldMap',1)
         elif CheckIf(scn,'worldmapflag'):
-            # 如果在世界地图, 下一步.
+            # 如果在世界地圖, 下一步.
             pass
 
-        # 往下都是确保了现在能看见'worldmapflag', 并尝试看见'target'
+        # 往下都是確保了現在能看見'worldmapflag', 並嘗試看見'target'
         Sleep(0.5)
         if not runtimeContext._ZOOMWORLDMAP:
             for _ in range(3):
@@ -1318,18 +1555,18 @@ def Factory():
             runtimeContext._ZOOMWORLDMAP = True
         pos = FindCoordsOrElseExecuteFallbackAndWait(target,[swipe,[550,1]],1)
 
-        # 现在已经确保了可以看见target, 那么确保可以点击成功
+        # 現在已經確保了可以看見target, 那麼確保可以點擊成功
         Sleep(1)
         Press(pos)
         Sleep(1)
         FindCoordsOrElseExecuteFallbackAndWait(['Inn','openworldmap','dungFlag'],[target,[550,1]],1)
         
     def CursedWheelTimeLeap(tar=None, CSC_symbol=None,CSC_setting = None):
-        # CSC_symbol: 是否开启因果? 如果开启因果, 将用这个作为是否点开ui的检查标识
-        # CSC_setting: 默认会先选择不接所有任务. 这个列表中储存的是想要打开的因果.
-        # 其中的RGB用于缩放颜色维度, 以增加识别的可靠性.
+        # CSC_symbol: 是否開啓因果? 如果開啓因果, 將用這個作爲是否點開ui的檢查標識
+        # CSC_setting: 默認會先選擇不接所有任務. 這個列表中儲存的是想要打開的因果.
+        # 其中的RGB用於縮放顏色維度, 以增加識別的可靠性.
         if setting.ACTIVE_CSC == False:
-            logger.info(f"因为面板设置, 跳过了调整因果.")
+            logger.info(f"因爲面板設置, 跳過了調整因果.")
             CSC_symbol = None
 
         target = "GhostsOfYore"
@@ -1338,9 +1575,9 @@ def Factory():
         if setting._ACTIVE_TRIUMPH:
             target = "Triumph"
 
-        logger.info(f"开始时间跳跃, 本次跳跃目标:{target}")
+        logger.info(f"開始時間跳躍, 本次跳躍目標:{target}")
 
-        # 调整条目以找到跳跃目标
+        # 調整條目以找到跳躍目標
         Press(FindCoordsOrElseExecuteFallbackAndWait('cursedWheel',['ruins',[1,1]],1))
         Press(FindCoordsOrElseExecuteFallbackAndWait('cursedwheel_impregnableFortress',['cursedWheelTapRight','cursedWheel',[1,1]],1))
         if not Press(CheckIf(ScreenShot(),target)):
@@ -1349,23 +1586,23 @@ def Factory():
             Press(FindCoordsOrElseExecuteFallbackAndWait(target,'input swipe 50 1200 50 1300',1))
         Sleep(1)
 
-        # 跳跃前尝试调整因果
+        # 跳躍前嘗試調整因果
         while CheckIf(ScreenShot(), 'leap'):
             if CSC_symbol != None:
                 FindCoordsOrElseExecuteFallbackAndWait(CSC_symbol,'CSC',1)
                 last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
-                # 先关闭所有因果
+                # 先關閉所有因果
                 while 1:
                     Press(CheckIf(WrapImage(ScreenShot(),2,0,0),'didnottakethequest'))
                     DeviceShell(f"input swipe 150 500 150 400")
                     Sleep(1)
                     scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
-                    logger.debug(f"因果: 滑动后的截图误差={cv2.absdiff(scn, last_scn).mean()/255:.6f}")
+                    logger.debug(f"因果: 滑動後的截圖誤差={cv2.absdiff(scn, last_scn).mean()/255:.6f}")
                     if cv2.absdiff(scn, last_scn).mean()/255 < 0.006:
                         break
                     else:
                         last_scn = scn
-                # 然后调整每个因果
+                # 然後調整每個因果
                 if CSC_setting!=None:
                     last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
                     while 1:
@@ -1375,7 +1612,7 @@ def Factory():
                         DeviceShell(f"input swipe 150 400 150 500")
                         Sleep(1)
                         scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
-                        logger.debug(f"因果: 滑动后的截图误差={cv2.absdiff(scn, last_scn).mean()/255:.6f}")
+                        logger.debug(f"因果: 滑動後的截圖誤差={cv2.absdiff(scn, last_scn).mean()/255:.6f}")
                         if cv2.absdiff(scn, last_scn).mean()/255 < 0.006:
                             break
                         else:
@@ -1388,15 +1625,15 @@ def Factory():
 
     def RiseAgainReset(reason):
         nonlocal runtimeContext
-        runtimeContext._SUICIDE = False # 死了 自杀成功 设置为false
-        runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True # 死了 序列失效, 应当重置序列.
+        runtimeContext._SUICIDE = False # 死了 自殺成功 設置爲false
+        runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True # 死了 序列失效, 應當重置序列.
         runtimeContext._RECOVERAFTERREZ = True
         if reason == 'chest':
             runtimeContext._COUNTERCHEST -=1
         else:
             runtimeContext._COUNTERCOMBAT -=1
-        logger.info("快快请起.")
-        AddImportantInfo("面具死了但没死.")
+        logger.info("快快請起.")
+        AddImportantInfo("面具死了但沒死.")
         # logger.info("REZ.")
         Press([450,750])
         Sleep(10)
@@ -1410,7 +1647,7 @@ def Factory():
             
             state_check_start = time.time()
             screen = ScreenShot()
-            logger.debug(f'状态机检查中...(第{counter+1}次)')
+            logger.debug(f'狀態機檢查中...(第{counter+1}次)')
 
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
@@ -1455,6 +1692,7 @@ def Factory():
                     logger.info(f"哈肯樓層選擇: 點擊樓層 {floor_target}")
                     runtimeContext._HARKEN_FLOOR_TARGET = None  # 清除 flag
                     runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = True  # 設置傳送完成標記
+                    MonitorState.current_state = "Harken"
                     Sleep(2)
                     return IdentifyState()
                 
@@ -1470,98 +1708,45 @@ def Factory():
                 # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
                 logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
 
-
-
-            if CheckIf(screen,'someonedead'):
-                AddImportantInfo("他们活了,活了!")
-                for _ in range(5):
-                    Press([400+random.randint(0,100),750+random.randint(0,100)])
-                    Sleep(1)
-
-            # 正常的 returnText 和 returntoTown 處理（當沒有設置樓層選擇時）
-            if runtimeContext._HARKEN_FLOOR_TARGET is None:
-                if Press(CheckIf(screen, "returnText")):
-                    Sleep(2)
-                    return IdentifyState()
-
-                if CheckIf(screen,"returntoTown"):
-                    if runtimeContext._MEET_CHEST_OR_COMBAT:
-                        FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
-                        return State.Inn,DungeonState.Quit, screen
-                    else:
-                        logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
-                        # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
-                        for info in quest._EOT:
-                            if info[1] == "intoWorldMap":
-                                logger.info(f"跳過 intoWorldMap 步驟")
-                                continue
-                            else:
-                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
-                                if info[0] == "press":
-                                    Press(pos)
-                        Sleep(2)
-                        reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
-                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
-                        return State.Dungeon, None, ScreenShot()
-
-            if pos:=CheckIf(screen,"openworldmap"):
-                if runtimeContext._MEET_CHEST_OR_COMBAT:
-                    Press(pos)
-                    # [Fix] 點擊開啟世界地圖後，視為開始退出流程，停止移動超時監控
-                    return State.Inn, DungeonState.Quit, screen
-                else:
-                    logger.info("由于没有遇到任何宝箱或发生任何战斗, 跳过回城.")
-                    # 提前重置旗標，避免進入地城過場黑屏時誤觸發首戰打斷
-                    reset_ae_caster_flags()
-                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
-                    # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
-                    for info in quest._EOT:
-                        if info[1] == "intoWorldMap":
-                            logger.info(f"跳過 intoWorldMap 步驟")
-                            continue
-                        else:
-                            pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
-                            if info[0] == "press":
-                                Press(pos)
-                    Sleep(2)
-                    return State.Dungeon, None, ScreenShot()
-
-            if CheckIf(screen,"RoyalCityLuknalia"):
-                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
-                if CheckIf(scn:=ScreenShot(),'Inn'):
-                    return State.Inn,DungeonState.Quit, screen
-                elif CheckIf(scn,'dungFlag'):
-                    return State.Dungeon,None, screen
-
-            if CheckIf(screen,"fortressworldmap"):
-                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['fortressworldmap',[1,1]],1)
-                if CheckIf(scn:=ScreenShot(),'Inn'):
-                    return State.Inn,DungeonState.Quit, screen
-                elif CheckIf(scn,'dungFlag'):
-                    return State.Dungeon,None, screen
-
-            if (CheckIf(screen,'Inn')):
-                return State.Inn, DungeonState.Quit, screen
-
-            if quest._SPECIALFORCESTOPINGSYMBOL != None:
-                for symbol in quest._SPECIALFORCESTOPINGSYMBOL:
-                        if CheckIf(screen,symbol):
-                            return State.Quit,DungeonState.Quit,screen
-                        
-            if quest._SPECIALDIALOGOPTION != None:
-                for option in quest._SPECIALDIALOGOPTION:
-                    if Press(CheckIf(screen,option)):
-                        return IdentifyState()
-
-            # [Moved] 動態掃描 combatActive 系列圖片 (移至此处以优先处理 Blocking States)
+            # 動態掃描 combatActive 系列圖片
             combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
             # 優先級順序：戰鬥 > 寶箱 > 地城 > 地圖
+            # 寶箱優先級高於地城，避免戰鬥結束時先偵測到 dungFlag 而走冗餘流程
             identifyConfig = combat_active_config + [
                 ('chestFlag',     DungeonState.Chest),   # 寶箱優先
                 ('whowillopenit', DungeonState.Chest),   # 寶箱優先
                 ('dungFlag',      DungeonState.Dungeon),
                 ('mapFlag',       DungeonState.Map),
                 ]
+
+            # 更新 Flag 相似度到 MonitorState（供 GUI 即時顯示）
+            MonitorState.current_state = "Scanning"  # 標記正在識別中，確認循環有在跑
+            MonitorState.flag_dungFlag = GetMatchValue(screen, 'dungFlag')
+            MonitorState.flag_mapFlag = GetMatchValue(screen, 'mapFlag')
+            MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
+            MonitorState.flag_worldMap = GetMatchValue(screen, 'openWorldMap')
+            MonitorState.flag_chest_auto = GetMatchValue(screen, 'chest_auto')
+            MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
+            # combatActive 使用所有模板的最高匹配度
+            combat_templates = get_combat_active_templates()
+            if combat_templates:
+                MonitorState.flag_combatActive = max(GetMatchValue(screen, t) for t in combat_templates)
+
+            # 偵測到 AUTO 時，持續點擊直到消失
+            if MonitorState.flag_auto_text >= 80:
+                logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
+                click_count = 0
+                while click_count < 10:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return State.Quit, DungeonState.Quit, screen
+                    Press([1, 1])
+                    Sleep(0.5)
+                    screen = ScreenShot()
+                    MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
+                    if MonitorState.flag_auto_text < 80:
+                        logger.info("[AUTO] AUTO 已消失，停止點擊")
+                        break
+                    click_count += 1
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
@@ -1582,10 +1767,122 @@ def Factory():
                     if not runtimeContext._DUNGEON_CONFIRMED:
                         runtimeContext._DUNGEON_CONFIRMED = True
                         logger.info("[狀態識別] 已確認進入地城")
+                    
+                    if not runtimeContext._DUNGEON_CONFIRMED:
+                        runtimeContext._DUNGEON_CONFIRMED = True
+                        logger.info("[狀態識別] 已確認進入地城")
+                    
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = state.name if state else None
                     return State.Dungeon, state, screen
 
+            if CheckIf(screen,'someonedead'):
+                AddImportantInfo("他們活了,活了!")
+                runtimeContext._COUNTERDEATH += 1  # 增加死亡計數
+                MonitorState.death_count = runtimeContext._COUNTERDEATH
+                for _ in range(5):
+                    Press([400+random.randint(0,100),750+random.randint(0,100)])
+                    Sleep(1)
+
+            # 正常的 returnText 和 returntoTown 處理（當沒有設置樓層選擇時）
+            if runtimeContext._HARKEN_FLOOR_TARGET is None:
+                if Press(CheckIf(screen, "returnText")):
+                    Sleep(2)
+                    return IdentifyState()
+
+                if CheckIf(screen,"returntoTown"):
+                    if not should_skip_return_to_town():
+                        # 回城
+                        FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                        # 回城
+                        FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                        MonitorState.current_state = "Inn"
+                        MonitorState.current_dungeon_state = "Quit"
+                        return State.Inn,DungeonState.Quit, screen
+                    else:
+                        # 跳過回城，繼續刷地城
+                        # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
+                        for info in quest._EOT:
+                            if info[1] == "intoWorldMap":
+                                logger.info(f"跳過 intoWorldMap 步驟")
+                                continue
+                            else:
+                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                                if info[0] == "press":
+                                    Press(pos)
+                        Sleep(2)
+                        reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                        reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                        MonitorState.current_state = "Dungeon"
+                        MonitorState.current_dungeon_state = None
+                        return State.Dungeon, None, ScreenShot()
+
+            if pos:=CheckIf(screen,"openworldmap"):
+                if runtimeContext._DUNGEON_CONFIRMED:
+                    runtimeContext._DUNGEON_CONFIRMED = False
+                    logger.info("[狀態識別] 偵測到世界地圖，視為離開地城，回傳 Quit")
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = "Quit"
+                    return State.Dungeon, DungeonState.Quit, screen
+                if not should_skip_return_to_town():
+                    # 回城
+                    Press(pos)
+                    return IdentifyState()
+                else:
+                    # 跳過回城，繼續刷地城
+                    # 提前重置旗標，避免進入地城過場黑屏時誤觸發首戰打斷
+                    reset_ae_caster_flags()
+                    runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                    # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
+                    for info in quest._EOT:
+                        if info[1] == "intoWorldMap":
+                            logger.info(f"跳過 intoWorldMap 步驟")
+                            continue
+                        else:
+                            pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                            if info[0] == "press":
+                                Press(pos)
+                    Sleep(2)
+                    Sleep(2)
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = None
+                    return State.Dungeon, None, ScreenShot()
+
+            if CheckIf(screen,"RoyalCityLuknalia"):
+                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
+                if CheckIf(scn:=ScreenShot(),'Inn'):
+                    MonitorState.current_state = "Inn"
+                    MonitorState.current_dungeon_state = "Quit"
+                    return State.Inn,DungeonState.Quit, screen
+                elif CheckIf(scn,'dungFlag'):
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = None
+                    return State.Dungeon,None, screen
+
+            if CheckIf(screen,"fortressworldmap"):
+                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['fortressworldmap',[1,1]],1)
+                if CheckIf(scn:=ScreenShot(),'Inn'):
+                    return State.Inn,DungeonState.Quit, screen
+                elif CheckIf(scn,'dungFlag'):
+                    return State.Dungeon,None, screen
+
+            if (CheckIf(screen,'Inn')):
+                return State.Inn, None, screen
+
+            if quest._SPECIALFORCESTOPINGSYMBOL != None:
+                for symbol in quest._SPECIALFORCESTOPINGSYMBOL:
+                        if CheckIf(screen,symbol):
+                            return State.Quit,DungeonState.Quit,screen
+                        
+            if quest._SPECIALDIALOGOPTION != None:
+                for option in quest._SPECIALDIALOGOPTION:
+                    if Press(CheckIf(screen,option)):
+                        return IdentifyState()
+
             if counter>=4:
-                logger.info("看起来遇到了一些不太寻常的情况...")
+                logger.info("看起來遇到了一些不太尋常的情況...")
                 # [異常截圖] 只在首次進入異常狀態時截圖
                 if counter == 4:
                     try:
@@ -1610,7 +1907,7 @@ def Factory():
                     RiseAgainReset(reason = 'combat')
                     return IdentifyState()
                 if CheckIf(screen, 'worldmapflag'):
-                    logger.info("检测到世界地图, 尝试缩放并返回城市...")
+                    logger.info("檢測到世界地圖, 嘗試縮放並返回城市...")
                     for _ in range(3):
                         Press([100,1500])
                         Sleep(0.5)
@@ -1619,13 +1916,12 @@ def Factory():
                     # [關鍵操作] 強制使用 ADB 截圖，避免串流幀延遲
                     scn = _ScreenShot_ADB()
                     if pos:=CheckIf(scn, 'Deepsnow'):
-                        logger.info(f"点击 Deepsnow 返回城市 (位置: {pos})")
+                        logger.info(f"點擊 Deepsnow 返回城市 (位置: {pos})")
                         Press(pos)
                         Sleep(2)
-                        # [Fix] 點擊返回城市後，視為退出流程完成，停止移動超時監控
-                        return State.Inn, DungeonState.Quit, screen
+                        return IdentifyState()
                     else:
-                        logger.info("找不到 Deepsnow, 尝试关闭世界地图")
+                        logger.info("找不到 Deepsnow, 嘗試關閉世界地圖")
                         PressReturn()
                         Sleep(1)
                         return IdentifyState()
@@ -1644,12 +1940,12 @@ def Factory():
                         else:
                             new_str = f"+0"
                     if new_str is not None:
-                        logger.info(f"即将进行善恶值调整. 剩余次数:{new_str}")
-                        AddImportantInfo(f"新的善恶:{new_str}")
+                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
+                        AddImportantInfo(f"新的善惡:{new_str}")
                         setting._KARMAADJUST = new_str
                         SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
                         Press(pos)
-                        logger.info("伏击起手!")
+                        logger.info("伏擊起手!")
                         # logger.info("Ambush! Always starts with Ambush.")
                         Sleep(2)
                 if (pos:=CheckIf(screen,'ignore')) and setting._KARMAADJUST.startswith('+'):
@@ -1662,12 +1958,12 @@ def Factory():
                         else:
                             new_str = f"-0"
                     if new_str is not None:
-                        logger.info(f"即将进行善恶值调整. 剩余次数:{new_str}")
-                        AddImportantInfo(f"新的善恶:{new_str}")
+                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
+                        AddImportantInfo(f"新的善惡:{new_str}")
                         setting._KARMAADJUST = new_str
                         SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
                         Press(pos)
-                        logger.info("积善行德!")
+                        logger.info("積善行德!")
                         # logger.info("")
                         Sleep(2)
 
@@ -1689,23 +1985,23 @@ def Factory():
                     if Press(CheckIf(screen, op)):
                         Sleep(2)
                         if op == 'adventurersbones':
-                            AddImportantInfo("购买了骨头.")
+                            AddImportantInfo("購買了骨頭.")
                         if op == 'halfBone':
-                            AddImportantInfo("购买了尸油.")
+                            AddImportantInfo("購買了屍油.")
                         return IdentifyState()
                 
                 if (CheckIf(screen,'multipeopledead')):
-                    runtimeContext._SUICIDE = True # 准备尝试自杀
-                    logger.info("死了好几个, 惨哦")
+                    runtimeContext._SUICIDE = True # 準備嘗試自殺
+                    logger.info("死了好幾個, 慘哦")
                     # logger.info("Corpses strew the screen")
                     Press(CheckIf(screen,'skull'))
                     Sleep(2)
                 if Press(CheckIf(screen,'startdownload')):
-                    logger.info("确认, 下载, 确认.")
+                    logger.info("確認, 下載, 確認.")
                     # logger.info("")
                     Sleep(2)
                 if Press(CheckIf(screen,'totitle')):
-                    logger.info("网络故障警报! 网络故障警报! 返回标题, 重复, 返回标题!")
+                    logger.info("網絡故障警報! 網絡故障警報! 返回標題, 重複, 返回標題!")
                     return IdentifyState()
                 PressReturn()
                 Sleep(0.5)
@@ -1714,9 +2010,9 @@ def Factory():
                 black = LoadTemplateImage("blackScreen")
                 mean_diff = cv2.absdiff(black, screen).mean()/255
                 if mean_diff<0.02:
-                    logger.info(f"警告: 游戏画面长时间处于黑屏中, 即将重启({25-counter})")
+                    logger.info(f"警告: 遊戲畫面長時間處於黑屏中, 即將重啓({25-counter})")
             if counter>= 25:
-                logger.info("看起来遇到了一些非同寻常的情况...重启游戏.")
+                logger.info("看起來遇到了一些非同尋常的情況...重啓遊戲.")
                 restartGame()
                 counter = 0
             if counter>=4:
@@ -1733,8 +2029,8 @@ def Factory():
         return None, None, screen
     def GameFrozenCheck(queue, scn):
         if scn is None:
-            raise ValueError("GameFrozenCheck被传入了一个空值.")
-        logger.info("卡死检测截图")
+            raise ValueError("GameFrozenCheck被傳入了一個空值.")
+        logger.info("卡死檢測截圖")
         LENGTH = 10
         if len(queue) > LENGTH:
             queue = []
@@ -1747,8 +2043,8 @@ def Factory():
                 grayLast = cv2.cvtColor(queue[i-1], cv2.COLOR_BGR2GRAY)
                 mean_diff = cv2.absdiff(grayThis, grayLast).mean()/255
                 totalDiff += mean_diff
-            logger.info(f"卡死检测耗时: {time.time()-t:.5f}秒")
-            logger.info(f"卡死检测结果: {totalDiff:.5f}")
+            logger.info(f"卡死檢測耗時: {time.time()-t:.5f}秒")
+            logger.info(f"卡死檢測結果: {totalDiff:.5f}")
             if totalDiff<=0.15:
                 return queue, True
         return queue, False
@@ -1765,7 +2061,7 @@ def Factory():
         return [os.path.splitext(os.path.basename(f))[0] for f in items]
     
     def StateOrganizeBackpack(num_characters):
-        """整理背包功能：將 Organize 資料夾中的物品放入倉庫
+        """整理揹包功能：將 Organize 資料夾中的物品放入倉庫
 
         流程：
         0. 點選 Inn 打開角色選擇畫面（等待看到 inventory 按鈕）
@@ -1787,10 +2083,10 @@ def Factory():
             logger.info("Organize 資料夾為空，跳過整理")
             return
 
-        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
+        logger.info(f"開始整理 {num_characters} 人的揹包，物品: {items_to_organize}")
 
         for char_index in range(num_characters):
-            logger.info(f"整理第 {char_index} 號角色背包")
+            logger.info(f"整理第 {char_index} 號角色揹包")
             
             # 角色座標（固定值）
             char_positions = [
@@ -1808,8 +2104,8 @@ def Factory():
             Press(char_pos)
             Sleep(5)  # 等待角色詳情載入
             
-            # 步驟2: 點選 inventory 打開背包
-            logger.info("步驟2: 點選 inventory 打開背包")
+            # 步驟2: 點選 inventory 打開揹包
+            logger.info("步驟2: 點選 inventory 打開揹包")
             scn = ScreenShot()
             inv_pos = CheckIf(scn, 'inventory')
             if inv_pos:
@@ -1867,9 +2163,11 @@ def Factory():
         PressReturn()
         Sleep(5)
 
-        logger.info("背包整理完成")
+        logger.info("揹包整理完成")
 
     def StateInn():
+        MonitorState.current_state = "Inn"
+        MonitorState.current_target = ""
         # 1. 住宿
         if not setting._ACTIVE_ROYALSUITE_REST:
             FindCoordsOrElseExecuteFallbackAndWait('OK',['Inn','Stay','Economy',[1,1]],2)
@@ -1883,22 +2181,24 @@ def Factory():
             Press([1, 1])
             Sleep(2)
 
-        # 3. 整理背包（可選）
+        # 3. 整理揹包（可選）
         if setting._ORGANIZE_BACKPACK_ENABLED and setting._ORGANIZE_BACKPACK_COUNT > 0:
             try:
                 StateOrganizeBackpack(setting._ORGANIZE_BACKPACK_COUNT)
                 # StateOrganizeBackpack 內部已有 PressReturn 離開旅館
             except Exception as e:
-                logger.error(f"整理背包失敗: {e}")
+                logger.error(f"整理揹包失敗: {e}")
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
         else:
-            # 沒有整理背包時，在這裡離開旅館
+            # 沒有整理揹包時，在這裡離開旅館
             logger.info("離開旅館")
             PressReturn()
             Sleep(2)
     def StateEoT():
+        MonitorState.current_state = "EoT"
+        MonitorState.current_target = ""
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
                 pass
@@ -1913,16 +2213,16 @@ def Factory():
         Press(CheckIf(ScreenShot(), 'GotoDung'))
     def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
-        强制使用强力单体技能（用於 AE 手非 AE 角色）
+        強制使用強力單體技能（用於 AE 手非 AE 角色）
         Args:
-            screen: 当前截图
-            doubleConfirmCastSpell_func: 确认施法的函数
-            reason: 触发原因（用于日志）
+            screen: 當前截圖
+            doubleConfirmCastSpell_func: 確認施法的函數
+            reason: 觸發原因（用於日誌）
         Returns:
             bool: 是否成功使用了技能
         """
-        logger.info(f"[強制單體] {reason}，开始执行")
-        logger.info(f"[強制單體] 当前战斗状态: battle={runtimeContext._COMBAT_BATTLE_COUNT}, action={runtimeContext._COMBAT_ACTION_COUNT}")
+        logger.info(f"[強制單體] {reason}，開始執行")
+        logger.info(f"[強制單體] 當前戰鬥狀態: battle={runtimeContext._COMBAT_BATTLE_COUNT}, action={runtimeContext._COMBAT_ACTION_COUNT}")
         
         # 先截圖檢查當前狀態
         scn = ScreenShot()
@@ -1942,11 +2242,11 @@ def Factory():
             Sleep(0.5)
         else:
             # 可能是自動戰鬥模式，需要打斷
-            logger.info("[強制單體] 可能在自動戰鬥模式，点击打断...")
+            logger.info("[強制單體] 可能在自動戰鬥模式，點擊打斷...")
             for i in range(3):  # 減少到 3 次
                 Press([1, 1])
                 Sleep(0.3)
-                logger.info(f"[強制單體] 打断点击 {i+1}/3")
+                logger.info(f"[強制單體] 打斷點擊 {i+1}/3")
             Sleep(1)  # 等待技能欄顯示
         
         scn = ScreenShot()
@@ -1958,11 +2258,19 @@ def Factory():
             logger.warning("[強制單體] 未偵測到 flee 按鈕，可能已離開戰鬥!")
             return False
         
-        logger.debug(f"[強制單體] 开始检测技能，共 {len(PHYSICAL_SKILLS)} 個")
+        logger.debug(f"[強制單體] 開始檢測技能，共 {len(PHYSICAL_SKILLS)} 個")
         found_skills = []
         not_found_skills = []
         for skillspell in PHYSICAL_SKILLS:
-            skill_pos = CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)
+            # 使用 get_skill_image_path 取得帶數字前綴的實際檔名
+            full_path = get_skill_image_path("單體", skillspell)
+            if full_path and os.path.exists(full_path):
+                filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                image_path = f'spellskill/單體/{filename_no_ext}'
+            else:
+                image_path = f'spellskill/單體/{skillspell}'
+            
+            skill_pos = CheckIf(scn, image_path, threshold=0.70)
             if skill_pos:
                 found_skills.append(skillspell)
                 logger.info(f"[強制單體] 使用技能: {skillspell}")
@@ -1973,12 +2281,12 @@ def Factory():
                 not_found_skills.append(skillspell)
         
         # 保存偵錯截圖
-        import os
+        # import os - removed to fix UnboundLocalError
         debug_dir = os.path.join(os.path.dirname(__file__), "debug_screenshots")
         os.makedirs(debug_dir, exist_ok=True)
         debug_path = os.path.join(debug_dir, f"skill_not_found_pos{runtimeContext._COMBAT_ACTION_COUNT}_{int(time.time())}.png")
         cv2.imwrite(debug_path, scn)
-        logger.warning(f"[強制單體] 未找到可用的强力单体技能! 已檢查: {len(not_found_skills)} 個技能")
+        logger.warning(f"[強制單體] 未找到可用的強力單體技能! 已檢查: {len(not_found_skills)} 個技能")
         logger.warning(f"[強制單體] 偵錯截圖已保存: {debug_path}")
         
         # 找不到強力單體技能時，改用普攻
@@ -1986,29 +2294,48 @@ def Factory():
         return use_normal_attack()
     def useForcedAOESkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
-        强制使用全体技能
+        強制使用全體技能
         Args:
-            screen: 当前截图
-            doubleConfirmCastSpell_func: 确认施法的函数
-            reason: 触发原因（用于日志）
+            screen: 當前截圖
+            doubleConfirmCastSpell_func: 確認施法的函數
+            reason: 觸發原因（用於日誌）
         Returns:
             bool: 是否成功使用了技能
         """
-        logger.info(f"{reason}，强制使用全体技能")
+        logger.info(f"{reason}，強制使用全體技能")
 
-        # 先打断自动战斗（点击画面空白处）
-        logger.info("点击打断自动战斗...")
+        # 先打斷自動戰鬥（點擊畫面空白處）
+        logger.info("點擊打斷自動戰鬥...")
         for _ in range(3):
             Press([1, 1])
             Sleep(0.5)
         scn = ScreenShot()
 
         for skillspell in ALL_AOE_SKILLS:
-            if Press(CheckIf(scn, 'spellskill/'+skillspell, threshold=0.70)):
-                logger.info(f"强制使用全体技能: {skillspell}")
+            # 找到技能所屬類別並取得正確路徑
+            skill_cat = None
+            for cat in ["全體", "秘術", "橫排"]:
+                if skillspell in SKILLS_BY_CATEGORY.get(cat, []):
+                    skill_cat = cat
+                    break
+            
+            if skill_cat:
+                full_path = get_skill_image_path(skill_cat, skillspell)
+                if full_path and os.path.exists(full_path):
+                    folder = SKILL_CATEGORIES.get(skill_cat, {}).get("folder", skill_cat)
+                    filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                    skill_path = f'spellskill/{folder}/{filename_no_ext}'
+                else:
+                    folder = SKILL_CATEGORIES.get(skill_cat, {}).get("folder", skill_cat)
+                    skill_path = f'spellskill/{folder}/{skillspell}'
+            else:
+                skill_path = 'spellskill/' + skillspell
+                
+            if Press(CheckIf(scn, skill_path, threshold=0.70)):
+                logger.info(f"強制使用全體技能: {skillspell}")
                 doubleConfirmCastSpell_func()
                 return True
-        logger.info("未找到可用的全体技能")
+        logger.info("未找到可用的全體技能")
         return False
 
     # === AE 手獨立函數 ===
@@ -2038,7 +2365,15 @@ def Factory():
     def use_normal_attack():
         """使用普攻"""
         scn = ScreenShot()
-        if Press(CheckIf(scn, 'spellskill/attack')):
+        # 使用新的資料夾結構取得普攻路徑
+        full_path = get_skill_image_path("普攻", "attack")
+        if full_path and os.path.exists(full_path):
+            filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+            attack_path = f'spellskill/普攻/{filename_no_ext}'
+        else:
+            attack_path = 'spellskill/普攻/attack'
+        
+        if Press(CheckIf(scn, attack_path)):
             logger.info("[順序] 使用普攻")
             Sleep(0.5)
             # 點擊六個點位選擇敵人
@@ -2101,7 +2436,26 @@ def Factory():
             Sleep(1)  # 等待技能欄顯示
 
         scn = ScreenShot()
-        skill_path = 'spellskill/' + skill
+        
+        # 根據技能名稱找到所屬類別並取得正確路徑
+        skill_category = None
+        for cat, skills in SKILLS_BY_CATEGORY.items():
+            if skill in skills:
+                skill_category = cat
+                break
+        
+        if skill_category:
+            full_path = get_skill_image_path(skill_category, skill)
+            if full_path and os.path.exists(full_path):
+                folder = SKILL_CATEGORIES.get(skill_category, {}).get("folder", skill_category)
+                filename_no_ext = os.path.basename(full_path).rsplit('.', 1)[0]
+                skill_path = f'spellskill/{folder}/{filename_no_ext}'
+            else:
+                folder = SKILL_CATEGORIES.get(skill_category, {}).get("folder", skill_category)
+                skill_path = f'spellskill/{folder}/{skill}'
+        else:
+            skill_path = 'spellskill/' + skill  # fallback for unknown skills
+        
         logger.info(f"[順序 {caster_type}] 搜尋技能: {skill_path}")
         if Press(CheckIf(scn, skill_path, threshold=0.70)):
             logger.info(f"[順序 {caster_type}] 使用技能: {skill}")
@@ -2169,20 +2523,308 @@ def Factory():
         Sleep(2)
 
     def reset_ae_caster_flags():
-        """重置 AE 手相關旗標，用於新地城開始時"""
+        """重置戰鬥相關旗標，用於新地城開始時"""
         nonlocal runtimeContext
         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._COMBAT_BATTLE_COUNT = 0
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
+        runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
+        runtimeContext._MID_DUNGEON_START = False  # 重置地城內啟動標記，讓新地城可觸發黑屏偵測
         logger.info("[技能施放] 重置旗標")
 
+    def should_skip_return_to_town():
+        """判斷是否應該跳過回城（用於連續刷地城功能）
+        
+        Returns:
+            bool: True = 跳過回城繼續刷，False = 需要回城
+        """
+        nonlocal runtimeContext
+        
+        # 如果沒有遇到寶箱或戰鬥，總是跳過回城
+        if not runtimeContext._MEET_CHEST_OR_COMBAT:
+            logger.info("由於沒有遇到任何寶箱或發生任何戰鬥, 跳過回城.")
+            return True
+        
+        # 如果設置了連續刷地城次數
+        repeat_limit = setting._DUNGEON_REPEAT_LIMIT
+        if repeat_limit > 0:
+            runtimeContext._DUNGEON_REPEAT_COUNT += 1
+            current_count = runtimeContext._DUNGEON_REPEAT_COUNT
+            
+            if current_count < repeat_limit:
+                logger.info(f"[連續刷地城] 第 {current_count}/{repeat_limit} 次，跳過回城")
+                return True
+            else:
+                logger.info(f"[連續刷地城] 已達上限 {repeat_limit} 次，回城休息")
+                runtimeContext._DUNGEON_REPEAT_COUNT = 0  # 重置計數器
+                return False
+        
+        # 預設：需要回城
+        return False
+
+    def get_auto_combat_battles(auto_combat_mode):
+        """根據自動戰鬥模式返回需要手動的戰鬥場數
+        
+        Args:
+            auto_combat_mode: 自動戰鬥模式字串
+        Returns:
+            int: 需要手動的戰鬥場數，-1 表示完全手動
+        """
+        mode_map = {
+            "完全自動": 0,    # 不需要手動場次
+            "1 場後自動": 1,  # 第 1 場手動
+            "2 場後自動": 2,  # 第 1-2 場手動
+            "3 場後自動": 3,  # 第 1-3 場手動
+            "完全手動": -1    # 永遠手動
+        }
+        return mode_map.get(auto_combat_mode, 2)  # 預設為 2 場後自動
+
+    def should_enable_auto_combat(battle_count, auto_combat_mode):
+        """判斷是否應該開啟自動戰鬥
+        
+        Args:
+            battle_count: 當前第幾戰
+            auto_combat_mode: 自動戰鬥模式字串
+        Returns:
+            bool: 是否應該開啟自動戰鬥
+        """
+        manual_battles = get_auto_combat_battles(auto_combat_mode)
+        if manual_battles == -1:  # 完全手動
+            return False
+        return battle_count > manual_battles
+
+    def cast_skill_by_category(category, skill_name, level="關閉"):
+        """統一的技能施放函數
+        
+        根據技能類別自動判斷施放方式 (target/ok)，並處理技能等級升級。
+        
+        Args:
+            category: 技能類別 (普攻/單體/橫排/全體/秘術/群控)
+            skill_name: 技能名稱
+            level: 技能等級 (關閉/LV2~LV5)
+        Returns:
+            bool: 是否成功施放技能
+        """
+        if not skill_name:
+            logger.warning(f"[技能施放] 技能名稱為空")
+            return False
+            
+        # 如果是普攻，使用普攻邏輯
+        if skill_name == "attack" or category == "普攻":
+            logger.info(f"[技能施放] 使用普攻")
+            return use_normal_attack()
+        
+        # 取得圖片路徑 - 使用 get_skill_image_path 找到帶數字前綴的實際檔名
+        full_image_path = get_skill_image_path(category, skill_name)
+        if full_image_path and os.path.exists(full_image_path):
+            # 提取相對路徑: 從完整路徑中提取 spellskill/類別/檔名(不含副檔名)
+            folder = SKILL_CATEGORIES.get(category, {}).get("folder", category)
+            filename_no_ext = os.path.basename(full_image_path).rsplit('.', 1)[0]
+            image_path = f'spellskill/{folder}/{filename_no_ext}'
+        else:
+            # 直接使用類別/技能名格式 (fallback)
+            folder = SKILL_CATEGORIES.get(category, {}).get("folder", category)
+            image_path = f'spellskill/{folder}/{skill_name}'
+        logger.info(f"[順序 {runtimeContext._COMBAT_ACTION_COUNT}] 搜尋技能: {image_path}")
+
+        
+        # 確保技能欄可見
+        scn = ScreenShot()
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        if not is_manual_mode:
+            # 可能在自動戰鬥模式，需要打斷
+            logger.info(f"[技能施放] 打斷自動戰鬥以顯示技能欄")
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.3)
+            Sleep(0.5)
+        else:
+            # 輕點確保技能欄顯示
+            Press([1, 1])
+            Sleep(0.3)
+        
+        scn = ScreenShot()
+        
+        # 搜尋技能按鈕
+        skill_pos = CheckIf(scn, image_path, threshold=0.70)
+        if not skill_pos:
+            # 嘗試舊路徑格式
+            skill_pos = CheckIf(scn, 'spellskill/' + skill_name, threshold=0.70)
+        
+        if skill_pos:
+            logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
+            Press(skill_pos)
+            Sleep(1)
+            scn = ScreenShot()
+            
+            # 處理技能等級
+            SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
+            if level != "關閉" and level in SKILL_LEVEL_X:
+                lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
+                if lv1_pos:
+                    logger.info(f"[技能施放] 升級技能到 {level}")
+                    Press([SKILL_LEVEL_X[level], lv1_pos[1]])
+                    Sleep(1)
+                    scn = ScreenShot()
+            
+            # 根據施放方式確認技能
+            cast_type = get_skill_cast_type(category)
+            
+            if cast_type == "ok":
+                # AOE 類技能：點擊 OK 確認
+                ok_pos = CheckIf(scn, 'OK')
+                if ok_pos:
+                    logger.info(f"[技能施放] 點擊 OK 確認")
+                    Press(ok_pos)
+                    Sleep(1)
+                    # 檢查 MP/SP 不足
+                    scn = ScreenShot()
+                    if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                        logger.info("[技能施放] SP/MP 不足，改用普攻")
+                        Press(CheckIf(scn, 'notenough_close'))
+                        Sleep(0.5)
+                        return use_normal_attack()
+            else:
+                # 單體/橫排/群控技能：點擊敵人
+                next_pos = CheckIf(scn, 'next', threshold=0.70)
+                if next_pos:
+                    # 點擊多個位置覆蓋不同大小敵人
+                    target_x1 = next_pos[0] - 15
+                    target_x2 = next_pos[0]
+                    target_y1 = next_pos[1] + 100
+                    target_y2 = next_pos[1] + 170
+                    logger.info(f"[技能施放] 點擊目標敵人")
+                    Press([target_x1, target_y1])
+                    Sleep(0.1)
+                    Press([target_x1, target_y2])
+                    Sleep(0.1)
+                    Press([target_x2, target_y1])
+                    Sleep(0.1)
+                    Press([target_x2, target_y2])
+                else:
+                    # 使用固定座標
+                    logger.info(f"[技能施放] 找不到 next，使用固定座標點擊敵人")
+                    Press([450, 750])
+                    Sleep(0.2)
+                    Press([450, 800])
+                
+                Sleep(0.5)
+                scn = ScreenShot()
+                if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                    logger.info("[技能施放] SP/MP 不足，改用普攻")
+                    Press(CheckIf(scn, 'notenough_close'))
+                    Sleep(0.5)
+                    return use_normal_attack()
+            
+            Sleep(1)
+            return True
+        
+        logger.warning(f"[技能施放] 找不到技能: {skill_name}，改用普攻")
+        return use_normal_attack()
+
+    def use_unconfigured_default_skill(default_category):
+        """使用未設定預設類別的技能
+        
+        Args:
+            default_category: 預設類別 (普攻/單體/橫排/全體/秘術/群控)
+        Returns:
+            bool: 是否成功施放技能
+        """
+        if default_category == "普攻":
+            return use_normal_attack()
+        
+        # 取得該類別的技能列表
+        skills = SKILLS_BY_CATEGORY.get(default_category, [])
+        if not skills:
+            logger.warning(f"[技能施放] 預設類別 {default_category} 沒有技能，改用普攻")
+            return use_normal_attack()
+        
+        # 確保技能欄可見
+        scn = ScreenShot()
+        auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
+        auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
+        is_manual_mode = auto_btn or auto_btn_2
+        
+        if not is_manual_mode:
+            for _ in range(3):
+                Press([1, 1])
+                Sleep(0.3)
+            Sleep(0.5)
+        else:
+            Press([1, 1])
+            Sleep(0.3)
+        
+        scn = ScreenShot()
+        
+        # 嘗試該類別的每個技能
+        for skill_name in skills:
+            image_path = get_skill_image_path(default_category, skill_name)
+            if image_path:
+                # 轉換為相對路徑
+                check_path = 'spellskill/' + SKILL_CATEGORIES[default_category]["folder"] + '/' + os.path.basename(image_path).rsplit('.', 1)[0]
+            else:
+                check_path = 'spellskill/' + SKILL_CATEGORIES[default_category]["folder"] + '/' + skill_name
+            
+            skill_pos = CheckIf(scn, check_path, threshold=0.70)
+            if skill_pos:
+                logger.info(f"[技能施放] 使用預設類別技能: {skill_name} ({default_category})")
+                Press(skill_pos)
+                Sleep(1)
+                scn = ScreenShot()
+                
+                # 根據類別確認
+                cast_type = get_skill_cast_type(default_category)
+                if cast_type == "ok":
+                    ok_pos = CheckIf(scn, 'OK')
+                    if ok_pos:
+                        Press(ok_pos)
+                        Sleep(1)
+                        scn = ScreenShot()
+                        if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                            logger.info("[技能施放] SP/MP 不足，繼續嘗試下一個技能")
+                            Press(CheckIf(scn, 'notenough_close'))
+                            Sleep(0.5)
+                            continue
+                else:
+                    next_pos = CheckIf(scn, 'next', threshold=0.70)
+                    if next_pos:
+                        Press([next_pos[0] - 15, next_pos[1] + 100])
+                        Sleep(0.1)
+                        Press([next_pos[0], next_pos[1] + 170])
+                    else:
+                        Press([450, 750])
+                        Sleep(0.2)
+                        Press([450, 800])
+                    
+                    Sleep(0.5)
+                    scn = ScreenShot()
+                    if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
+                        logger.info("[技能施放] SP/MP 不足，繼續嘗試下一個技能")
+                        Press(CheckIf(scn, 'notenough_close'))
+                        Sleep(0.5)
+                        continue
+                
+                return True
+        
+        logger.warning(f"[技能施放] 預設類別 {default_category} 沒有可用技能，改用普攻")
+        return use_normal_attack()
+
     def StateCombat():
+        MonitorState.current_state = "Combat"
+        def update_combat_flag(scn):
+            combat_templates = get_combat_active_templates()
+            if combat_templates:
+                MonitorState.flag_combatActive = max(GetMatchValue(scn, t) for t in combat_templates)
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
+            update_combat_flag(scn)
             ok_pos = CheckIf(scn,'OK')
             if ok_pos:
                 logger.info(f"[戰鬥] 找到 OK 按鈕，點擊確認")
@@ -2196,7 +2838,7 @@ def Factory():
                     Press(CheckIf(scn,'notenough_close'))
                     Sleep(0.5)
                     scn = ScreenShot()
-                    Press(CheckIf(scn, 'spellskill/attack'))
+                    Press(CheckIf(scn, 'spellskill/普攻/attack'))
                     Sleep(0.5)
                     # 點擊六個點位選擇敵人
                     Press([150,750])
@@ -2225,7 +2867,7 @@ def Factory():
                     Press(CheckIf(scn,'notenough_close'))
                     Sleep(0.5)
                     scn = ScreenShot()
-                    Press(CheckIf(scn, 'spellskill/attack'))
+                    Press(CheckIf(scn, 'spellskill/普攻/attack'))
                     Sleep(0.5)
                     # 點擊六個點位選擇敵人
                     Press([150,750])
@@ -2279,9 +2921,11 @@ def Factory():
         logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(30):  # 最多等待 15 秒
             screen = ScreenShot()
+            update_combat_flag(screen)
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
-            if runtimeContext._COMBAT_ACTION_COUNT > 0 and IsScreenBlack(screen):
+            is_black = IsScreenBlack(screen)
+            if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
                 runtimeContext._COMBAT_ACTION_COUNT = 0
@@ -2303,6 +2947,7 @@ def Factory():
                     
                     # 2. 截圖檢查狀態
                     scn = ScreenShot()
+                    update_combat_flag(scn)
                     
                     # 如果還在黑屏，繼續點擊
                     if IsScreenBlack(scn):
@@ -2427,73 +3072,104 @@ def Factory():
         screen = ScreenShot()
         # combatSpd 檢查已移至 StateCombat 開頭
 
+        # === 新的自動戰鬥模式邏輯 ===
+        battle_num = runtimeContext._COMBAT_BATTLE_COUNT
+        action_count = runtimeContext._COMBAT_ACTION_COUNT
+        auto_combat_mode = setting._AUTO_COMBAT_MODE
+        
+        # 判斷是否應該開啟自動戰鬥
+        if should_enable_auto_combat(battle_num, auto_combat_mode):
+            logger.info(f"[技能施放] 第 {battle_num} 戰，根據設定 ({auto_combat_mode}) 開啟自動戰鬥")
+            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+            enable_auto_combat()
+            Sleep(3)
+            return
+
+        # === 保留 spellsequence 用於特殊任務 ===
         spellsequence = runtimeContext._ACTIVESPELLSEQUENCE
         if spellsequence != None:
-            logger.info(f"当前施法序列:{spellsequence}")
+            logger.info(f"當前施法序列:{spellsequence}")
             for k in spellsequence.keys():
-                if CheckIf(screen,'spellskill/'+ k):
-                    targetSpell = 'spellskill/'+ spellsequence[k][0]
-                    if not CheckIf(screen, targetSpell):
-                        logger.error("错误:施法序列包含不可用的技能")
+                # 構建檢查路徑 (k)
+                check_path = f'spellskill/{k}'
+                for cat, skills in SKILLS_BY_CATEGORY.items():
+                    if k in skills:
+                        full_path = get_skill_image_path(cat, k)
+                        if full_path and os.path.exists(full_path):
+                            folder = SKILL_CATEGORIES.get(cat, {}).get("folder", cat)
+                            filename = os.path.basename(full_path).rsplit('.', 1)[0]
+                            check_path = f'spellskill/{folder}/{filename}'
+                        break
+                
+                if CheckIf(screen, check_path):
+                    skill_name = spellsequence[k][0]
+                    
+                    # 構建目標技能路徑 (targetSpell)
+                    target_spell_path = f'spellskill/{skill_name}'
+                    for cat, skills in SKILLS_BY_CATEGORY.items():
+                        if skill_name in skills:
+                            full_path = get_skill_image_path(cat, skill_name)
+                            if full_path and os.path.exists(full_path):
+                                folder = SKILL_CATEGORIES.get(cat, {}).get("folder", cat)
+                                filename = os.path.basename(full_path).rsplit('.', 1)[0]
+                                target_spell_path = f'spellskill/{folder}/{filename}'
+                            break
+
+                    if not CheckIf(screen, target_spell_path):
+                        logger.error(f"錯誤:施法序列包含不可用的技能 {skill_name}")
                         Press([850,1100])
                         Sleep(0.5)
                         Press([850,1100])
                         Sleep(3)
                         return
                     
-                    logger.info(f"使用技能{targetSpell}, 施法序列特征: {k}:{spellsequence[k]}")
+                    logger.info(f"使用技能{target_spell_path}, 施法序列特徵: {k}:{spellsequence[k]}")
                     if len(spellsequence[k])!=1:
                         spellsequence[k].pop(0)
-                    Press(CheckIf(screen,targetSpell))
-                    if targetSpell != 'spellskill/' + 'defend':
-                        doubleConfirmCastSpell()
+                    Press(CheckIf(screen, target_spell_path))
+                    
+                    # Defend is at root, so spellskill/defend is correct.
+                    # We check if target_spell_path ends with defend or defend.png
+                    if "defend" not in target_spell_path: 
+                         doubleConfirmCastSpell()
 
                     return
-
-        # AE 手啟用時，必須等 AOE 觸發後才能開啟系統自動戰鬥
-        ae_caster_enabled = bool(setting._AE_CASTER_1_SKILL) or bool(setting._AE_CASTER_2_SKILL)
-        ae_logic_complete = not ae_caster_enabled or runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
-
-        if ae_logic_complete and ((setting._SYSTEMAUTOCOMBAT) or (runtimeContext._ENOUGH_AOE and setting._AUTO_AFTER_AOE)):
-            # 只點擊一次，避免兩個都匹配時連續點擊導致開啟後又關閉
-            if not Press(CheckIf(WrapImage(screen,0.1,0.3,1),'combatAuto',[[700,1000,200,200]])):
-                Press(CheckIf(screen,'combatAuto_2',[[700,1000,200,200]]))
-            Sleep(5) # Increased sleep duration
-            return
 
         if not CheckIf(screen,'flee'):
             return
         if runtimeContext._SUICIDE:
             Press(CheckIf(screen,'spellskill/'+'defend'))
         else:
-            # 正常战斗逻辑
-            castSpellSkill = False
-            castAndPressOK = False
-            for skillspell in setting._SPELLSKILLCONFIG:
-                if runtimeContext._ENOUGH_AOE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                    #logger.info(f"本次战斗已经释放全体aoe, 由于面板配置, 不进行更多的技能释放.")
-                    continue
-                elif Press((CheckIf(screen, 'spellskill/'+skillspell))):
-                    logger.info(f"使用技能 {skillspell}")
-                    castAndPressOK = doubleConfirmCastSpell(skill_name=skillspell)
-                    castSpellSkill = True
-                    if castAndPressOK and setting._AOE_ONCE and ((skillspell in SECRET_AOE_SKILLS) or (skillspell in FULL_AOE_SKILLS)):
-                        runtimeContext._AOE_CAST_TIME += 1
-                        if runtimeContext._AOE_CAST_TIME >= setting._AOE_TIME:
-                            runtimeContext._ENOUGH_AOE = True
-                            runtimeContext._AOE_CAST_TIME = 0
-                        logger.info(f"已释放全体AOE ({runtimeContext._AOE_CAST_TIME}/{setting._AOE_TIME})")
-                    break
-            if not castSpellSkill:
-                # 使用 use_normal_attack 取代原本的 combatClose 判斷與點擊
-                # User request: "你不要弄那個普攻 他會卡住"
-                # 改回只點擊空白處，或者乾脆不做事 (防止卡住戰鬥流程)
-                logger.warning("[戰鬥] 無可用技能且 Fallback 被呼叫，嘗試點擊空白處取消選單")
-                Press(CheckIf(ScreenShot(),'combatClose'))
-                Press([850,1100])
-                Sleep(0.5)
-                Press([850,1100])
-                Sleep(3) # Increased sleep duration
+            # === 新的戰鬥邏輯：使用順序設定 ===
+            position = ((action_count - 1) % 6) + 1  # 當前角色順序 (1~6)
+            
+            # 取得該順序的設定
+            skill = ""
+            level = "關閉"
+            category = None
+            if position <= setting._AE_CASTER_COUNT:
+                skill = getattr(setting, f"_AE_CASTER_{position}_SKILL", "")
+                level = getattr(setting, f"_AE_CASTER_{position}_LEVEL", "關閉")
+                
+                # 判斷技能類別
+                if skill:
+                    for cat, skills in SKILLS_BY_CATEGORY.items():
+                        if skill in skills or skill == "attack":
+                            category = cat
+                            break
+            
+            if skill:
+                # 有設定技能，使用設定的技能
+                logger.info(f"[順序 {position}] 使用設定技能: {skill} ({category or '未知類別'})")
+                if category:
+                    cast_skill_by_category(category, skill, level)
+                else:
+                    use_ae_caster_skill(position, setting)
+            else:
+                # 未設定：使用預設類別技能
+                default_category = setting._UNCONFIGURED_DEFAULT
+                logger.info(f"[順序 {position}] 未設定，使用預設類別: {default_category}")
+                use_unconfigured_default_skill(default_category)
 
     # ==================== DungeonMover 類別 ====================
     # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯
@@ -2501,13 +3177,13 @@ def Factory():
         """
         統一的地城移動管理器
         - 整合 chest_auto, position, harken, gohome 的處理邏輯
-        - 實現分層超時機制 (Soft 30s -> GoHome, Hard 60s -> Restart)
+        - 實現分層超時機制 (Soft 60s -> GoHome, Hard 90s -> Restart)
         - 統一 Resume 和 Chest_Resume 處理
         """
         
         # 超時設定
-        SOFT_TIMEOUT = 30  # 軟超時：觸發 GoHome
-        HARD_TIMEOUT = 60  # 硬超時：觸發重啟
+        SOFT_TIMEOUT = 60  # 軟超時：觸發 GoHome
+        HARD_TIMEOUT = 90  # 硬超時：觸發重啟
         
         # 輪詢設定
         POLL_INTERVAL = 0.5
@@ -2515,7 +3191,7 @@ def Factory():
         
         # Resume 設定
         MAX_RESUME_RETRIES = 5
-        RESUME_CLICK_INTERVAL = 5  # 每 5 秒主動檢查
+        RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
         
         # 轉向解卡設定
@@ -2535,6 +3211,28 @@ def Factory():
             self.last_chest_auto_click_time = time.time()
             self.is_gohome_mode = False
             self.current_target = None
+            
+            # 同步到 MonitorState
+            MonitorState.state_start_time = self.move_start_time
+            MonitorState.still_count = 0
+            MonitorState.resume_count = 0
+        
+        def _cleanup_exit(self, next_state):
+            """退出移動監控時的統一清理
+            
+            所有 _monitor_move 的退出點都應調用此方法
+            """
+            # 重置本地狀態
+            self.is_gohome_mode = False
+            
+            # 重置 MonitorState（GUI 顯示）
+            MonitorState.current_target = ""
+            MonitorState.state_start_time = 0
+            MonitorState.is_gohome_mode = False
+            MonitorState.still_count = 0
+            MonitorState.resume_count = 0
+            
+            return next_state
         
         def initiate_move(self, targetInfoList: list, ctx):
             """
@@ -2552,6 +3250,11 @@ def Factory():
             self.reset()
             target_info = targetInfoList[0]
             self.current_target = target_info.target
+            
+            # 更新監控狀態
+            MonitorState.current_target = self.current_target
+            MonitorState.state_start_time = time.time()
+            MonitorState.is_gohome_mode = False
             
             logger.info(f"[DungeonMover] 啟動移動: 目標={self.current_target}")
             
@@ -2602,11 +3305,18 @@ def Factory():
                 logger.info(f"[DungeonMover] 找到 chest_auto 按鈕: {pos}")
                 Press(pos)
             else:
-                # 嘗試打開地圖面板尋找
-                logger.info("[DungeonMover] 主畫面找不到 chest_auto，嘗試打開地圖")
-                Press([777, 150])
-                Sleep(1)
-                screen = ScreenShot()
+                # 先檢查地圖是否已打開
+                map_already_open = CheckIf(screen, 'mapFlag')
+                
+                if not map_already_open:
+                    # 地圖未打開，嘗試打開
+                    logger.info("[DungeonMover] 主畫面找不到 chest_auto，嘗試打開地圖")
+                    Press([777, 150])
+                    Sleep(1)
+                    screen = ScreenShot()
+                else:
+                    logger.info("[DungeonMover] 地圖已打開但找不到 chest_auto")
+                
                 pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
                 if pos:
                     Press(pos)
@@ -2616,10 +3326,10 @@ def Factory():
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
                         return DungeonState.Map
-                    logger.warning("[DungeonMover] 無法找到 chest_auto 按鈕")
-                    targetInfoList.pop(0)
-                    return DungeonState.Map
-            
+                    # 圖片匹配失敗，直接點擊預設座標
+                    logger.info("[DungeonMover] chest_auto 圖片匹配失敗，點擊預設座標 [459, 1248]")
+                    Press([459, 1248])
+
             return self._monitor_move(targetInfoList, ctx)
         
         def _start_gohome(self, targetInfoList, ctx):
@@ -2686,47 +3396,12 @@ def Factory():
                     logger.info(f"[DungeonMover] 找不到目標 {target_info.target}")
                     if target_info.target in ['position', 'minimap_stair'] or target_info.target.startswith('stair'):
                         targetInfoList.pop(0)
-                    return DungeonState.Map
+                    return self._cleanup_exit(DungeonState.Map)
             except KeyError as e:
                 logger.error(f"[DungeonMover] 地圖操作錯誤: {e}")
-                return DungeonState.Dungeon
+                return self._cleanup_exit(DungeonState.Dungeon)
             
             return self._monitor_move(targetInfoList, ctx)
-
-        def resume_move(self, targetInfoList, ctx):
-            """
-            從 Resume 狀態恢復移動 (取代 StateDungeon 裡的舊邏輯)
-            """
-            logger.info("[DungeonMover] 呼叫 resume_move")
-            
-            # [Fix] 恢復移動時，視為新的移動階段，重置計時器與狀態
-            # 避免因戰鬥/寶箱耗時過久導致一回來就觸發超時
-            self.move_start_time = time.time()
-            self.is_gohome_mode = False
-            
-            # [Fix] 增加狀態檢查，避免在 Dungeon 狀態下遇到戰鬥卻因沒檢查 Resume 而無限循環
-            _, state, screen = IdentifyState()
-            if state in [DungeonState.Combat, DungeonState.Chest, DungeonState.Quit]:
-                logger.info(f"[DungeonMover] resume_move 偵測到 {state}，立即返回該狀態")
-                return state
-            
-            # screen = ScreenShot() # Redundant
-            resume_pos = CheckIf(screen, 'resume')
-            
-            if resume_pos:
-                logger.info(f"[DungeonMover] 外部呼叫: 找到 Resume 按鈕 {resume_pos}，點擊")
-                Press(resume_pos)
-                Sleep(1)
-                # 點擊後進入監控循環
-                return self._monitor_move(targetInfoList, ctx)
-            else:
-                logger.info("[DungeonMover] resume_move: 未找到 Resume 按鈕，判定已停止或已到達，直接進入 Map 狀態")
-                # 這是舊邏輯 "3次未檢測到 Resume -> 打開地圖" 的還原
-                # 如果目標是樓梯，是否這時候應該 pop? 
-                # 舊邏輯是: 如果 Resume 失敗 5 次且目標是樓梯 -> 判定換樓成功.
-                # 但這裡是 "一開始就沒找到 Resume". 舊邏輯對應: "未檢測到Resume按鈕...檢測到其餘狀態..."
-                # 總之，如果沒 Resume，就直接交給 Map 狀態去處理新的移動指令
-                return DungeonState.Map
         
         def _monitor_move(self, targetInfoList, ctx):
             """
@@ -2743,7 +3418,7 @@ def Factory():
             while True:
                 # 檢查停止信號
                 if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 Sleep(self.POLL_INTERVAL)
                 
@@ -2757,19 +3432,9 @@ def Factory():
                 if elapsed > self.SOFT_TIMEOUT and not self.is_gohome_mode:
                     logger.warning(f"[DungeonMover] 軟超時 ({self.SOFT_TIMEOUT}s)，切換至 GoHome 模式")
                     self.is_gohome_mode = True
+                    MonitorState.is_gohome_mode = True
                     # 不重置計時器，讓硬超時繼續計時
                     return self._start_gohome(targetInfoList, ctx)
-
-                # ========== B2. 定期 Resume 檢查 (防止動態背景誤判) ==========
-                # 即使 IdentifyState 認為在移動 (diff > 0.1)，每 5 秒仍強制檢查一次 Resume
-                if not is_chest_auto and not self.is_gohome_mode:
-                    if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
-                        poll_screen = ScreenShot() 
-                        resume_pos_periodic = CheckIf(poll_screen, 'resume')
-                        if resume_pos_periodic:
-                            logger.info(f"[DungeonMover] 【定期檢查】偵測到 Resume 按鈕，主動點擊: {resume_pos_periodic}")
-                            Press(resume_pos_periodic)
-                        self.last_resume_click_time = time.time()
                 
                 # ========== C. 狀態檢查 ==========
                 # ========== C. 異常狀況預先檢查 (防止 IdentifyState 卡死) ==========
@@ -2800,7 +3465,26 @@ def Factory():
                         continue
 
                 # ========== D. 狀態檢查 ==========
-                _, state, screen = IdentifyState()
+                # 記錄調用前的 _DUNGEON_CONFIRMED 狀態
+                was_dungeon_confirmed = ctx._DUNGEON_CONFIRMED
+                
+                main_state, state, screen = IdentifyState()
+                
+                # 檢測重新進入地城：如果 _DUNGEON_CONFIRMED 從 False 變為 True，重置計時器
+                if not was_dungeon_confirmed and ctx._DUNGEON_CONFIRMED:
+                    logger.info("[DungeonMover] 偵測到重新進入地城，重置計時器")
+                    self.move_start_time = time.time()
+                    MonitorState.state_start_time = self.move_start_time
+                
+                # 首先檢查是否離開了地城（回到 Inn 或其他主狀態）
+                if main_state == State.Inn or main_state == State.EoT:
+                    logger.info(f"[DungeonMover] 偵測到離開地城 (State={main_state})，退出移動監控")
+                    return self._cleanup_exit(DungeonState.Quit)
+                
+                # 檢查是否進入世界地圖（離開地城）
+                if CheckIf(screen, 'openworldmap') or CheckIf(screen, 'openWorldMap'):
+                    logger.info("[DungeonMover] 偵測到世界地圖，退出移動監控")
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 # Harken 傳送完成檢測
                 if ctx._HARKEN_FLOOR_TARGET is None and state == DungeonState.Dungeon:
@@ -2809,17 +3493,17 @@ def Factory():
                         ctx._HARKEN_TELEPORT_JUST_COMPLETED = False
                         if target == 'harken':
                             targetInfoList.pop(0)
-                        return DungeonState.Map
+                        return self._cleanup_exit(DungeonState.Map)
                 
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
-                    return DungeonState.Combat
+                    return self._cleanup_exit(DungeonState.Combat)
                 if state == DungeonState.Chest:
                     logger.info("[DungeonMover] 進入寶箱")
-                    return DungeonState.Chest
+                    return self._cleanup_exit(DungeonState.Chest)
                 if state == DungeonState.Quit:
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 # ========== D. chest_resume (chest_auto 專用) ==========
                 if is_chest_auto:
@@ -2835,15 +3519,42 @@ def Factory():
                         logger.info("[DungeonMover] chest_auto: 無寶箱 (notresure)")
                         Press([1, 1])
                         targetInfoList.pop(0)
-                        return DungeonState.Map
+                        return self._cleanup_exit(DungeonState.Map)
                 
                 # ========== E. gohome Keep-Alive ==========
                 if self.is_gohome_mode:
+                    # E1. 離開地城檢測（世界地圖或 Inn）
+                    if CheckIf(screen, 'worldmapflag'):
+                        logger.info("[DungeonMover] gohome: 偵測到世界地圖，已離開地城")
+                        return self._cleanup_exit(DungeonState.Quit)
+                    if CheckIf(screen, 'Inn'):
+                        logger.info("[DungeonMover] gohome: 偵測到 Inn，已回城")
+                        return self._cleanup_exit(DungeonState.Quit)
+                    
+                    # E2. Keep-Alive 點擊
                     if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
                         pos = CheckIf(screen, "gohome")
                         if pos:
                             logger.info(f"[DungeonMover] gohome Keep-Alive: 點擊 {pos}")
                             Press(pos)
+                        self.last_resume_click_time = time.time()
+                elif not is_chest_auto:
+                    # 非 chest_auto 時，固定間隔嘗試 Resume（不管靜止狀態）
+                    if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
+                        resume_pos_periodic = CheckIf(screen, 'resume')
+                        if resume_pos_periodic:
+                            logger.info(f"[DungeonMover] 定期檢查 Resume，點擊: {resume_pos_periodic}")
+                            Press(resume_pos_periodic)
+                            # 點擊後短暫等待並多次檢查是否已到達
+                            Sleep(0.5)
+                            for _ in range(3):
+                                if CheckIf(ScreenShot(), 'routenotfound'):
+                                    logger.info("[DungeonMover] Resume 後檢測到 RouteNotFound，到達目的地")
+                                    if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
+                                        if targetInfoList:
+                                            targetInfoList.pop(0)
+                                    return self._cleanup_exit(DungeonState.Map)
+                                Sleep(0.2)
                         self.last_resume_click_time = time.time()
                 
                 # ========== F. 靜止與 Resume 偵測 ==========
@@ -2854,6 +3565,7 @@ def Factory():
                     
                     if diff < 0.1:
                         self.still_count += 1
+                        MonitorState.still_count = self.still_count  # 同步到監控
                         logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
                         
                         if self.still_count >= self.STILL_REQUIRED:
@@ -2862,7 +3574,29 @@ def Factory():
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
                                 logger.info("[DungeonMover] 已在地圖狀態")
-                                return DungeonState.Map
+                                
+                                # chest_auto 特殊處理：地圖已開但找不到按鈕
+                                if is_chest_auto:
+                                    # 增加地圖靜止計數（使用 resume_consecutive_count 復用）
+                                    self.resume_consecutive_count += 1
+                                    logger.info(f"[DungeonMover] chest_auto 地圖靜止 {self.resume_consecutive_count}/3")
+                                    
+                                    if self.resume_consecutive_count >= 3:
+                                        # 連續 3 次找不到，移除 chest_auto 目標
+                                        logger.warning("[DungeonMover] chest_auto 連續 3 次找不到，移除目標繼續")
+                                        if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                            targetInfoList.pop(0)
+                                        return self._cleanup_exit(DungeonState.Map)
+                                    
+                                    # 嘗試再次點擊預設位置
+                                    logger.info("[DungeonMover] 嘗試點擊 chest_auto 預設區域")
+                                    Press([800, 340])  # 預設位置
+                                    Sleep(1)
+                                    self.still_count = 0  # 重置靜止計數
+                                    self.last_screen = None
+                                    continue
+                                
+                                return self._cleanup_exit(DungeonState.Map)
                             
                             # Resume 檢查 (非 chest_auto)
                             if not is_chest_auto:
@@ -2870,6 +3604,7 @@ def Factory():
                                 if resume_pos:
                                     if self.resume_consecutive_count < self.MAX_RESUME_RETRIES:
                                         self.resume_consecutive_count += 1
+                                        MonitorState.resume_count = self.resume_consecutive_count  # 同步到監控
                                         logger.info(f"[DungeonMover] 點擊 Resume ({self.resume_consecutive_count}/{self.MAX_RESUME_RETRIES})")
                                         Press(resume_pos)
                                         Sleep(1)
@@ -2879,7 +3614,7 @@ def Factory():
                                             logger.info("[DungeonMover] RouteNotFound，到達目的地")
                                             if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
                                                 targetInfoList.pop(0)
-                                            return DungeonState.Map
+                                            return self._cleanup_exit(DungeonState.Map)
                                         
                                         self.still_count = 0
                                         self.last_screen = None
@@ -2904,14 +3639,14 @@ def Factory():
                                     logger.info("[DungeonMover] 到達目標樓層 (MiniMap)")
                                     ctx._MINIMAP_STAIR_IN_PROGRESS = False
                                     targetInfoList.pop(0)
-                                    return DungeonState.Map
+                                    return self._cleanup_exit(DungeonState.Map)
                             
                             # 判定停止（無 Resume 且靜止）
                             if not is_chest_auto and not CheckIf(screen, 'resume'):
                                 logger.info("[DungeonMover] 靜止且無 Resume，判定到達")
                                 if target in ['position', 'harken'] or (target and target.startswith('stair')):
                                     targetInfoList.pop(0)
-                                return DungeonState.Map
+                                return self._cleanup_exit(DungeonState.Map)
                     else:
                         # 畫面有變化
                         if self.still_count > 0:
@@ -2927,33 +3662,33 @@ def Factory():
     dungeon_mover = DungeonMover()
 
     def StateMap_FindSwipeClick(targetInfo : TargetInfo):
-        ### return = None: 视为没找到, 大约等于目标点结束.
-        ### return = [x,y]: 视为找到, [x,y]是坐标.
+        ### return = None: 視爲沒找到, 大約等於目標點結束.
+        ### return = [x,y]: 視爲找到, [x,y]是座標.
         target = targetInfo.target
         roi = targetInfo.roi
         for i in range(len(targetInfo.swipeDir)):
             scn = ScreenShot()
             if not CheckIf(scn,'mapFlag'):
-                raise KeyError("地图不可用.")
+                raise KeyError("地圖不可用.")
 
             swipeDir = targetInfo.swipeDir[i]
             if swipeDir!=None:
-                logger.debug(f"拖动地图:{swipeDir[0]} {swipeDir[1]} {swipeDir[2]} {swipeDir[3]}")
+                logger.debug(f"拖動地圖:{swipeDir[0]} {swipeDir[1]} {swipeDir[2]} {swipeDir[3]}")
                 DeviceShell(f"input swipe {swipeDir[0]} {swipeDir[1]} {swipeDir[2]} {swipeDir[3]}")
                 Sleep(2)
                 scn = ScreenShot()
             
             targetPos = None
             if target == 'position':
-                logger.info(f"当前目标: 地点{roi}")
+                logger.info(f"當前目標: 地點{roi}")
                 targetPos = CheckIf_ReachPosition(scn,targetInfo)
             elif target == 'minimap_stair':
                 # minimap_stair: 直接使用座標，不搜索圖片（偵測在 StateMoving_CheckFrozen 中進行）
-                logger.info(f"当前目标: 小地圖樓梯 座標{roi} 目標圖片{targetInfo.floorImage}")
+                logger.info(f"當前目標: 小地圖樓梯 座標{roi} 目標圖片{targetInfo.floorImage}")
                 targetPos = roi  # 直接返回座標
                 break
             elif target.startswith("stair"):
-                logger.info(f"当前目标: 楼梯{target}")
+                logger.info(f"當前目標: 樓梯{target}")
                 targetPos = CheckIf_throughStair(scn,targetInfo)
             else:
                 logger.info(f"搜索{target}...")
@@ -2961,12 +3696,12 @@ def Factory():
                 if targetPos:=CheckIf(scn,target,roi):
                     logger.info(f'找到了 {target}! {targetPos}')
                     if (target == 'chest') and (swipeDir!= None):
-                        logger.debug(f"宝箱热力图: 地图:{setting._FARMTARGET} 方向:{swipeDir} 位置:{targetPos}")
+                        logger.debug(f"寶箱熱力圖: 地圖:{setting._FARMTARGET} 方向:{swipeDir} 位置:{targetPos}")
                     if not roi:
-                        # 如果没有指定roi 我们使用二次确认
-                        # logger.debug(f"拖动: {targetPos[0]},{targetPos[1]} -> 450,800")
+                        # 如果沒有指定roi 我們使用二次確認
+                        # logger.debug(f"拖動: {targetPos[0]},{targetPos[1]} -> 450,800")
                         # DeviceShell(f"input swipe {targetPos[0]} {targetPos[1]} {(targetPos[0]+450)//2} {(targetPos[1]+800)//2}")
-                        # 二次确认也不拖动了 太容易触发bug
+                        # 二次確認也不拖動了 太容易觸發bug
                         Sleep(2)
                         Press([1,1255])
                         targetPos = CheckIf(ScreenShot(),target,roi)
@@ -2976,33 +3711,33 @@ def Factory():
         normalPlace = ['harken','chest','leaveDung','position']
         targetInfo = targetInfoList[0]
         target = targetInfo.target
-        # 地图已经打开.
+        # 地圖已經打開.
         map = ScreenShot()
         if not CheckIf(map,'mapFlag'):
-                return None,targetInfoList # 发生了错误
+                return None,targetInfoList # 發生了錯誤
 
         try:
             searchResult = StateMap_FindSwipeClick(targetInfo)
         except KeyError as e:
-            logger.info(f"错误: {e}") # 一般来说这里只会返回"地图不可用"
+            logger.info(f"錯誤: {e}") # 一般來說這裏只會返回"地圖不可用"
             return None,  targetInfoList
     
         if not CheckIf(map,'mapFlag'):
-                return None,targetInfoList # 发生了错误, 应该是进战斗了
+                return None,targetInfoList # 發生了錯誤, 應該是進戰鬥了
 
         if searchResult == None:
             if target == 'chest':
-                # 结束, 弹出.
+                # 結束, 彈出.
                 targetInfoList.pop(0)
-                logger.info(f"没有找到宝箱.\n停止检索宝箱.")
+                logger.info(f"沒有找到寶箱.\n停止檢索寶箱.")
             elif (target == 'position' or target.startswith('stair')):
-                # 结束, 弹出.
+                # 結束, 彈出.
                 targetInfoList.pop(0)
-                logger.info(f"已经抵达目标地点或目标楼层.")
+                logger.info(f"已經抵達目標地點或目標樓層.")
             else:
-                # 这种时候我们认为真正失败了. 所以不弹出.
-                # 当然, 更好的做法时传递finish标识()
-                logger.info(f"未找到目标{target}.")
+                # 這種時候我們認爲真正失敗了. 所以不彈出.
+                # 當然, 更好的做法時傳遞finish標識()
+                logger.info(f"未找到目標{target}.")
 
             return DungeonState.Map,  targetInfoList
         else:
@@ -3020,6 +3755,12 @@ def Factory():
                 
                 Press(searchResult)
                 Press([138,1432]) # automove
+                # 改用 DungeonMover 監控，避免舊超時邏輯
+                dungeon_mover.reset()
+                dungeon_mover.current_target = target
+                MonitorState.current_target = target
+                MonitorState.state_start_time = dungeon_mover.move_start_time
+                MonitorState.is_gohome_mode = False
                 result_state = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                 
                 # 只有在非戰鬥/寶箱狀態下才移除目標（防止被打斷後誤判完成）
@@ -3041,27 +3782,33 @@ def Factory():
                 else:
                     logger.info(f"移動中途遇到 {result_state}，保留當前目標 {target} 待戰鬥/寶箱結束後繼續")
                 
-                # 如果成功到达(返回None)，返回Dungeon状态避免重新打开地图
+                # 如果成功到達(返回None)，返回Dungeon狀態避免重新打開地圖
                 if result_state is None:
-                    logger.debug("移动完成，返回 Dungeon 状态")
+                    logger.debug("移動完成，返回 Dungeon 狀態")
                     return DungeonState.Dungeon, targetInfoList
                 else:
                     return result_state, targetInfoList
             else:
-                if (CheckIf_FocusCursor(ScreenShot(),target)): #注意 这里通过二次确认 我们可以看到目标地点 而且是未选中的状态
-                    logger.info("经过对比中心区域, 确认没有抵达.")
+                if (CheckIf_FocusCursor(ScreenShot(),target)): #注意 這裏通過二次確認 我們可以看到目標地點 而且是未選中的狀態
+                    logger.info("經過對比中心區域, 確認沒有抵達.")
                     Press(searchResult)
                     Press([138,1432]) # automove
-                    return dungeon_mover._monitor_move(targetInfoList, runtimeContext),targetInfoList
+                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                    dungeon_mover.reset()
+                    dungeon_mover.current_target = target
+                    MonitorState.current_target = target
+                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                    MonitorState.is_gohome_mode = False
+                    return dungeon_mover._monitor_move(targetInfoList, runtimeContext), targetInfoList
                 else:
                     if setting._DUNGWAITTIMEOUT == 0:
-                        logger.info("经过对比中心区域, 判断为抵达目标地点.")
-                        logger.info("无需等待, 当前目标已完成.")
+                        logger.info("經過對比中心區域, 判斷爲抵達目標地點.")
+                        logger.info("無需等待, 當前目標已完成.")
                         targetInfoList.pop(0)
                         return DungeonState.Map,  targetInfoList
                     else:
-                        logger.info("经过对比中心区域, 判断为抵达目标地点.")
-                        logger.info('开始等待...等待...')
+                        logger.info("經過對比中心區域, 判斷爲抵達目標地點.")
+                        logger.info('開始等待...等待...')
                         PressReturn()
                         Sleep(0.5)
                         PressReturn()
@@ -3069,19 +3816,20 @@ def Factory():
                             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                                 return None, targetInfoList
                             if setting._DUNGWAITTIMEOUT-time.time()+waitTimer<0:
-                                logger.info("等得够久了. 目标地点完成.")
+                                logger.info("等得夠久了. 目標地點完成.")
                                 targetInfoList.pop(0)
                                 Sleep(1)
                                 Press([777,150])
                                 return None,  targetInfoList
-                            logger.info(f'还需要等待{setting._DUNGWAITTIMEOUT-time.time()+waitTimer}秒.')
+                            logger.info(f'還需要等待{setting._DUNGWAITTIMEOUT-time.time()+waitTimer}秒.')
                             if CheckIf(ScreenShot(),'combatActive') or CheckIf(ScreenShot(),'combatActive_2'):
                                 return DungeonState.Combat,targetInfoList
         return DungeonState.Map,  targetInfoList
     def StateChest():
         nonlocal runtimeContext
+        MonitorState.current_state = "Chest"
         availableChar = [0, 1, 2, 3, 4, 5]
-        disarm = [515,934]  # 527,920会按到接受死亡 450 1000会按到技能 445,1050还是会按到技能
+        disarm = [515,934]  # 527,920會按到接受死亡 450 1000會按到技能 445,1050還是會按到技能
         haveBeenTried = False
 
         if runtimeContext._TIME_CHEST==0:
@@ -3092,7 +3840,7 @@ def Factory():
         chest_wait_count = 0
         dungflag_consecutive_count = 0
         dungflag_fail_count = 0  # [新增] 連續失敗計數器
-        DUNGFLAG_CONFIRM_REQUIRED = 5  # [優化] 增加到 5 次確認，避免過早退出
+        DUNGFLAG_CONFIRM_REQUIRED = 3  # [優化] 從 5 改為 3
         DUNGFLAG_FAIL_THRESHOLD = 3  # 連續失敗 3 次才重置
         
         # 異常狀態定義
@@ -3146,7 +3894,7 @@ def Factory():
                 dungflag_consecutive_count += 1
                 dungflag_fail_count = 0  # 成功時重置失敗計數
                 if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
-                    logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗干擾，開箱流程結束")
+                    logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗幹擾，開箱流程結束")
                     return DungeonState.Dungeon
                 
                 # [優化] 即使看到 dungFlag，也不馬上退出，而是繼續執行下方的 Spam Click
@@ -3239,14 +3987,21 @@ def Factory():
         
         nonlocal runtimeContext
         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True
+        
+        # 更新監控狀態
+        MonitorState.current_state = "Dungeon"
+        
         while 1:
             state_handle_start = time.time()
             state_handle_name = dungState
             logger.info("----------------------")
             if setting._FORCESTOPING.is_set():
-                logger.info("即将停止脚本...")
+                logger.info("即將停止腳本...")
                 dungState = DungeonState.Quit
-            logger.info(f"当前状态(地下城): {dungState}")
+            logger.info(f"當前狀態(地下城): {dungState}")
+            
+            # 更新監控狀態 - 地城子狀態
+            MonitorState.current_dungeon_state = str(dungState.value) if dungState else "識別中"
 
             match dungState:
                 case None:
@@ -3259,14 +4014,14 @@ def Factory():
                     if dungState is None:
                         gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
                         if result:
-                            logger.info("由于画面卡死, 在state:None中重启.")
+                            logger.info("由於畫面卡死, 在state:None中重啓.")
                             restartGame()
                         MAXTIMEOUT = 400
                         if (runtimeContext._TIME_CHEST != 0 ) and (time.time()-runtimeContext._TIME_CHEST > MAXTIMEOUT):
-                            logger.info("由于宝箱用时过久, 在state:None中重启.")
+                            logger.info("由於寶箱用時過久, 在state:None中重啓.")
                             restartGame()
                         if (runtimeContext._TIME_COMBAT != 0) and (time.time()-runtimeContext._TIME_COMBAT > MAXTIMEOUT):
-                            logger.info("由于战斗用时过久, 在state:None中重启.")
+                            logger.info("由於戰鬥用時過久, 在state:None中重啓.")
                             restartGame()
                 case DungeonState.Quit:
                     elapsed_ms = (time.time() - state_handle_start) * 1000
@@ -3275,9 +4030,7 @@ def Factory():
                 case DungeonState.Dungeon:
                     Press([1,1])
                     ########### COMBAT RESET
-                    # 战斗结束了, 我们将一些设置复位
-                    if setting._AOE_ONCE:
-                        runtimeContext._ENOUGH_AOE = False
+                    # 戰鬥結束了, 我們將一些設置復位
                     runtimeContext._COMBAT_ACTION_COUNT = 0  # 重置行動計數器
                     ########### TIMER
                     if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
@@ -3289,7 +4042,7 @@ def Factory():
                         if runtimeContext._TIME_COMBAT !=0:
                             spend_on_combat = time.time()-runtimeContext._TIME_COMBAT
                             runtimeContext._TIME_COMBAT = 0
-                        logger.info(f"粗略统计: 宝箱{spend_on_chest:.2f}秒, 战斗{spend_on_combat:.2f}秒.")
+                        logger.info(f"粗略統計: 寶箱{spend_on_chest:.2f}秒, 戰鬥{spend_on_combat:.2f}秒.")
                         if (spend_on_chest!=0) and (spend_on_combat!=0):
                             if spend_on_combat>spend_on_chest:
                                 runtimeContext._TIME_COMBAT_TOTAL = runtimeContext._TIME_COMBAT_TOTAL + spend_on_combat-spend_on_chest
@@ -3302,24 +4055,24 @@ def Factory():
                             runtimeContext._TIME_CHEST_TOTAL = runtimeContext._TIME_CHEST_TOTAL + spend_on_chest
                     ########### RECOVER
                     if needRecoverBecauseChest:
-                        logger.info("进行开启宝箱后的恢复.")
+                        logger.info("進行開啓寶箱後的恢復.")
                         runtimeContext._COUNTERCHEST+=1
                         needRecoverBecauseChest = False
                         runtimeContext._MEET_CHEST_OR_COMBAT = True
                         if not setting._SKIPCHESTRECOVER:
-                            logger.info("由于面板配置, 进行开启宝箱后恢复.")
+                            logger.info("由於面板配置, 進行開啓寶箱後恢復.")
                             shouldRecover = True
                         else:
-                            logger.info("由于面板配置, 跳过了开启宝箱后恢复.")
+                            logger.info("由於面板配置, 跳過了開啓寶箱後恢復.")
                     if needRecoverBecauseCombat:
                         runtimeContext._COUNTERCOMBAT+=1
                         needRecoverBecauseCombat = False
                         runtimeContext._MEET_CHEST_OR_COMBAT = True
                         if (not setting._SKIPCOMBATRECOVER):
-                            logger.info("由于面板配置, 进行战后恢复.")
+                            logger.info("由於面板配置, 進行戰後恢復.")
                             shouldRecover = True
                         else:
-                            logger.info("由于面板配置, 跳过了战后后恢复.")
+                            logger.info("由於面板配置, 跳過了戰後後恢復.")
                     if runtimeContext._RECOVERAFTERREZ == True:
                         shouldRecover = True
                         runtimeContext._RECOVERAFTERREZ = False
@@ -3334,7 +4087,7 @@ def Factory():
                                 Press([36+(counter_trychar%3)*286,1425])
                                 Sleep(1)
                             else:
-                                logger.info("自动回复失败, 暂不进行回复.")
+                                logger.info("自動回覆失敗, 暫不進行回覆.")
                                 break
                             trait_result = CheckIf(scn:=ScreenShot(),'trait')
                             logger.debug(f"[圖片偵測] trait: {trait_result}")
@@ -3364,11 +4117,12 @@ def Factory():
                                     shouldRecover = False
                                     break
                     ########### OPEN MAP
-                    ########### 防止转圈 (from upstream 1.9.27)
+                    ########### 防止轉圈 (from upstream 1.9.27)
                     has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
+                    logger.debug(f"[StateDungeon] targetInfoList: {[t.target for t in targetInfoList]}, has_chest_auto: {has_chest_auto}")
                     if not runtimeContext._STEPAFTERRESTART:
                         # 防止轉圈：前後左右平移一次（僅重啟後執行）
-                        logger.info("防止转圈: 前後左右平移一次")
+                        logger.info("防止轉圈: 前後左右平移一次")
 
                         # 前平移 (改為上滑，前進)
                         Swipe([450,700], [450, 500])
@@ -3387,21 +4141,21 @@ def Factory():
                         Sleep(1)
 
                         runtimeContext._STEPAFTERRESTART = True
-                    # 第一次进入地城时，无条件打开地图（不检查能见度）
+                    # 第一次進入地城時，無條件打開地圖（不檢查能見度）
                     # 例外：chest_auto 跳過此機制
                     if runtimeContext._FIRST_DUNGEON_ENTRY and not has_chest_auto:
-                        logger.info("第一次进入地城，打开地图")
+                        logger.info("第一次進入地城，打開地圖")
                         Sleep(1)
                         Press([777,150])
                         dungState = DungeonState.Map
-                        runtimeContext._FIRST_DUNGEON_ENTRY = False  # 标记为已进入过
+                        runtimeContext._FIRST_DUNGEON_ENTRY = False  # 標記爲已進入過
                     elif runtimeContext._FIRST_DUNGEON_ENTRY and has_chest_auto:
                         logger.debug("chest_auto 模式：跳過第一次進入地城打開地圖，直接進入 Map 狀態")
                         runtimeContext._FIRST_DUNGEON_ENTRY = False
                         dungState = DungeonState.Map  # 仍需進入 Map 狀態以處理 chest_auto 邏輯
-                    # 重启后：跳过Resume优化，直接尝试打开地图
+                    # 重啓後：跳過Resume優化，直接嘗試打開地圖
                     elif runtimeContext._RESTART_OPEN_MAP_PENDING:
-                        logger.info("重启后：跳过Resume优化，尝试打开地图")
+                        logger.info("重啓後：跳過Resume優化，嘗試打開地圖")
                         Sleep(1)
                         Press([777,150])
                         Sleep(1)
@@ -3409,21 +4163,21 @@ def Factory():
                         mapFlag_result = CheckIf(screen, 'mapFlag')
                         logger.debug(f"[圖片偵測] mapFlag: {mapFlag_result}")
                         if mapFlag_result:
-                            logger.info("重启后：成功打开地图")
+                            logger.info("重啓後：成功打開地圖")
                             dungState = DungeonState.Map
                             runtimeContext._RESTART_OPEN_MAP_PENDING = False
                         else:
                             visib_result = CheckIf(screen, 'visibliityistoopoor')
                             logger.debug(f"[圖片偵測] visibliityistoopoor: {visib_result}")
                             if visib_result:
-                                # 能见度太低，无法打开地图，等待后重新检测
-                                logger.warning("重启后：能见度太低无法打开地图，等待后重新检测状态")
+                                # 能見度太低，無法打開地圖，等待後重新檢測
+                                logger.warning("重啓後：能見度太低無法打開地圖，等待後重新檢測狀態")
                                 runtimeContext._RESTART_OPEN_MAP_PENDING = False
                                 Sleep(3)
                                 dungState = None
                             else:
-                                # 其他情况（可能在战斗/宝箱），重新检测状态
-                                logger.info("重启后：地图未打开，重新检测状态")
+                                # 其他情況（可能在戰鬥/寶箱），重新檢測狀態
+                                logger.info("重啓後：地圖未打開，重新檢測狀態")
                                 dungState = None
                     # minimap_stair 恢復監控：如果標誌仍在（戰鬥/寶箱打斷後），繼續移動並監控小地圖
                     elif runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
@@ -3437,7 +4191,13 @@ def Factory():
                             logger.info(f"minimap_stair: 檢測到 Resume 按鈕，繼續移動 {resume_pos}")
                             Press(resume_pos)
                             Sleep(1)
-                            result_state = StateMoving_CheckFrozen()
+                            # 改用 DungeonMover 監控，避免舊超時邏輯
+                            dungeon_mover.reset()
+                            dungeon_mover.current_target = "minimap_stair"
+                            MonitorState.current_target = "minimap_stair"
+                            MonitorState.state_start_time = dungeon_mover.move_start_time
+                            MonitorState.is_gohome_mode = False
+                            result_state = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                             if not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
                                 # minimap_stair 完成（在 StateMoving_CheckFrozen 中清除 flag）
                                 logger.info("minimap_stair: 目標完成，彈出目標並返回 Map 狀態")
@@ -3454,16 +4214,177 @@ def Factory():
                             logger.info("minimap_stair: 未檢測到 Resume 按鈕，打開地圖繼續")
                             Press([777,150])
                             dungState = DungeonState.Map
-                    # Resume: 非第一次进入，检查Resume按钮决定下一步动作
-                    # 注意: 重启后跳过Resume优化，因为之前的路径可能已失效
+                    # Resume: 非第一次進入，檢查Resume按鈕決定下一步動作
+                    # 注意: 重啓後跳過Resume優化，因爲之前的路徑可能已失效
                     # 注意: chest_auto 跳過 Resume，使用自己的移動等待邏輯
                     elif runtimeContext._STEPAFTERRESTART and not has_chest_auto:
-                        # Resume 優化: 原地嘗試恢復移動
-                        logger.info("Resume優化: 調用 DungeonMover.resume_move 嘗試恢復")
-                        dungState = dungeon_mover.resume_move(targetInfoList, runtimeContext)
+                        # 檢測Resume按鈕，最多重試3次（等待畫面過渡）
+                        # 同時檢測寶箱和戰鬥狀態，避免錯過剛出現的寶箱
+                        MAX_RESUME_DETECT_RETRIES = 3
+                        resume_pos = None
+                        detected_other_state = False
+                        for detect_retry in range(MAX_RESUME_DETECT_RETRIES):
+                            screen = ScreenShot()
+                            
+                            # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
+                            if CheckIf(screen, 'mapFlag'):
+                                logger.info("Resume優化: 已在地圖狀態，跳過 Resume 檢測")
+                                dungState = DungeonState.Map
+                                detected_other_state = True
+                                break
+                            
+                            # 先檢查是否有寶箱或戰鬥
+                            if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
+                                logger.info(f"Resume優化: 檢測到寶箱狀態（第 {detect_retry + 1} 次嘗試）")
+                                dungState = DungeonState.Chest
+                                detected_other_state = True
+                                break
+                            if CheckIf(screen, 'combatActive') or CheckIf(screen, 'combatActive_2'):
+                                logger.info(f"Resume優化: 檢測到戰鬥狀態（第 {detect_retry + 1} 次嘗試）")
+                                dungState = DungeonState.Combat
+                                detected_other_state = True
+                                break
+                            
+                            # 檢查Resume按鈕
+                            resume_pos = CheckIf(screen, 'resume')
+                            if resume_pos:
+                                logger.info(f"Resume優化: 檢測到Resume按鈕（第 {detect_retry + 1} 次嘗試）")
+                                break
+                            else:
+                                if detect_retry < MAX_RESUME_DETECT_RETRIES - 1:
+                                    logger.info(f"Resume優化: 未檢測到Resume按鈕，等待重試（{detect_retry + 1}/{MAX_RESUME_DETECT_RETRIES}）")
+                                    Sleep(0.5)  # 縮短等待時間
+                        
+                        # 如果檢測到其他狀態，跳過Resume優化
+                        if detected_other_state:
+                            pass  # dungState已設置，直接進入下一輪循環
+                        elif resume_pos:
+                            # Resume存在，點擊Resume，最多重試3次
+                            MAX_RESUME_RETRIES = 3
+                            resume_success = False
+                            
+                            for retry in range(MAX_RESUME_RETRIES):
+                                logger.info(f"Resume優化: 點擊Resume按鈕（第 {retry + 1}/{MAX_RESUME_RETRIES} 次）位置:{resume_pos}")
+                                Press(resume_pos)
+                                Sleep(1)  # 等待 routenotfound 可能出現
+                                
+                                # 檢查 routenotfound 是否出現
+                                screen_after = ScreenShot()
+                                if CheckIf(screen_after, 'routenotfound'):
+                                    # routenotfound 出現 = 已到達目的地
+                                    logger.info("Resume優化: 檢測到routenotfound，已到達目的地，打開地圖")
+                                    Sleep(1)  # routenotfound 會自動消失，稍等一下
+                                    Press([777,150])  # 打開地圖
+                                    Sleep(1)
+                                    # 檢查能見度（僅記錄日誌，不再觸發回城）
+                                    if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                        logger.warning("visibliityistoopoor，但繼續嘗試導航")
+                                    dungState = DungeonState.Map
+                                    resume_success = True
+                                    break
+                                else:
+                                    logger.info("Resume優化: 未檢測到routenotfound")
+                                
+                                # 檢查畫面是否有變化（表示正在移動）
+                                gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                                gray2 = cv2.cvtColor(screen_after, cv2.COLOR_BGR2GRAY)
+                                mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
+                                logger.info(f"Resume優化: 畫面變化檢測 mean_diff={mean_diff:.4f}")
+                                
+                                if mean_diff >= 0.02:  # 閾值降低到 2%
+                                    # 畫面有變化 = 還在路上，繼續移動監控
+                                    logger.info("Resume優化: 畫面有變化，繼續移動監控")
+                                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                                    dungeon_mover.reset()
+                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
+                                    MonitorState.current_target = dungeon_mover.current_target or ""
+                                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                                    MonitorState.is_gohome_mode = False
+                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
+                                    resume_success = True
+                                    break
+                                
+                                # 畫面沒變化，準備重試
+                                logger.warning(f"Resume優化: 畫面無變化，準備重試 ({retry + 1}/{MAX_RESUME_RETRIES})")
+                                screen = screen_after  # 更新參考畫面
+                                resume_pos = CheckIf(screen, 'resume')
+                                if not resume_pos:
+                                    # Resume按鈕消失了，可能已經開始移動
+                                    logger.info("Resume優化: Resume按鈕消失，進入移動監控")
+                                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                                    dungeon_mover.reset()
+                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
+                                    MonitorState.current_target = dungeon_mover.current_target or ""
+                                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                                    MonitorState.is_gohome_mode = False
+                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
+                                    resume_success = True
+                                    break
+                            
+                            if not resume_success:
+                                # 5次Resume失敗
+                                # 檢查當前目標是否是樓梯：如果是樓梯，Resume失效代表換樓成功
+                                current_target = targetInfoList[0].target if targetInfoList else None
+                                if current_target and current_target.startswith('stair'):
+                                    logger.info(f"Resume優化: {MAX_RESUME_RETRIES}次Resume失敗，但目標是樓梯({current_target})，判定爲換樓成功")
+                                    targetInfoList.pop(0)  # 彈出當前樓梯目標
+                                    logger.info("Resume優化: 打開地圖繼續下一個目標")
+                                    Press([777,150])  # 打開地圖
+                                    Sleep(1)
+                                    dungState = DungeonState.Map
+                                else:
+                                    # 非樓梯目標，打開地圖重新導航
+                                    logger.warning(f"Resume優化: {MAX_RESUME_RETRIES}次Resume失敗，打開地圖重新導航")
+                                    Press([777,150])  # 打開地圖
+                                    Sleep(1)
+                                    
+                                    # [Fix] 黑暗區域緊急撤離 (Panic Mode)
+                                    if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                        logger.warning("Resume失敗且能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
+                                        if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
+                                            logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
+                                            _panic_start = time.time()
+                                            while time.time() - _panic_start < 60:
+                                                if setting._FORCESTOPING.is_set(): break
+                                                Press(gohome_pos)
+                                                Sleep(0.5)
+                                                if not CheckIf(ScreenShot(), 'gohome'):
+                                                    break
+                                            dungState = None
+                                        else:
+                                            logger.warning("未找到 gohome，嘗試隨機移動脫困")
+                                            Press([1100, 360])
+                                            Sleep(2)
+                                            dungState = None
+                                    else:
+                                        dungState = DungeonState.Map
+                        else:
+                            # 3次都沒檢測到Resume，打開地圖
+                            logger.info("Resume優化: 3次均未檢測到Resume按鈕，打開地圖")
+                            Press([777,150])
+                            Sleep(1)
+                            # 檢查能見度 - 如果太黑，嘗試緊急撤離
+                            if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                logger.warning("能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
+                                if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
+                                    logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
+                                    _panic_start = time.time()
+                                    while time.time() - _panic_start < 60:
+                                        if setting._FORCESTOPING.is_set(): break
+                                        Press(gohome_pos)
+                                        Sleep(0.5)
+                                        if not CheckIf(ScreenShot(), 'gohome'):
+                                            break
+                                    dungState = None
+                                else:
+                                    logger.warning("未找到 gohome，嘗試隨機移動脫困")
+                                    Press([1100, 360])
+                                    Sleep(2)
+                                    dungState = None
+                            else:
+                                dungState = DungeonState.Map
                     else:
-                        # [Fix] 恢復原本的後備邏輯：如果不需要 Resume (或不符合條件)，直接去 Map 狀態
-                        # 這樣才能繼續執行下面的移動指令 (initiate_move)
+                        # chest_auto 不需要打開地圖，直接回到 Map 狀態讓其專屬邏輯處理
                         if has_chest_auto:
                             logger.debug("chest_auto: 跳過打開地圖，直接進入 Map 狀態")
                             dungState = DungeonState.Map
@@ -3476,10 +4397,10 @@ def Factory():
                                 logger.warning("visibliityistoopoor，但繼續嘗試導航")
                             dungState = DungeonState.Map
                 case DungeonState.Map:
-                    if runtimeContext._SHOULDAPPLYSPELLSEQUENCE: # 默认值(第一次)和重启后应当直接应用序列
+                    if runtimeContext._SHOULDAPPLYSPELLSEQUENCE: # 默認值(第一次)和重啓後應當直接應用序列
                         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = False
                         if targetInfoList[0].activeSpellSequenceOverride:
-                            logger.info("因为初始化, 复制了施法序列.")
+                            logger.info("因爲初始化, 複製了施法序列.")
                             runtimeContext._ACTIVESPELLSEQUENCE = copy.deepcopy(quest._SPELLSEQUENCE)
 
                     # ==================== 使用 DungeonMover 統一處理移動 ====================
@@ -3488,7 +4409,7 @@ def Factory():
                     
                     # 檢查目標是否完成
                     if (targetInfoList is None) or (targetInfoList == []):
-                        logger.info("地下城目标完成. 地下城状态结束.(仅限任务模式.)")
+                        logger.info("地下城目標完成. 地下城狀態結束.(僅限任務模式.)")
                         elapsed_ms = (time.time() - state_handle_start) * 1000
                         logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
@@ -3496,7 +4417,7 @@ def Factory():
                     # 更新施法序列（如果目標變更）
                     if targetInfoList and targetInfoList[0].activeSpellSequenceOverride:
                         if runtimeContext._ACTIVESPELLSEQUENCE is None:
-                            logger.info("因为目标信息变动, 重新复制了施法序列.")
+                            logger.info("因爲目標信息變動, 重新複製了施法序列.")
                             runtimeContext._ACTIVESPELLSEQUENCE = copy.deepcopy(quest._SPELLSEQUENCE)
 
 
@@ -3526,20 +4447,47 @@ def Factory():
             FindCoordsOrElseExecuteFallbackAndWait(['Inn','guildRequest'],[[pos[0]+pressbias[0],pos[1]+pressbias[1]],'return',[1,1]],1)
             FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
         else:
-            logger.info("奇怪, 任务怎么已经接了.")
+            logger.info("奇怪, 任務怎麼已經接了.")
             FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
 
     def DungeonFarm():
         nonlocal runtimeContext
+        # [Fix] 初始化戰鬥計數器，確保定點戰鬥邏輯正常運作
+        runtimeContext._COMBAT_ACTION_COUNT = 0
+        runtimeContext._COMBAT_BATTLE_COUNT = 0
+
+        # 初始化監控狀態
+        MonitorState.reset()
+        MonitorState.karma_adjust = str(setting._KARMAADJUST)
+        if runtimeContext._LAPTIME == 0:
+            runtimeContext._LAPTIME = time.time()
+
         state = None
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
         while 1:
             logger.info("======================")
             Sleep(1)
             if setting._FORCESTOPING.is_set():
-                logger.info("即将停止脚本...")
+                logger.info("即將停止腳本...")
                 break
-            logger.info(f"当前状态: {state}")
+            
+            # 更新監控狀態
+            MonitorState.current_state = str(state.value) if state else "識別中"
+            MonitorState.dungeon_count = runtimeContext._COUNTERDUNG
+            MonitorState.combat_count = runtimeContext._COUNTERCOMBAT
+            MonitorState.chest_count = runtimeContext._COUNTERCHEST
+            if runtimeContext._LAPTIME > 0:
+                MonitorState.total_time = runtimeContext._TOTALTIME + (time.time() - runtimeContext._LAPTIME)
+            else:
+                MonitorState.total_time = runtimeContext._TOTALTIME
+            MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
+            MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+            MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
+            MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
+            MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
+            MonitorState.update_warnings()
+
+            logger.info(f"當前狀態: {state}")
             match state:
                 case None:
                     def _identifyState():
@@ -3548,41 +4496,45 @@ def Factory():
                     RestartableSequenceExecution(
                         lambda: _identifyState()
                         )
-                    logger.info(f"下一状态: {state}")
+                    logger.info(f"下一狀態: {state}")
                     
                     # 地城內啟動偵測：如果首次識別就是 Dungeon 狀態，說明在地城內啟動
                     if state == State.Dungeon and runtimeContext._COUNTERDUNG == 0:
                         logger.info("[地城內啟動] 偵測到在地城內啟動腳本，初始化參數...")
                         runtimeContext._FIRST_DUNGEON_ENTRY = False  # 已經在地城內，不是第一次進入
-                        runtimeContext._DUNGEON_CONFIRMED = True     # 直接確認在地城
                         runtimeContext._STEPAFTERRESTART = True      # 不需要防轉圈
-                        runtimeContext._MID_DUNGEON_START = True     # 標記地城內啟動（跳過黑屏打斷）
-                        logger.info("[地城內啟動] 參數初始化完成")
+                        # 重置戰鬥計數，讓黑屏偵測立即生效（視為新地城第一戰）
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
+                        runtimeContext._COMBAT_ACTION_COUNT = 0
+                        runtimeContext._COMBAT_BATTLE_COUNT = 0
+                        runtimeContext._DUNGEON_CONFIRMED = True     # 直接確認在地城
+                        # 不設置 _MID_DUNGEON_START = True，讓黑屏偵測正常觸發
+                        logger.info("[地城內啟動] 參數初始化完成，黑屏偵測已啟用")
                     
                     if state ==State.Quit:
-                        logger.info("即将停止脚本...")
+                        logger.info("即將停止腳本...")
                         break
                 case State.Inn:
                     if runtimeContext._LAPTIME!= 0:
                         runtimeContext._TOTALTIME = runtimeContext._TOTALTIME + time.time() - runtimeContext._LAPTIME
-                        summary_text = f"已完成{runtimeContext._COUNTERDUNG}次\"{setting._FARMTARGET_TEXT}\"地下城.\n总计{round(runtimeContext._TOTALTIME,2)}秒.上次用时:{round(time.time()-runtimeContext._LAPTIME,2)}秒.\n"
+                        summary_text = f"已完成{runtimeContext._COUNTERDUNG}次\"{setting._FARMTARGET_TEXT}\"地下城.\n總計{round(runtimeContext._TOTALTIME,2)}秒.上次用時:{round(time.time()-runtimeContext._LAPTIME,2)}秒.\n"
                         if runtimeContext._COUNTERCHEST > 0:
-                            summary_text += f"箱子效率{round(runtimeContext._TOTALTIME/runtimeContext._COUNTERCHEST,2)}秒/箱.\n累计开箱{runtimeContext._COUNTERCHEST}次,开箱平均耗时{round(runtimeContext._TIME_CHEST_TOTAL/runtimeContext._COUNTERCHEST,2)}秒.\n"
+                            summary_text += f"箱子效率{round(runtimeContext._TOTALTIME/runtimeContext._COUNTERCHEST,2)}秒/箱.\n累計開箱{runtimeContext._COUNTERCHEST}次,開箱平均耗時{round(runtimeContext._TIME_CHEST_TOTAL/runtimeContext._COUNTERCHEST,2)}秒.\n"
                         if runtimeContext._COUNTERCOMBAT > 0:
-                            summary_text += f"累计战斗{runtimeContext._COUNTERCOMBAT}次.战斗平均用时{round(runtimeContext._TIME_COMBAT_TOTAL/runtimeContext._COUNTERCOMBAT,2)}秒.\n"
+                            summary_text += f"累計戰鬥{runtimeContext._COUNTERCOMBAT}次.戰鬥平均用時{round(runtimeContext._TIME_COMBAT_TOTAL/runtimeContext._COUNTERCOMBAT,2)}秒.\n"
                         if runtimeContext._COUNTERADBRETRY > 0 or runtimeContext._COUNTEREMULATORCRASH > 0:
-                            summary_text += f"ADB重启{runtimeContext._COUNTERADBRETRY}次,模拟器崩溃{runtimeContext._COUNTEREMULATORCRASH}次."
+                            summary_text += f"ADB重啓{runtimeContext._COUNTERADBRETRY}次,模擬器崩潰{runtimeContext._COUNTEREMULATORCRASH}次."
                         logger.info(f"{runtimeContext._IMPORTANTINFO}{summary_text}",extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
                     if not runtimeContext._MEET_CHEST_OR_COMBAT:
-                        logger.info("因为没有遇到战斗或宝箱, 跳过恢复")
+                        logger.info("因爲沒有遇到戰鬥或寶箱, 跳過恢復")
                     elif not setting._ACTIVE_REST:
-                        logger.info("因为面板设置, 跳过恢复")
+                        logger.info("因爲面板設置, 跳過恢復")
                     elif ((runtimeContext._COUNTERDUNG-1) % (setting._RESTINTERVEL+1) != 0):
-                        logger.info("还有许多地下城要刷. 面具男, 现在还不能休息哦.")
+                        logger.info("還有許多地下城要刷. 面具男, 現在還不能休息哦.")
                     else:
-                        logger.info("休息时间到!")
+                        logger.info("休息時間到!")
                         runtimeContext._MEET_CHEST_OR_COMBAT = False
                         RestartableSequenceExecution(
                         lambda:StateInn()
@@ -3597,7 +4549,7 @@ def Factory():
                     # 只有在正常進入地城時才重置，地城內啟動不重置（已在 case None 設定好）
                     is_mid_dungeon_start = initial_dungState in [DungeonState.Combat, DungeonState.Chest, DungeonState.Dungeon, DungeonState.Map]
                     if not is_mid_dungeon_start:
-                        runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次进入标志
+                        runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次進入標誌
                         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
                     else:
@@ -3613,7 +4565,7 @@ def Factory():
                     state = None
         setting._FINISHINGCALLBACK()
     def QuestFarm():
-        nonlocal setting # 强制自动战斗 等等.
+        nonlocal setting # 強制自動戰鬥 等等.
         nonlocal runtimeContext
         match setting._FARMTARGET:
             case '7000G':
@@ -3624,7 +4576,7 @@ def Factory():
                     starttime = time.time()
                     runtimeContext._COUNTERDUNG += 1
                     def stepMain():
-                        logger.info("第一步: 开始诅咒之旅...")
+                        logger.info("第一步: 開始詛咒之旅...")
                         Press(FindCoordsOrElseExecuteFallbackAndWait('cursedWheel_timeLeap',['ruins','cursedWheel',[1,1]],1))
                         Press(FindCoordsOrElseExecuteFallbackAndWait('cursedwheel_impregnableFortress',['cursedWheelTapRight',[1,1]],1))
 
@@ -3652,7 +4604,7 @@ def Factory():
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('guild',['RoyalCityLuknalia',[1,1]],1),
                         )
 
-                    logger.info("第四步: 给我!(伸手)")
+                    logger.info("第四步: 給我!(伸手)")
                     stepMark = -1
                     def stepMain():
                         nonlocal stepMark
@@ -3698,7 +4650,7 @@ def Factory():
                         lambda: stepMain()
                         )
                     costtime = time.time()-starttime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"7000G\"完成. 该次花费时间{costtime:.2f}, 每秒收益:{7000/costtime:.2f}Gps.",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"7000G\"完成. 該次花費時間{costtime:.2f}, 每秒收益:{7000/costtime:.2f}Gps.",
                                 extra={"summary": True})
             case 'fordraig':
                 quest._SPECIALDIALOGOPTION = ['fordraig/thedagger','fordraig/InsertTheDagger']
@@ -3708,7 +4660,7 @@ def Factory():
                     runtimeContext._COUNTERDUNG += 1
                     setting._SYSTEMAUTOCOMBAT = True
                     starttime = time.time()
-                    logger.info('第一步: 诅咒之旅...')
+                    logger.info('第一步: 詛咒之旅...')
                     RestartableSequenceExecution(
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('cursedWheel',['ruins',[1,1]],1)),
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('Fordraig/Leap',['specialRequest',[1,1]],1)),
@@ -3717,11 +4669,11 @@ def Factory():
                     Sleep(15)
 
                     RestartableSequenceExecution(
-                        lambda: logger.info('第二步: 领取任务.'),
+                        lambda: logger.info('第二步: 領取任務.'),
                         lambda: StateAcceptRequest('fordraig/RequestAccept',[350,180])
                         )
 
-                    logger.info('第三步: 进入地下城.')
+                    logger.info('第三步: 進入地下城.')
                     TeleportFromCityToWorldLocation('fordraig/labyrinthOfFordraig','input swipe 450 150 500 150')
                     Press(FindCoordsOrElseExecuteFallbackAndWait('fordraig/Entrance',['fordraig/labyrinthOfFordraig',[1,1]],1))
                     FindCoordsOrElseExecuteFallbackAndWait('dungFlag',['fordraig/Entrance','GotoDung',[1,1]],1)
@@ -3730,20 +4682,20 @@ def Factory():
                     RestartableSequenceExecution(
                         lambda:StateDungeon([
                             TargetInfo('position',"左上",[721,448]),
-                            TargetInfo('position',"左上",[720,608])]), # 前往第一个陷阱
-                        lambda:FindCoordsOrElseExecuteFallbackAndWait("dungFlag","return",1), # 关闭地图
-                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait("fordraig/TryPushingIt",["input swipe 100 250 800 250",[400,800],[400,800],[400,800]],1)), # 转向来开启机关
+                            TargetInfo('position',"左上",[720,608])]), # 前往第一個陷阱
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait("dungFlag","return",1), # 關閉地圖
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait("fordraig/TryPushingIt",["input swipe 100 250 800 250",[400,800],[400,800],[400,800]],1)), # 轉向來開啓機關
                         )
-                    logger.info('已完成第一个陷阱.')
+                    logger.info('已完成第一個陷阱.')
 
                     RestartableSequenceExecution(
                         lambda:StateDungeon([
                             TargetInfo('stair_down',"左上",[721,236]),
-                            TargetInfo('position',"左下", [240,921])]), #前往第二个陷阱
-                        lambda:FindCoordsOrElseExecuteFallbackAndWait("dungFlag","return",1), # 关闭地图
-                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait("fordraig/TryPushingIt",["input swipe 100 250 800 250",[400,800],[400,800],[400,800]],1)), # 转向来开启机关
+                            TargetInfo('position',"左下", [240,921])]), #前往第二個陷阱
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait("dungFlag","return",1), # 關閉地圖
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait("fordraig/TryPushingIt",["input swipe 100 250 800 250",[400,800],[400,800],[400,800]],1)), # 轉向來開啓機關
                         )
-                    logger.info('已完成第二个陷阱.')
+                    logger.info('已完成第二個陷阱.')
 
                     RestartableSequenceExecution(
                         lambda:StateDungeon([
@@ -3751,32 +4703,32 @@ def Factory():
                             TargetInfo("stair_down","左下",[453,1027]),
                             TargetInfo("position","左下",[187,1027]),
                             TargetInfo("stair_teleport","左下",[80,1026])
-                            ]), #前往第三个陷阱
+                            ]), #前往第三個陷阱
                         )
-                    logger.info('已完成第三个陷阱.')
+                    logger.info('已完成第三個陷阱.')
 
-                    StateDungeon([TargetInfo('position','左下',[508,1025])]) # 前往boss战门前
+                    StateDungeon([TargetInfo('position','左下',[508,1025])]) # 前往boss戰門前
                     setting._SYSTEMAUTOCOMBAT = False
-                    StateDungeon([TargetInfo('position','左下',[720,1025])]) # 前往boss战斗
+                    StateDungeon([TargetInfo('position','左下',[720,1025])]) # 前往boss戰鬥
                     setting._SYSTEMAUTOCOMBAT = True
-                    StateDungeon([TargetInfo('stair_teleport','左上',[665,395])]) # 第四层出口
+                    StateDungeon([TargetInfo('stair_teleport','左上',[665,395])]) # 第四層出口
                     FindCoordsOrElseExecuteFallbackAndWait("dungFlag","return",1)
                     Press(FindCoordsOrElseExecuteFallbackAndWait("ReturnText",["leaveDung",[455,1200]],3.75)) # 回城
-                    # 3.75什么意思 正常循环是3秒 有4次尝试机会 因此3.75秒按一次刚刚好.
+                    # 3.75什麼意思 正常循環是3秒 有4次嘗試機會 因此3.75秒按一次剛剛好.
                     Press(FindCoordsOrElseExecuteFallbackAndWait("RoyalCityLuknalia",['return',[1,1]],1)) # 回城
                     FindCoordsOrElseExecuteFallbackAndWait("Inn",[1,1],1)
 
                     costtime = time.time()-starttime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"鸟剑\"完成. 该次花费时间{costtime:.2f}.",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"鳥劍\"完成. 該次花費時間{costtime:.2f}.",
                             extra={"summary": True})
             case 'repelEnemyForces':
                 if not setting._ACTIVE_REST:
-                    logger.info("注意, \"休息间隔\"控制连续战斗多少次后回城. 当前未启用休息, 强制设置为1.")
+                    logger.info("注意, \"休息間隔\"控制連續戰鬥多少次後回城. 當前未啓用休息, 強制設置爲1.")
                     setting._RESTINTERVEL = 1
                 if setting._RESTINTERVEL == 0:
-                    logger.info("注意, \"休息间隔\"控制连续战斗多少次后回城. 当前值0为无效值, 最低为1.")
+                    logger.info("注意, \"休息間隔\"控制連續戰鬥多少次後回城. 當前值0爲無效值, 最低爲1.")
                     setting._RESTINTERVEL = 1
-                logger.info("注意, 该流程不包括时间跳跃和接取任务, 请确保接取任务后再开启!")
+                logger.info("注意, 該流程不包括時間跳躍和接取任務, 請確保接取任務後再開啓!")
                 counter = 0
                 while 1:
                     if setting._FORCESTOPING.is_set():
@@ -3794,16 +4746,14 @@ def Factory():
                         lambda : StateDungeon([TargetInfo('position','左下',[559,599]),
                                                TargetInfo('position','左下',[186,813])])
                     )
-                    logger.info('已抵达目标地点, 开始战斗.')
+                    logger.info('已抵達目標地點, 開始戰鬥.')
                     FindCoordsOrElseExecuteFallbackAndWait('dungFlag',['return',[1,1]],1)
                     for i in range(setting._RESTINTERVEL):
-                        logger.info(f"第{i+1}轮开始.")
+                        logger.info(f"第{i+1}輪開始.")
                         secondcombat = False
                         while 1:
                             Press(FindCoordsOrElseExecuteFallbackAndWait(['icanstillgo','combatActive','combatActive_2'],['input swipe 400 400 400 100',[1,1]],1))
                             Sleep(1)
-                            if setting._AOE_ONCE:
-                                runtimeContext._ENOUGH_AOE = False
                             while 1:
                                 scn=ScreenShot()
                                 if TryPressRetry(scn):
@@ -3815,15 +4765,15 @@ def Factory():
                                 else:
                                     Press([1,1])
                             if not secondcombat:
-                                logger.info(f"第1场战斗结束.")
+                                logger.info(f"第1場戰鬥結束.")
                                 secondcombat = True
                                 Press(CheckIf(ScreenShot(),'icanstillgo'))
                             else:
-                                logger.info(f"第2场战斗结束.")
+                                logger.info(f"第2場戰鬥結束.")
                                 Press(CheckIf(ScreenShot(),'letswithdraw'))
                                 Sleep(1)
                                 break
-                        logger.info(f"第{i+1}轮结束.")
+                        logger.info(f"第{i+1}輪結束.")
                     RestartableSequenceExecution(
                         lambda:StateDungeon([TargetInfo('position','左上',[612,448])])
                     )
@@ -3834,7 +4784,7 @@ def Factory():
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
                     )
                     counter+=1
-                    logger.info(f"第{counter}x{setting._RESTINTERVEL}轮\"击退敌势力\"完成, 共计{counter*setting._RESTINTERVEL*2}场战斗. 该次花费时间{(time.time()-t):.2f}秒.",
+                    logger.info(f"第{counter}x{setting._RESTINTERVEL}輪\"擊退敵勢力\"完成, 共計{counter*setting._RESTINTERVEL*2}場戰鬥. 該次花費時間{(time.time()-t):.2f}秒.",
                                     extra={"summary": True})
             case 'darkLight':
                 gameFrozen_none = []
@@ -3852,21 +4802,19 @@ def Factory():
                                 break
                             gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
                             if result:
-                                logger.info("由于画面卡死, 在state:None中重启.")
+                                logger.info("由於畫面卡死, 在state:None中重啓.")
                                 restartGame()
                             MAXTIMEOUT = 400
                             if (runtimeContext._TIME_CHEST != 0 ) and (time.time()-runtimeContext._TIME_CHEST > MAXTIMEOUT):
-                                logger.info("由于宝箱用时过久, 在state:None中重启.")
+                                logger.info("由於寶箱用時過久, 在state:None中重啓.")
                                 restartGame()
                             if (runtimeContext._TIME_COMBAT != 0) and (time.time()-runtimeContext._TIME_COMBAT > MAXTIMEOUT):
-                                logger.info("由于战斗用时过久, 在state:None中重启.")
+                                logger.info("由於戰鬥用時過久, 在state:None中重啓.")
                                 restartGame()
                         case DungeonState.Dungeon:
                             Press([1,1])
                             ########### COMBAT RESET
-                            # 战斗结束了, 我们将一些设置复位
-                            if setting._AOE_ONCE:
-                                runtimeContext._ENOUGH_AOE = False
+                            # 戰鬥結束了, 我們將一些設置復位
                             ########### TIMER
                             if (runtimeContext._TIME_CHEST !=0) or (runtimeContext._TIME_COMBAT!=0):
                                 spend_on_chest = 0
@@ -3877,7 +4825,7 @@ def Factory():
                                 if runtimeContext._TIME_COMBAT !=0:
                                     spend_on_combat = time.time()-runtimeContext._TIME_COMBAT
                                     runtimeContext._TIME_COMBAT = 0
-                                logger.info(f"粗略统计: 宝箱{spend_on_chest:.2f}秒, 战斗{spend_on_combat:.2f}秒.")
+                                logger.info(f"粗略統計: 寶箱{spend_on_chest:.2f}秒, 戰鬥{spend_on_combat:.2f}秒.")
                                 if (spend_on_chest!=0) and (spend_on_combat!=0):
                                     if spend_on_combat>spend_on_chest:
                                         runtimeContext._TIME_COMBAT_TOTAL = runtimeContext._TIME_COMBAT_TOTAL + spend_on_combat-spend_on_chest
@@ -3890,27 +4838,27 @@ def Factory():
                                     runtimeContext._TIME_CHEST_TOTAL = runtimeContext._TIME_CHEST_TOTAL + spend_on_chest
                             ########### RECOVER
                             if needRecoverBecauseChest:
-                                logger.info("进行开启宝箱后的恢复.")
+                                logger.info("進行開啓寶箱後的恢復.")
                                 runtimeContext._COUNTERCHEST+=1
                                 needRecoverBecauseChest = False
                                 runtimeContext._MEET_CHEST_OR_COMBAT = True
                                 if not setting._SKIPCHESTRECOVER:
-                                    logger.info("由于面板配置, 进行开启宝箱后恢复.")
+                                    logger.info("由於面板配置, 進行開啓寶箱後恢復.")
                                     shouldRecover = True
                                 else:
-                                    logger.info("由于面板配置, 跳过了开启宝箱后恢复.")
+                                    logger.info("由於面板配置, 跳過了開啓寶箱後恢復.")
                             if needRecoverBecauseCombat:
                                 runtimeContext._COUNTERCOMBAT+=1
                                 needRecoverBecauseCombat = False
                                 runtimeContext._MEET_CHEST_OR_COMBAT = True
                                 if (not setting._SKIPCOMBATRECOVER):
-                                    logger.info("由于面板配置, 进行战后恢复.")
+                                    logger.info("由於面板配置, 進行戰後恢復.")
                                     shouldRecover = True
                                 else:
-                                    logger.info("由于面板配置, 跳过了战后后恢复.")
+                                    logger.info("由於面板配置, 跳過了戰後後恢復.")
                             if shouldRecover:
                                 Press([1,1])
-                                FindCoordsOrElseExecuteFallbackAndWait( # 点击打开人物面板有可能会被战斗打断
+                                FindCoordsOrElseExecuteFallbackAndWait( # 點擊打開人物面板有可能會被戰鬥打斷
                                     ['trait','combatActive','combatActive_2','chestFlag','combatClose'],
                                     [[36,1425],[322,1425],[606,1425]],
                                     1
@@ -3947,7 +4895,7 @@ def Factory():
                         break
                     if runtimeContext._LAPTIME!= 0:
                         runtimeContext._TOTALTIME = runtimeContext._TOTALTIME + time.time() - runtimeContext._LAPTIME
-                        logger.info(f"第{runtimeContext._COUNTERDUNG}次三牛完成. 本次用时:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累计开箱子{runtimeContext._COUNTERCHEST}, 累计战斗{runtimeContext._COUNTERCOMBAT}, 累计用时{round(runtimeContext._TOTALTIME,2)}秒.",
+                        logger.info(f"第{runtimeContext._COUNTERDUNG}次三牛完成. 本次用時:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累計開箱子{runtimeContext._COUNTERCHEST}, 累計戰鬥{runtimeContext._COUNTERCOMBAT}, 累計用時{round(runtimeContext._TOTALTIME,2)}秒.",
                                     extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
@@ -3968,11 +4916,11 @@ def Factory():
                         )
                
                     RestartableSequenceExecution(
-                        lambda: logger.info('第四步: 领取任务'),
+                        lambda: logger.info('第四步: 領取任務'),
                         lambda: StateAcceptRequest('LBC/Request',[266,257]),
                     )
                     RestartableSequenceExecution(
-                        lambda: logger.info('第五步: 进入牛洞'),
+                        lambda: logger.info('第五步: 進入牛洞'),
                         lambda: TeleportFromCityToWorldLocation('LBC/LBC','input swipe 400 400 400 500')
                         )
 
@@ -3982,11 +4930,11 @@ def Factory():
                     LBC_quit = TargetInfo('LBC/LBC_quit')
                     if setting._ACTIVE_REST:
                         RestartableSequenceExecution(
-                            lambda: logger.info('第六步: 击杀一牛'),
+                            lambda: logger.info('第六步: 擊殺一牛'),
                             lambda: StateDungeon([Gorgon1,LBC_quit])
                             )
                         RestartableSequenceExecution(
-                            lambda: logger.info('第七步: 回去睡觉'),
+                            lambda: logger.info('第七步: 回去睡覺'),
                             lambda: StateInn()
                             )
                         RestartableSequenceExecution(
@@ -3994,13 +4942,13 @@ def Factory():
                             lambda: TeleportFromCityToWorldLocation('LBC/LBC','input swipe 400 400 400 500')
                             )
                         RestartableSequenceExecution(
-                            lambda: logger.info('第九步: 击杀二牛'),
+                            lambda: logger.info('第九步: 擊殺二牛'),
                             lambda: StateDungeon([Gorgon2,Gorgon3,LBC_quit])
                             )
                     else:
-                        logger.info('跳过回城休息.')
+                        logger.info('跳過回城休息.')
                         RestartableSequenceExecution(
-                            lambda: logger.info('第六步: 连杀三牛'),
+                            lambda: logger.info('第六步: 連殺三牛'),
                             lambda: StateDungeon([Gorgon1,Gorgon2,Gorgon3,LBC_quit])
                             )
             case 'SSC-goldenchest':
@@ -4010,7 +4958,7 @@ def Factory():
                         break
                     if runtimeContext._LAPTIME!= 0:
                         runtimeContext._TOTALTIME = runtimeContext._TOTALTIME + time.time() - runtimeContext._LAPTIME
-                        logger.info(f"第{runtimeContext._COUNTERDUNG}次忍洞完成. 本次用时:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累计开箱子{runtimeContext._COUNTERCHEST}, 累计战斗{runtimeContext._COUNTERCOMBAT}, 累计用时{round(runtimeContext._TOTALTIME,2)}秒.",
+                        logger.info(f"第{runtimeContext._COUNTERDUNG}次忍洞完成. 本次用時:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累計開箱子{runtimeContext._COUNTERCHEST}, 累計戰鬥{runtimeContext._COUNTERCOMBAT}, 累計用時{round(runtimeContext._TOTALTIME,2)}秒.",
                                     extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
@@ -4045,22 +4993,22 @@ def Factory():
                         FindCoordsOrElseExecuteFallbackAndWait('guildRequest',[1,1],1)
                         PressReturn()
                     RestartableSequenceExecution(
-                        lambda: logger.info('第三步: 领取任务'),
+                        lambda: logger.info('第三步: 領取任務'),
                         lambda: stepThree()
                         )
 
                     RestartableSequenceExecution(
-                        lambda: logger.info('第四步: 进入忍洞'),
+                        lambda: logger.info('第四步: 進入忍洞'),
                         lambda: TeleportFromCityToWorldLocation('SSC/SSC','input swipe 700 500 600 600')
                         )
                     RestartableSequenceExecution(
-                        lambda: logger.info('第五步: 关闭陷阱'),
+                        lambda: logger.info('第五步: 關閉陷阱'),
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('SSC/trapdeactived',['input swipe 450 1050 450 850',[445,721]],4),
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('dungFlag',[1,1],1)
                     )
                     quest._SPECIALDIALOGOPTION = ['SSC/dotdotdot','SSC/shadow']
                     RestartableSequenceExecution(
-                        lambda: logger.info('第六步: 第一个箱子'),
+                        lambda: logger.info('第六步: 第一個箱子'),
                         lambda: StateDungeon([
                                 TargetInfo('position',     '左上', [719,1088]),
                                 TargetInfo('position',     '左上', [346,874]),
@@ -4077,7 +5025,7 @@ def Factory():
                         break
                     if runtimeContext._LAPTIME!= 0:
                         runtimeContext._TOTALTIME = runtimeContext._TOTALTIME + time.time() - runtimeContext._LAPTIME
-                        logger.info(f"第{runtimeContext._COUNTERDUNG}次约定之剑完成. 本次用时:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累计开箱子{runtimeContext._COUNTERCHEST}, 累计战斗{runtimeContext._COUNTERCOMBAT}, 累计用时{round(runtimeContext._TOTALTIME,2)}秒.",
+                        logger.info(f"第{runtimeContext._COUNTERDUNG}次約定之劍完成. 本次用時:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累計開箱子{runtimeContext._COUNTERCHEST}, 累計戰鬥{runtimeContext._COUNTERCOMBAT}, 累計用時{round(runtimeContext._TOTALTIME,2)}秒.",
                                     extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
@@ -4097,14 +5045,14 @@ def Factory():
                         )
                     
                     RestartableSequenceExecution(
-                        lambda: logger.info('第四步: 领取任务'),
+                        lambda: logger.info('第四步: 領取任務'),
                         lambda: FindCoordsOrElseExecuteFallbackAndWait(['COS/Okay','guildRequest'],['guild',[1,1]],1),
                         lambda: FindCoordsOrElseExecuteFallbackAndWait('Inn',['COS/Okay','return',[1,1]],1),
                         lambda: StateInn(),
                         )
                     
                     RestartableSequenceExecution(
-                        lambda: logger.info('第五步: 进入洞窟'),
+                        lambda: logger.info('第五步: 進入洞窟'),
                         lambda: Press(FindCoordsOrElseExecuteFallbackAndWait('COS/COS',['EdgeOfTown',[1,1]],1)),
                         lambda: Press(FindCoordsOrElseExecuteFallbackAndWait('COS/COSENT',[1,1],1))
                         )
@@ -4115,7 +5063,7 @@ def Factory():
                               TargetInfo('stair_2',"右上",[126-54,342]),
                         ]
                     RestartableSequenceExecution(
-                        lambda: logger.info('第六步: 1层找人'),
+                        lambda: logger.info('第六步: 1層找人'),
                         lambda: StateDungeon(cosb1f)
                         )
 
@@ -4125,7 +5073,7 @@ def Factory():
                               TargetInfo('position',"左上",[398+54,766]),
                         ]
                     RestartableSequenceExecution(
-                        lambda: logger.info('第七步: 2层找人'),
+                        lambda: logger.info('第七步: 2層找人'),
                         lambda: StateDungeon(cosb2f)
                         )
 
@@ -4136,7 +5084,7 @@ def Factory():
                               TargetInfo('position',"左下",[560,652]),
                               ]
                     RestartableSequenceExecution(
-                        lambda: logger.info('第八步: 3层找人'),
+                        lambda: logger.info('第八步: 3層找人'),
                         lambda: StateDungeon(cosb3f)
                         )
 
@@ -4152,7 +5100,7 @@ def Factory():
                                  TargetInfo('position', "右下",[660,919])
                         ]
                     RestartableSequenceExecution(
-                        lambda: logger.info('第九步: 离开洞穴'),
+                        lambda: logger.info('第九步: 離開洞穴'),
                         lambda: StateDungeon(cosback2f)
                         )
                     Press(FindCoordsOrElseExecuteFallbackAndWait("guild",['return',[1,1]],1)) # 回城
@@ -4165,7 +5113,7 @@ def Factory():
                         break
                     if runtimeContext._LAPTIME!= 0:
                         runtimeContext._TOTALTIME = runtimeContext._TOTALTIME + time.time() - runtimeContext._LAPTIME
-                        logger.info(f"第{runtimeContext._COUNTERDUNG}次巨人完成. 本次用时:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累计开箱子{runtimeContext._COUNTERCHEST}, 累计战斗{runtimeContext._COUNTERCOMBAT}, 累计用时{round(runtimeContext._TOTALTIME,2)}秒.",
+                        logger.info(f"第{runtimeContext._COUNTERDUNG}次巨人完成. 本次用時:{round(time.time()-runtimeContext._LAPTIME,2)}秒. 累計開箱子{runtimeContext._COUNTERCHEST}, 累計戰鬥{runtimeContext._COUNTERCOMBAT}, 累計用時{round(runtimeContext._TOTALTIME,2)}秒.",
                                     extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
@@ -4188,14 +5136,14 @@ def Factory():
                             counter_candelabra+=1
                         Sleep(1)
                     if counter_candelabra != 0:
-                        logger.info("没发现巨人.")
+                        logger.info("沒發現巨人.")
                         RestartableSequenceExecution(
                         lambda: StateDungeon([TargetInfo('harken2','左上')]),
                         lambda: FindCoordsOrElseExecuteFallbackAndWait('Inn',['returntotown','returnText','leaveDung','blessing',[1,1]],2)
                     )
                         continue
                     
-                    logger.info("发现了巨人.")
+                    logger.info("發現了巨人.")
                     RestartableSequenceExecution(
                         lambda: StateDungeon([TargetInfo('position','左上',[560,928+54],True),
                                               TargetInfo('harken2','左上')]),
@@ -4230,14 +5178,14 @@ def Factory():
                         lambda:TeleportFromCityToWorldLocation('RoyalCityLuknalia','input swipe 450 150 500 150'),
                         )
 
-                    logger.info("第四步: 悬赏揭榜")
+                    logger.info("第四步: 懸賞揭榜")
                     RestartableSequenceExecution(
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('guildRequest',['guild',[1,1]],1)),
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('Bounties',['guild','guildRequest','input swipe 600 1400 300 1400',[1,1]],1)),
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
                         )
 
-                    logger.info("第五步: 击杀蝎女")
+                    logger.info("第五步: 擊殺蠍女")
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('dungFlag',['EdgeOfTown','beginningAbyss','B2FTemple','GotoDung',[1,1]],1),
                     )
@@ -4246,7 +5194,7 @@ def Factory():
                                              TargetInfo('position','左上',[506,821])]),
                         )
                     
-                    logger.info("第六步: 提交悬赏")
+                    logger.info("第六步: 提交懸賞")
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait("guild",['return',[1,1]],1),
                     )
@@ -4265,7 +5213,7 @@ def Factory():
                         
                     costtime = time.time()-starttime
                     total_time = total_time + costtime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"悬赏:蝎女\"完成. \n该次花费时间{costtime:.2f}s.\n总计用时{total_time:.2f}s.\n平均用时{total_time/runtimeContext._COUNTERDUNG:.2f}",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"懸賞:蠍女\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
                             extra={"summary": True})
             case 'steeltrail':
                 total_time = 0
@@ -4300,7 +5248,7 @@ def Factory():
                             )
                     costtime = time.time()-starttime
                     total_time = total_time + costtime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"钢试炼\"完成. \n该次花费时间{costtime:.2f}s.\n总计用时{total_time:.2f}s.\n平均用时{total_time/runtimeContext._COUNTERDUNG:.2f}",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"鋼試煉\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
                             extra={"summary": True})
 
             case 'jier':
@@ -4329,14 +5277,14 @@ def Factory():
                         lambda:TeleportFromCityToWorldLocation('RoyalCityLuknalia','input swipe 450 150 500 150'),
                         )
 
-                    logger.info("第四步: 悬赏揭榜")
+                    logger.info("第四步: 懸賞揭榜")
                     RestartableSequenceExecution(
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('guildRequest',['guild',[1,1]],1)),
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('Bounties',['guild','guildRequest','input swipe 600 1400 300 1400',[1,1]],1)),
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
                         )
 
-                    logger.info("第五步: 和吉尔说再见吧")
+                    logger.info("第五步: 和吉爾說再見吧")
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('dungFlag',['EdgeOfTown','beginningAbyss','B4FLabyrinth','GotoDung',[1,1]],1)
                         )
@@ -4345,7 +5293,7 @@ def Factory():
                                              TargetInfo('harken','左上',None)]),
                         )
                     
-                    logger.info("第六步: 提交悬赏")
+                    logger.info("第六步: 提交懸賞")
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait("guild",['return',[1,1]],1),
                     )
@@ -4364,7 +5312,7 @@ def Factory():
                         
                     costtime = time.time()-starttime
                     total_time = total_time + costtime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"悬赏:吉尔\"完成. \n该次花费时间{costtime:.2f}s.\n总计用时{total_time:.2f}s.\n平均用时{total_time/runtimeContext._COUNTERDUNG:.2f}",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"懸賞:吉爾\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
                             extra={"summary": True})
             # case 'test':
             #     while 1:
@@ -4405,7 +5353,7 @@ def Factory():
         setting = set
 
         try:
-            Sleep(1) # 没有等utils初始化完成
+            Sleep(1) # 沒有等utils初始化完成
 
             # 檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
@@ -4460,10 +5408,11 @@ def TestFactory():
     setting = None
     
     def ResetADBDevice():
-        nonlocal setting
+        nonlocal setting # 修改device
+        MonitorState.current_state = "Connecting"
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
-            logger.info("ADB服务成功启动，设备已连接.")
+            logger.info("ADB服務成功啓動，設備已連接.")
     
     def DeviceShell(cmdStr):
         logger.debug(f"DeviceShell {cmdStr}")
@@ -4472,7 +5421,7 @@ def TestFactory():
                 result = setting._ADBDEVICE.shell(cmdStr, timeout=5)
                 return result
             except Exception as e:
-                logger.error(f"ADB命令失败: {e}")
+                logger.error(f"ADB命令失敗: {e}")
                 ResetADBDevice()
                 continue
     
@@ -4510,7 +5459,7 @@ def TestFactory():
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
         logger.debug(f"搜索到疑似{shortPathOfTarget}, 匹配程度:{max_val*100:.2f}%")
         if max_val < threshold:
-            logger.debug("匹配程度不足阈值.")
+            logger.debug("匹配程度不足閾值.")
             return None
         pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
         return pos
@@ -4580,7 +5529,7 @@ def TestFactory():
         return None
 
     def TestOrganizeBackpack(num_characters):
-        """測試整理背包功能"""
+        """測試整理揹包功能"""
         if num_characters <= 0:
             return
         
@@ -4589,15 +5538,15 @@ def TestFactory():
             logger.info("Organize 資料夾為空，跳過整理")
             return
         
-        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
+        logger.info(f"開始整理 {num_characters} 人的揹包，物品: {items_to_organize}")
         
         for char_index in range(num_characters):
             # 檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                logger.info("收到停止信號，終止整理背包")
+                logger.info("收到停止信號，終止整理揹包")
                 return
             
-            logger.info(f"整理第 {char_index} 號角色背包")
+            logger.info(f"整理第 {char_index} 號角色揹包")
             
             # 角色座標（固定值）
             char_positions = [
@@ -4618,8 +5567,8 @@ def TestFactory():
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 return
             
-            # 步驟2: 點選 inventory 打開背包
-            logger.info("步驟2: 點選 inventory 打開背包")
+            # 步驟2: 點選 inventory 打開揹包
+            logger.info("步驟2: 點選 inventory 打開揹包")
             scn = ScreenShot()
             inv_pos = CheckIf(scn, 'inventory')
             if inv_pos:
@@ -4682,10 +5631,10 @@ def TestFactory():
                 PressReturn()
             Sleep(5)
 
-        logger.info("背包整理完成")
+        logger.info("揹包整理完成")
 
     def TestStateInn(num_characters, use_royal_suite=False):
-        """測試完整的 StateInn 流程：住宿 → 補給 → 整理背包"""
+        """測試完整的 StateInn 流程：住宿 → 補給 → 整理揹包"""
         logger.info("=== 開始測試 StateInn 流程 ===")
 
         # 1. 住宿
@@ -4710,18 +5659,18 @@ def TestFactory():
         if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
             return
 
-        # 3. 整理背包
+        # 3. 整理揹包
         if num_characters > 0:
-            logger.info("步驟3: 整理背包")
+            logger.info("步驟3: 整理揹包")
             try:
                 TestOrganizeBackpack(num_characters)
             except Exception as e:
-                logger.error(f"整理背包失敗: {e}")
+                logger.error(f"整理揹包失敗: {e}")
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
         else:
-            logger.info("步驟3: 跳過整理背包（未設定角色數量）")
+            logger.info("步驟3: 跳過整理揹包（未設定角色數量）")
 
         logger.info("=== StateInn 流程測試完成 ===")
 
@@ -4908,3 +5857,4 @@ def TestFactory():
     
     
     return run
+
