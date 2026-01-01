@@ -1686,6 +1686,7 @@ def Factory():
                     logger.info(f"哈肯樓層選擇: 點擊樓層 {floor_target}")
                     runtimeContext._HARKEN_FLOOR_TARGET = None  # 清除 flag
                     runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = True  # 設置傳送完成標記
+                    MonitorState.current_state = "Harken"
                     Sleep(2)
                     return IdentifyState()
                 
@@ -1713,6 +1714,7 @@ def Factory():
                 ]
 
             # 更新 Flag 相似度到 MonitorState（供 GUI 即時顯示）
+            MonitorState.current_state = "Scanning"  # 標記正在識別中，確認循環有在跑
             MonitorState.flag_dungFlag = GetMatchValue(screen, 'dungFlag')
             MonitorState.flag_mapFlag = GetMatchValue(screen, 'mapFlag')
             MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
@@ -1742,7 +1744,11 @@ def Factory():
                         runtimeContext._DUNGEON_CONFIRMED = True
                         logger.info("[狀態識別] 已確認進入地城")
                     
-                    MonitorState.current_state = State.Dungeon.name
+                    if not runtimeContext._DUNGEON_CONFIRMED:
+                        runtimeContext._DUNGEON_CONFIRMED = True
+                        logger.info("[狀態識別] 已確認進入地城")
+                    
+                    MonitorState.current_state = "Dungeon"
                     MonitorState.current_dungeon_state = state.name if state else None
                     return State.Dungeon, state, screen
 
@@ -1764,8 +1770,10 @@ def Factory():
                     if not should_skip_return_to_town():
                         # 回城
                         FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
-                        MonitorState.current_state = State.Inn.name
-                        MonitorState.current_dungeon_state = DungeonState.Quit.name
+                        # 回城
+                        FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                        MonitorState.current_state = "Inn"
+                        MonitorState.current_dungeon_state = "Quit"
                         return State.Inn,DungeonState.Quit, screen
                     else:
                         # 跳過回城，繼續刷地城
@@ -1781,7 +1789,9 @@ def Factory():
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
-                        MonitorState.current_state = State.Dungeon.name
+                        reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                        MonitorState.current_state = "Dungeon"
                         MonitorState.current_dungeon_state = None
                         return State.Dungeon, None, ScreenShot()
 
@@ -1805,18 +1815,19 @@ def Factory():
                             if info[0] == "press":
                                 Press(pos)
                     Sleep(2)
-                    MonitorState.current_state = State.Dungeon.name
+                    Sleep(2)
+                    MonitorState.current_state = "Dungeon"
                     MonitorState.current_dungeon_state = None
                     return State.Dungeon, None, ScreenShot()
 
             if CheckIf(screen,"RoyalCityLuknalia"):
                 FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
                 if CheckIf(scn:=ScreenShot(),'Inn'):
-                    MonitorState.current_state = State.Inn.name
-                    MonitorState.current_dungeon_state = DungeonState.Quit.name
+                    MonitorState.current_state = "Inn"
+                    MonitorState.current_dungeon_state = "Quit"
                     return State.Inn,DungeonState.Quit, screen
                 elif CheckIf(scn,'dungFlag'):
-                    MonitorState.current_state = State.Dungeon.name
+                    MonitorState.current_state = "Dungeon"
                     MonitorState.current_dungeon_state = None
                     return State.Dungeon,None, screen
 

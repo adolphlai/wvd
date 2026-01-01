@@ -1149,6 +1149,10 @@ class ConfigPanelApp(tk.Toplevel):
                 state_display = "旅館待機"
             elif current_state == "EoT":
                 state_display = "回合結束"
+            elif current_state == "Scanning":
+                state_display = "識別中.."
+            elif current_state == "Harken":
+                state_display = "哈肯傳送"
             else:
                 state_display = "-"
             
