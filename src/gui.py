@@ -1151,6 +1151,12 @@ class ConfigPanelApp(tk.Toplevel):
                 state_display = "回合結束"
             elif current_state == "Scanning":
                 state_display = "識別中.."
+            elif current_state == "Idle":
+                state_display = "待機中.."
+            elif current_state == "Connecting":
+                state_display = "連接中.."
+            elif current_state == "Starting":
+                state_display = "啟動中.."
             elif current_state == "Harken":
                 state_display = "哈肯傳送"
             else:

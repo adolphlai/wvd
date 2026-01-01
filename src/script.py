@@ -295,7 +295,7 @@ class FarmConfig:
 class MonitorState:
     """即時監控狀態類別，供 GUI 讀取顯示"""
     # 當前狀態
-    current_state: str = ""           # Inn/Dungeon/EoT/Quit
+    current_state: str = "Idle"           # Inn/Dungeon/EoT/Quit
     current_dungeon_state: str = ""   # Map/Combat/Chest/Dungeon
     current_target: str = ""          # chest_auto/position/harken/gohome
     target_detail: str = ""           # 目標詳情
@@ -343,7 +343,7 @@ class MonitorState:
     @classmethod
     def reset(cls):
         """重置所有監控狀態"""
-        cls.current_state = ""
+        cls.current_state = "Idle"
         cls.current_dungeon_state = ""
         cls.current_target = ""
         cls.target_detail = ""
@@ -808,6 +808,7 @@ def Factory():
     ##################################################################
     def ResetADBDevice():
         nonlocal setting # 修改device
+        MonitorState.current_state = "Connecting"
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
             logger.info("ADB服務成功啓動，設備已連接.")
@@ -1493,6 +1494,7 @@ def Factory():
     class RestartSignal(Exception):
         pass
     def RestartableSequenceExecution(*operations):
+        MonitorState.current_state = "Starting"
         while True:
             try:
                 for op in operations:
@@ -5503,7 +5505,8 @@ def TestFactory():
     setting = None
     
     def ResetADBDevice():
-        nonlocal setting
+        nonlocal setting # 修改device
+        MonitorState.current_state = "Connecting"
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
             logger.info("ADB服務成功啓動，設備已連接.")
