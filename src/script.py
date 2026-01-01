@@ -1,4 +1,4 @@
-from ppadb.client import Client as AdbClient
+﻿from ppadb.client import Client as AdbClient
 from win10toast import ToastNotifier
 
 from enum import Enum
@@ -3668,10 +3668,6 @@ def Factory():
         dungState = None
         resume_consecutive_count = 0  # Resume連續點擊計數（畫面持續靜止）
         MAX_RESUME_RETRIES = 5  # Resume最大連續點擊次數
-
-        # 移動超時檢測（防止原地旋轉BUG）
-        moving_start_time = time.time()
-        MOVING_TIMEOUT = 60  # 60秒超時
         
         # 輪詢參數
         POLL_INTERVAL = 0.3  # 每 0.3 秒檢查一次
@@ -3697,14 +3693,7 @@ def Factory():
                 return None
             time.sleep(POLL_INTERVAL)
             poll_screen = ScreenShot()
-
-            # 檢查移動是否超時
-            elapsed = time.time() - moving_start_time
-            if elapsed > MOVING_TIMEOUT:
-                logger.error(f"移動超時（{elapsed:.1f}秒），疑似原地旋轉BUG，準備重啓遊戲")
-                restartGame()
-            
-            # 定期檢查並點擊 Resume 按鈕（不管是否判斷為移動中）
+# 定期檢查並點擊 Resume 按鈕（不管是否判斷為移動中）
             # 這能處理動態背景導致誤判為移動，但實際已出現 Resume 的情況
             if time.time() - last_resume_click_time > RESUME_CLICK_INTERVAL:
                 resume_pos_periodic = CheckIf(screen, 'resume')
@@ -3896,7 +3885,13 @@ def Factory():
                 
                 Press(searchResult)
                 Press([138,1432]) # automove
-                result_state = StateMoving_CheckFrozen()
+                # 改用 DungeonMover 監控，避免舊超時邏輯
+                dungeon_mover.reset()
+                dungeon_mover.current_target = target
+                MonitorState.current_target = target
+                MonitorState.state_start_time = dungeon_mover.move_start_time
+                MonitorState.is_gohome_mode = False
+                result_state = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                 
                 # 只有在非戰鬥/寶箱狀態下才移除目標（防止被打斷後誤判完成）
                 if result_state is None or result_state == DungeonState.Map or result_state == DungeonState.Dungeon:
@@ -5963,3 +5958,4 @@ def TestFactory():
     
     
     return run
+
