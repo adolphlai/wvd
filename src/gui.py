@@ -421,7 +421,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_death_count_var = tk.StringVar(value="0 次")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_death_count_var, width=12).grid(row=4, column=1, sticky=tk.W)
 
-        ttk.Label(self.monitor_frame, text="總計效率:", font=("微軟雅黑", 9, "bold")).grid(row=4, column=2, sticky=tk.W, padx=(20, 2))
+        ttk.Label(self.monitor_frame, text="總計效率(箱/秒):", font=("微軟雅黑", 9, "bold")).grid(row=4, column=2, sticky=tk.W, padx=(20, 2))
         self.monitor_total_efficiency_var = tk.StringVar(value="-")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_total_efficiency_var, width=15).grid(row=4, column=3, sticky=tk.W)
 
@@ -1222,11 +1222,10 @@ class ConfigPanelApp(tk.Toplevel):
             else:
                 self.monitor_combat_efficiency_var.set("-")
             
-            # 計算總效率（箱/時）
-            if MonitorState.chest_count > 0 and MonitorState.total_time > 60:
-                # 轉換為每小時開箱數
-                chests_per_hour = MonitorState.chest_count / MonitorState.total_time * 3600
-                self.monitor_total_efficiency_var.set(f"{chests_per_hour:.1f}箱/時")
+            # 計算總效率（箱/秒）
+            if MonitorState.chest_count > 0 and MonitorState.total_time > 0:
+                chests_per_second = MonitorState.chest_count / MonitorState.total_time
+                self.monitor_total_efficiency_var.set(f"{chests_per_second:.3f}箱/秒")
             else:
                 self.monitor_total_efficiency_var.set("-")
 
