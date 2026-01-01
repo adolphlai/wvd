@@ -337,6 +337,7 @@ class MonitorState:
     flag_combatActive: int = 0
     flag_worldMap: int = 0
     flag_chest_auto: int = 0
+    flag_auto_text: int = 0
 
     # 警告列表
     warnings: list = []
@@ -372,6 +373,7 @@ class MonitorState:
         cls.flag_combatActive = 0
         cls.flag_worldMap = 0
         cls.flag_chest_auto = 0
+        cls.flag_auto_text = 0
         cls.warnings = []
 
     @classmethod
@@ -1724,10 +1726,25 @@ def Factory():
             MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
             MonitorState.flag_worldMap = GetMatchValue(screen, 'openWorldMap')
             MonitorState.flag_chest_auto = GetMatchValue(screen, 'chest_auto')
+            MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
             # combatActive 使用所有模板的最高匹配度
             combat_templates = get_combat_active_templates()
             if combat_templates:
                 MonitorState.flag_combatActive = max(GetMatchValue(screen, t) for t in combat_templates)
+
+            # 偵測到 AUTO 時，持續點擊直到消失
+            if MonitorState.flag_auto_text >= 80:
+                logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
+                while True:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return State.Quit, DungeonState.Quit, screen
+                    Press([1, 1])
+                    Sleep(0.5)
+                    screen = ScreenShot()
+                    MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
+                    if MonitorState.flag_auto_text < 80:
+                        logger.info("[AUTO] AUTO 已消失，停止點擊")
+                        break
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
