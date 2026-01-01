@@ -450,32 +450,37 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
 
         # 第九行：地城識別
-        ttk.Label(self.monitor_frame, text="地城相似度:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="地城移動:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_dung_var = tk.StringVar(value="0%")
         self.monitor_flag_dung_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_dung_var, width=6)
         self.monitor_flag_dung_label.grid(row=8, column=1, sticky=tk.W)
         
-        ttk.Label(self.monitor_frame, text="地圖相似度:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=2, sticky=tk.W, padx=(10, 2))
+        ttk.Label(self.monitor_frame, text="地圖開啟:", font=("微軟雅黑", 9, "bold")).grid(row=8, column=2, sticky=tk.W, padx=(10, 2))
         self.monitor_flag_map_var = tk.StringVar(value="0%")
         self.monitor_flag_map_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_map_var, width=6)
         self.monitor_flag_map_label.grid(row=8, column=3, sticky=tk.W)
 
         # 第十行：寶箱/戰鬥識別
-        ttk.Label(self.monitor_frame, text="寶箱相似度:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="寶箱開啟:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_chest_var = tk.StringVar(value="0%")
         self.monitor_flag_chest_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_chest_var, width=6)
         self.monitor_flag_chest_label.grid(row=9, column=1, sticky=tk.W)
         
-        ttk.Label(self.monitor_frame, text="戰鬥相似度:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=2, sticky=tk.W, padx=(10, 2))
+        ttk.Label(self.monitor_frame, text="戰鬥開始:", font=("微軟雅黑", 9, "bold")).grid(row=9, column=2, sticky=tk.W, padx=(10, 2))
         self.monitor_flag_combat_var = tk.StringVar(value="0%")
         self.monitor_flag_combat_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_combat_var, width=6)
         self.monitor_flag_combat_label.grid(row=9, column=3, sticky=tk.W)
 
         # 第十一行：世界地圖識別
-        ttk.Label(self.monitor_frame, text="世界相似度:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="世界地圖:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=0, sticky=tk.W, padx=2)
         self.monitor_flag_world_var = tk.StringVar(value="0%")
         self.monitor_flag_world_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_world_var, width=6)
         self.monitor_flag_world_label.grid(row=10, column=1, sticky=tk.W)
+
+        ttk.Label(self.monitor_frame, text="寶箱移動:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=2, sticky=tk.W, padx=(10, 2))
+        self.monitor_flag_chest_auto_var = tk.StringVar(value="0%")
+        self.monitor_flag_chest_auto_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_chest_auto_var, width=6)
+        self.monitor_flag_chest_auto_label.grid(row=10, column=3, sticky=tk.W)
 
         # 第十二行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
@@ -1290,6 +1295,11 @@ class ConfigPanelApp(tk.Toplevel):
             w = MonitorState.flag_worldMap
             self.monitor_flag_world_var.set(f"{w}%")
             self.monitor_flag_world_label.configure(foreground="red" if w >= 80 else "black")
+
+            # 寶箱移動：閾值 80%
+            ca = MonitorState.flag_chest_auto
+            self.monitor_flag_chest_auto_var.set(f"{ca}%")
+            self.monitor_flag_chest_auto_label.configure(foreground="red" if ca >= 80 else "black")
 
             # 更新警告
             if MonitorState.warnings:
