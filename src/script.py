@@ -1735,7 +1735,8 @@ def Factory():
             # 偵測到 AUTO 時，持續點擊直到消失
             if MonitorState.flag_auto_text >= 80:
                 logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
-                while True:
+                click_count = 0
+                while click_count < 10:
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                         return State.Quit, DungeonState.Quit, screen
                     Press([1, 1])
@@ -1745,6 +1746,7 @@ def Factory():
                     if MonitorState.flag_auto_text < 80:
                         logger.info("[AUTO] AUTO 已消失，停止點擊")
                         break
+                    click_count += 1
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
