@@ -3183,7 +3183,6 @@ def Factory():
             self.resume_consecutive_count = 0
             self.last_resume_click_time = time.time()
             self.last_chest_auto_click_time = time.time()
-            self.last_worldmap_check_log = 0
             self.is_gohome_mode = False
             self.current_target = None
             
@@ -3457,19 +3456,9 @@ def Factory():
                     return self._cleanup_exit(DungeonState.Quit)
                 
                 # 檢查是否進入世界地圖（離開地城）
-                worldmap_pos_lower = CheckIf(screen, 'openworldmap')
-                worldmap_pos_upper = CheckIf(screen, 'openWorldMap')
-                if worldmap_pos_lower or worldmap_pos_upper:
+                if CheckIf(screen, 'openworldmap') or CheckIf(screen, 'openWorldMap'):
                     logger.info("[DungeonMover] 偵測到世界地圖，退出移動監控")
                     return self._cleanup_exit(DungeonState.Quit)
-                if time.time() - self.last_worldmap_check_log > 5:
-                    logger.info(
-                        "[DungeonMover] worldmap check: openworldmap=%s openWorldMap=%s flag=%s",
-                        bool(worldmap_pos_lower),
-                        bool(worldmap_pos_upper),
-                        MonitorState.flag_worldMap,
-                    )
-                    self.last_worldmap_check_log = time.time()
                 
                 # Harken 傳送完成檢測
                 if ctx._HARKEN_FLOOR_TARGET is None and state == DungeonState.Dungeon:
