@@ -2797,10 +2797,15 @@ def Factory():
 
     def StateCombat():
         MonitorState.current_state = "Combat"
+        def update_combat_flag(scn):
+            combat_templates = get_combat_active_templates()
+            if combat_templates:
+                MonitorState.flag_combatActive = GetMatchValue(scn, combat_templates[0])
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
             scn = ScreenShot()
+            update_combat_flag(scn)
             ok_pos = CheckIf(scn,'OK')
             if ok_pos:
                 logger.info(f"[戰鬥] 找到 OK 按鈕，點擊確認")
@@ -2897,6 +2902,7 @@ def Factory():
         logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(30):  # 最多等待 15 秒
             screen = ScreenShot()
+            update_combat_flag(screen)
             
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
@@ -2922,6 +2928,7 @@ def Factory():
                     
                     # 2. 截圖檢查狀態
                     scn = ScreenShot()
+                    update_combat_flag(scn)
                     
                     # 如果還在黑屏，繼續點擊
                     if IsScreenBlack(scn):
