@@ -1741,6 +1741,9 @@ def Factory():
                     if not runtimeContext._DUNGEON_CONFIRMED:
                         runtimeContext._DUNGEON_CONFIRMED = True
                         logger.info("[狀態識別] 已確認進入地城")
+                    
+                    MonitorState.current_state = State.Dungeon
+                    MonitorState.current_dungeon_state = state
                     return State.Dungeon, state, screen
 
             if CheckIf(screen,'someonedead'):
@@ -1761,6 +1764,8 @@ def Factory():
                     if not should_skip_return_to_town():
                         # 回城
                         FindCoordsOrElseExecuteFallbackAndWait('Inn',['return',[1,1]],1)
+                        MonitorState.current_state = State.Inn
+                        MonitorState.current_dungeon_state = DungeonState.Quit
                         return State.Inn,DungeonState.Quit, screen
                     else:
                         # 跳過回城，繼續刷地城
@@ -1776,6 +1781,8 @@ def Factory():
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                        MonitorState.current_state = State.Dungeon
+                        MonitorState.current_dungeon_state = None
                         return State.Dungeon, None, ScreenShot()
 
             if pos:=CheckIf(screen,"openworldmap"):
@@ -1798,13 +1805,19 @@ def Factory():
                             if info[0] == "press":
                                 Press(pos)
                     Sleep(2)
+                    MonitorState.current_state = State.Dungeon
+                    MonitorState.current_dungeon_state = None
                     return State.Dungeon, None, ScreenShot()
 
             if CheckIf(screen,"RoyalCityLuknalia"):
                 FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['RoyalCityLuknalia',[1,1]],1)
                 if CheckIf(scn:=ScreenShot(),'Inn'):
+                    MonitorState.current_state = State.Inn
+                    MonitorState.current_dungeon_state = DungeonState.Quit
                     return State.Inn,DungeonState.Quit, screen
                 elif CheckIf(scn,'dungFlag'):
+                    MonitorState.current_state = State.Dungeon
+                    MonitorState.current_dungeon_state = None
                     return State.Dungeon,None, screen
 
             if CheckIf(screen,"fortressworldmap"):
