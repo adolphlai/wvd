@@ -335,6 +335,7 @@ class MonitorState:
     flag_mapFlag: int = 0
     flag_chestFlag: int = 0
     flag_combatActive: int = 0
+    flag_worldMap: int = 0
 
     # 警告列表
     warnings: list = []
@@ -368,6 +369,7 @@ class MonitorState:
         cls.flag_mapFlag = 0
         cls.flag_chestFlag = 0
         cls.flag_combatActive = 0
+        cls.flag_worldMap = 0
         cls.warnings = []
 
     @classmethod
@@ -1714,6 +1716,7 @@ def Factory():
             MonitorState.flag_dungFlag = GetMatchValue(screen, 'dungFlag')
             MonitorState.flag_mapFlag = GetMatchValue(screen, 'mapFlag')
             MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
+            MonitorState.flag_worldMap = GetMatchValue(screen, 'openWorldMap')
             # combatActive 使用第一個模板的匹配度
             combat_templates = get_combat_active_templates()
             if combat_templates:

@@ -471,10 +471,16 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_flag_combat_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_combat_var, width=6)
         self.monitor_flag_combat_label.grid(row=9, column=3, sticky=tk.W)
 
-        # 第十一行：警告區域
+        # 第十一行：世界地圖識別
+        ttk.Label(self.monitor_frame, text="世界:", font=("微軟雅黑", 9, "bold")).grid(row=10, column=0, sticky=tk.W, padx=2)
+        self.monitor_flag_world_var = tk.StringVar(value="0%")
+        self.monitor_flag_world_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_world_var, width=6)
+        self.monitor_flag_world_label.grid(row=10, column=1, sticky=tk.W)
+
+        # 第十二行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
-        self.monitor_warning_label.grid(row=10, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+        self.monitor_warning_label.grid(row=11, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
 
         # 保留未顯示但被引用的變數
         self.monitor_dungeon_state_var = tk.StringVar(value="-")
@@ -1269,6 +1275,11 @@ class ConfigPanelApp(tk.Toplevel):
             # 戰鬥：閾值 70%
             self.monitor_flag_combat_var.set(f"{b}%")
             self.monitor_flag_combat_label.configure(foreground="red" if b >= 70 else "black")
+            
+            # 世界地圖：閾值 80%
+            w = MonitorState.flag_worldMap
+            self.monitor_flag_world_var.set(f"{w}%")
+            self.monitor_flag_world_label.configure(foreground="red" if w >= 80 else "black")
 
             # 更新警告
             if MonitorState.warnings:
