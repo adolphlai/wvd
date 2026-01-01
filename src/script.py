@@ -3401,7 +3401,16 @@ def Factory():
                         continue
 
                 # ========== D. 狀態檢查 ==========
+                # 記錄調用前的 _DUNGEON_CONFIRMED 狀態
+                was_dungeon_confirmed = ctx._DUNGEON_CONFIRMED
+                
                 main_state, state, screen = IdentifyState()
+                
+                # 檢測重新進入地城：如果 _DUNGEON_CONFIRMED 從 False 變為 True，重置計時器
+                if not was_dungeon_confirmed and ctx._DUNGEON_CONFIRMED:
+                    logger.info("[DungeonMover] 偵測到重新進入地城，重置計時器")
+                    self.move_start_time = time.time()
+                    MonitorState.state_start_time = self.move_start_time
                 
                 # 首先檢查是否離開了地城（回到 Inn 或其他主狀態）
                 if main_state == State.Inn or main_state == State.EoT:
