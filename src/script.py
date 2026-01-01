@@ -3165,7 +3165,7 @@ def Factory():
         
         # Resume 設定
         MAX_RESUME_RETRIES = 5
-        RESUME_CLICK_INTERVAL = 5  # 每 5 秒主動檢查
+        RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
         
         # 轉向解卡設定
@@ -3511,6 +3511,24 @@ def Factory():
                         if pos:
                             logger.info(f"[DungeonMover] gohome Keep-Alive: 點擊 {pos}")
                             Press(pos)
+                        self.last_resume_click_time = time.time()
+                elif not is_chest_auto:
+                    # 非 chest_auto 時，固定間隔嘗試 Resume（不管靜止狀態）
+                    if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
+                        resume_pos_periodic = CheckIf(screen, 'resume')
+                        if resume_pos_periodic:
+                            logger.info(f"[DungeonMover] 定期檢查 Resume，點擊: {resume_pos_periodic}")
+                            Press(resume_pos_periodic)
+                            # 點擊後短暫等待並多次檢查是否已到達
+                            Sleep(0.5)
+                            for _ in range(3):
+                                if CheckIf(ScreenShot(), 'routenotfound'):
+                                    logger.info("[DungeonMover] Resume 後檢測到 RouteNotFound，到達目的地")
+                                    if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
+                                        if targetInfoList:
+                                            targetInfoList.pop(0)
+                                    return self._cleanup_exit(DungeonState.Map)
+                                Sleep(0.2)
                         self.last_resume_click_time = time.time()
                 
                 # ========== F. 靜止與 Resume 偵測 ==========
@@ -4418,7 +4436,13 @@ def Factory():
                                 if mean_diff >= 0.02:  # 閾值降低到 2%
                                     # 畫面有變化 = 還在路上，繼續移動監控
                                     logger.info("Resume優化: 畫面有變化，繼續移動監控")
-                                    dungState = StateMoving_CheckFrozen()
+                                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                                    dungeon_mover.reset()
+                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
+                                    MonitorState.current_target = dungeon_mover.current_target or ""
+                                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                                    MonitorState.is_gohome_mode = False
+                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                                     resume_success = True
                                     break
                                 
