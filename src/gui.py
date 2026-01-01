@@ -439,14 +439,14 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(self.monitor_frame, text="軟超時:", font=("微軟雅黑", 9, "bold")).grid(row=6, column=0, sticky=tk.W, padx=2)
         self.monitor_soft_timeout_progress = ttk.Progressbar(self.monitor_frame, length=200, mode='determinate', maximum=100)
         self.monitor_soft_timeout_progress.grid(row=6, column=1, columnspan=2, sticky=tk.W)
-        self.monitor_soft_timeout_label = tk.StringVar(value="0/40s")
+        self.monitor_soft_timeout_label = tk.StringVar(value="0/60s")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_soft_timeout_label, width=8).grid(row=6, column=3, sticky=tk.W)
 
         # 第八行：硬超時進度條
         ttk.Label(self.monitor_frame, text="硬超時:", font=("微軟雅黑", 9, "bold")).grid(row=7, column=0, sticky=tk.W, padx=2)
         self.monitor_hard_timeout_progress = ttk.Progressbar(self.monitor_frame, length=200, mode='determinate', maximum=100)
         self.monitor_hard_timeout_progress.grid(row=7, column=1, columnspan=2, sticky=tk.W)
-        self.monitor_hard_timeout_label = tk.StringVar(value="0/60s")
+        self.monitor_hard_timeout_label = tk.StringVar(value="0/90s")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_hard_timeout_label, width=8).grid(row=7, column=3, sticky=tk.W)
 
         # 第九行：地城識別
@@ -1231,8 +1231,8 @@ class ConfigPanelApp(tk.Toplevel):
                 self.monitor_total_time_var.set("0 秒")
             
             # 更新軟/硬超時進度條
-            soft_timeout = 40  # 軟超時 40 秒
-            hard_timeout = 60  # 硬超時 60 秒
+            soft_timeout = 60  # 軟超時 60 秒
+            hard_timeout = 90  # 硬超時 90 秒
             
             # 當有 current_target 時表示正在移動，顯示進度
             if MonitorState.state_start_time > 0 and MonitorState.current_target:
@@ -1250,9 +1250,9 @@ class ConfigPanelApp(tk.Toplevel):
             else:
                 # 不在移動狀態，重置進度條
                 self.monitor_soft_timeout_progress['value'] = 0
-                self.monitor_soft_timeout_label.set("0/40s")
+                self.monitor_soft_timeout_label.set("0/60s")
                 self.monitor_hard_timeout_progress['value'] = 0
-                self.monitor_hard_timeout_label.set("0/60s")
+                self.monitor_hard_timeout_label.set("0/90s")
 
             # 更新 Flag 相似度顯示（超過門檻值變紅）
             d = MonitorState.flag_dungFlag

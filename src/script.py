@@ -3116,13 +3116,13 @@ def Factory():
         """
         統一的地城移動管理器
         - 整合 chest_auto, position, harken, gohome 的處理邏輯
-        - 實現分層超時機制 (Soft 40s -> GoHome, Hard 60s -> Restart)
+        - 實現分層超時機制 (Soft 60s -> GoHome, Hard 90s -> Restart)
         - 統一 Resume 和 Chest_Resume 處理
         """
         
         # 超時設定
-        SOFT_TIMEOUT = 40  # 軟超時：觸發 GoHome
-        HARD_TIMEOUT = 60  # 硬超時：觸發重啟
+        SOFT_TIMEOUT = 60  # 軟超時：觸發 GoHome
+        HARD_TIMEOUT = 90  # 硬超時：觸發重啟
         
         # 輪詢設定
         POLL_INTERVAL = 0.5
