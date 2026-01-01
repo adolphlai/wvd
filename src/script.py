@@ -3153,6 +3153,23 @@ def Factory():
             MonitorState.still_count = 0
             MonitorState.resume_count = 0
         
+        def _cleanup_exit(self, next_state):
+            """退出移動監控時的統一清理
+            
+            所有 _monitor_move 的退出點都應調用此方法
+            """
+            # 重置本地狀態
+            self.is_gohome_mode = False
+            
+            # 重置 MonitorState（GUI 顯示）
+            MonitorState.current_target = ""
+            MonitorState.state_start_time = 0
+            MonitorState.is_gohome_mode = False
+            MonitorState.still_count = 0
+            MonitorState.resume_count = 0
+            
+            return next_state
+        
         def initiate_move(self, targetInfoList: list, ctx):
             """
             啟動移動流程
@@ -3315,10 +3332,10 @@ def Factory():
                     logger.info(f"[DungeonMover] 找不到目標 {target_info.target}")
                     if target_info.target in ['position', 'minimap_stair'] or target_info.target.startswith('stair'):
                         targetInfoList.pop(0)
-                    return DungeonState.Map
+                    return self._cleanup_exit(DungeonState.Map)
             except KeyError as e:
                 logger.error(f"[DungeonMover] 地圖操作錯誤: {e}")
-                return DungeonState.Dungeon
+                return self._cleanup_exit(DungeonState.Dungeon)
             
             return self._monitor_move(targetInfoList, ctx)
         
@@ -3337,7 +3354,7 @@ def Factory():
             while True:
                 # 檢查停止信號
                 if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 Sleep(self.POLL_INTERVAL)
                 
@@ -3389,18 +3406,12 @@ def Factory():
                 # 首先檢查是否離開了地城（回到 Inn 或其他主狀態）
                 if main_state == State.Inn or main_state == State.EoT:
                     logger.info(f"[DungeonMover] 偵測到離開地城 (State={main_state})，退出移動監控")
-                    MonitorState.current_target = ""  # 重置以停止進度條
-                    MonitorState.state_start_time = 0
-                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 # 檢查是否進入世界地圖（離開地城）
                 if CheckIf(screen, 'openWorldMap'):
                     logger.info("[DungeonMover] 偵測到世界地圖，退出移動監控")
-                    MonitorState.current_target = ""  # 重置以停止進度條
-                    MonitorState.state_start_time = 0
-                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 # Harken 傳送完成檢測
                 if ctx._HARKEN_FLOOR_TARGET is None and state == DungeonState.Dungeon:
@@ -3409,26 +3420,17 @@ def Factory():
                         ctx._HARKEN_TELEPORT_JUST_COMPLETED = False
                         if target == 'harken':
                             targetInfoList.pop(0)
-                        return DungeonState.Map
+                        return self._cleanup_exit(DungeonState.Map)
                 
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
-                    MonitorState.current_target = ""  # 重置以停止進度條
-                    MonitorState.state_start_time = 0
-                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
-                    return DungeonState.Combat
+                    return self._cleanup_exit(DungeonState.Combat)
                 if state == DungeonState.Chest:
                     logger.info("[DungeonMover] 進入寶箱")
-                    MonitorState.current_target = ""  # 重置以停止進度條
-                    MonitorState.state_start_time = 0
-                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
-                    return DungeonState.Chest
+                    return self._cleanup_exit(DungeonState.Chest)
                 if state == DungeonState.Quit:
-                    MonitorState.current_target = ""  # 重置以停止進度條
-                    MonitorState.state_start_time = 0
-                    MonitorState.is_gohome_mode = False  # 清除軟超時警告
-                    return DungeonState.Quit
+                    return self._cleanup_exit(DungeonState.Quit)
                 
                 # ========== D. chest_resume (chest_auto 專用) ==========
                 if is_chest_auto:
@@ -3444,17 +3446,17 @@ def Factory():
                         logger.info("[DungeonMover] chest_auto: 無寶箱 (notresure)")
                         Press([1, 1])
                         targetInfoList.pop(0)
-                        return DungeonState.Map
+                        return self._cleanup_exit(DungeonState.Map)
                 
                 # ========== E. gohome Keep-Alive ==========
                 if self.is_gohome_mode:
                     # E1. 離開地城檢測（世界地圖或 Inn）
                     if CheckIf(screen, 'worldmapflag'):
                         logger.info("[DungeonMover] gohome: 偵測到世界地圖，已離開地城")
-                        return DungeonState.Quit
+                        return self._cleanup_exit(DungeonState.Quit)
                     if CheckIf(screen, 'Inn'):
                         logger.info("[DungeonMover] gohome: 偵測到 Inn，已回城")
-                        return DungeonState.Quit
+                        return self._cleanup_exit(DungeonState.Quit)
                     
                     # E2. Keep-Alive 點擊
                     if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
@@ -3493,7 +3495,7 @@ def Factory():
                                         logger.warning("[DungeonMover] chest_auto 連續 3 次找不到，移除目標繼續")
                                         if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                             targetInfoList.pop(0)
-                                        return DungeonState.Map
+                                        return self._cleanup_exit(DungeonState.Map)
                                     
                                     # 嘗試再次點擊預設位置
                                     logger.info("[DungeonMover] 嘗試點擊 chest_auto 預設區域")
@@ -3503,7 +3505,7 @@ def Factory():
                                     self.last_screen = None
                                     continue
                                 
-                                return DungeonState.Map
+                                return self._cleanup_exit(DungeonState.Map)
                             
                             # Resume 檢查 (非 chest_auto)
                             if not is_chest_auto:
@@ -3521,7 +3523,7 @@ def Factory():
                                             logger.info("[DungeonMover] RouteNotFound，到達目的地")
                                             if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
                                                 targetInfoList.pop(0)
-                                            return DungeonState.Map
+                                            return self._cleanup_exit(DungeonState.Map)
                                         
                                         self.still_count = 0
                                         self.last_screen = None
@@ -3546,14 +3548,14 @@ def Factory():
                                     logger.info("[DungeonMover] 到達目標樓層 (MiniMap)")
                                     ctx._MINIMAP_STAIR_IN_PROGRESS = False
                                     targetInfoList.pop(0)
-                                    return DungeonState.Map
+                                    return self._cleanup_exit(DungeonState.Map)
                             
                             # 判定停止（無 Resume 且靜止）
                             if not is_chest_auto and not CheckIf(screen, 'resume'):
                                 logger.info("[DungeonMover] 靜止且無 Resume，判定到達")
                                 if target in ['position', 'harken'] or (target and target.startswith('stair')):
                                     targetInfoList.pop(0)
-                                return DungeonState.Map
+                                return self._cleanup_exit(DungeonState.Map)
                     else:
                         # 畫面有變化
                         if self.still_count > 0:
