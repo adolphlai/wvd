@@ -3681,180 +3681,6 @@ def Factory():
                         targetPos = CheckIf(ScreenShot(),target,roi)
                     break
         return targetPos
-    def StateMoving_CheckFrozen():
-        lastscreen = None
-        dungState = None
-        resume_consecutive_count = 0  # Resume連續點擊計數（畫面持續靜止）
-        MAX_RESUME_RETRIES = 5  # Resume最大連續點擊次數
-        
-        # 輪詢參數
-        POLL_INTERVAL = 0.3  # 每 0.3 秒檢查一次
-        
-        # 連續靜止參數（唯一檢查點）
-        # 3 秒 ÷ 0.3 秒 ≈ 10 次
-        STILL_REQUIRED = 10  # 連續 10 次靜止（約 3 秒）才判定停止
-        still_count = 0
-        
-        
-        # 轉向嘗試參數（靜止後嘗試轉向解決動態背景問題）
-        turn_attempt_count = 0
-        MAX_TURN_ATTEMPTS = 3  # 最多轉向 3 次
-
-        # 定期點擊 Resume 參數（防止雖然判定為移動但實際已停止顯示Resume的情況）
-        last_resume_click_time = time.time()
-        RESUME_CLICK_INTERVAL = 5  # 每 5 秒檢查一次
-
-        logger.info("面具男, 移動.")
-        while 1:
-            # 等待一個輪詢週期
-            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                return None
-            time.sleep(POLL_INTERVAL)
-            poll_screen = ScreenShot()
-# 定期檢查並點擊 Resume 按鈕（不管是否判斷為移動中）
-            # 這能處理動態背景導致誤判為移動，但實際已出現 Resume 的情況
-            if time.time() - last_resume_click_time > RESUME_CLICK_INTERVAL:
-                resume_pos_periodic = CheckIf(screen, 'resume')
-                if resume_pos_periodic:
-                    logger.info(f"【定期檢查】偵測到 Resume 按鈕，主動點擊: {resume_pos_periodic}")
-                    Press(resume_pos_periodic)
-                last_resume_click_time = time.time()
-
-            _, dungState, screen = IdentifyState()
-            
-            # harken 樓層傳送完成檢測：如果 _HARKEN_FLOOR_TARGET 被清除，說明傳送已完成
-            if runtimeContext._HARKEN_FLOOR_TARGET is None and dungState == DungeonState.Dungeon:
-                # 檢查是否剛剛完成了樓層傳送（此時應該在新樓層的地城中）
-                if hasattr(runtimeContext, '_HARKEN_TELEPORT_JUST_COMPLETED') and runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED:
-                    logger.info("哈肯樓層傳送完成，打開地圖搜索下一個目標")
-                    runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = False
-                    Press([777,150])  # 打開地圖
-                    Sleep(1)
-                    dungState = DungeonState.Map  # 直接返回 Map 狀態，跳過 Resume 優化
-                    break
-            
-            # minimap_stair 小地圖偵測：持續監控小地圖直到找到樓層標識
-            if runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
-                floor_target = runtimeContext._MINIMAP_STAIR_FLOOR_TARGET
-                result = CheckIf_minimapFloor(screen, floor_target)
-                
-                if result["found"]:
-                    logger.info(f"✓ 小地圖偵測到樓層標識 {floor_target}！匹配度: {result['match_val']*100:.2f}%")
-                    logger.info("已到達目標樓層，清除 minimap_stair flag")
-                    runtimeContext._MINIMAP_STAIR_FLOOR_TARGET = None
-                    runtimeContext._MINIMAP_STAIR_IN_PROGRESS = False
-                    # 打開地圖繼續下一個目標
-                    Press([777,150])
-                    Sleep(1)
-                    dungState = DungeonState.Map
-                    break
-                else:
-                    logger.debug(f"小地圖監控中... 匹配度: {result['match_val']*100:.2f}%")
-            
-            if dungState == DungeonState.Map:
-                logger.info(f"開始移動失敗. 不要停下來啊面具男!")
-                FindCoordsOrElseExecuteFallbackAndWait("dungFlag", [[280, 1433], [1, 1]], 1)
-                dungState = dungState.Dungeon
-                break
-            if dungState != DungeonState.Dungeon:
-                logger.info(f"已退出移動狀態. 當前狀態: {dungState}.")
-                break
-            if lastscreen is not None:
-                gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-                gray2 = cv2.cvtColor(lastscreen, cv2.COLOR_BGR2GRAY)
-                mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
-                logger.debug(f"移動停止檢查:{mean_diff:.2f}")
-                if mean_diff < 0.1:
-                    still_count += 1
-                    logger.debug(f"畫面靜止，連續靜止 {still_count}/{STILL_REQUIRED}")
-                    
-                    if still_count < STILL_REQUIRED:
-                        # 還沒達到連續靜止次數，繼續等待
-                        lastscreen = screen
-                        continue
-                    
-                    # 達到連續靜止次數（約 10 秒），進入 Resume/退出判斷
-                    logger.info(f"連續 {STILL_REQUIRED} 次靜止（約 {STILL_REQUIRED * POLL_INTERVAL:.1f} 秒），判定停止")
-                    
-                    # 轉向嘗試機制：如果靜止，先嘗試轉向確認是否真的停止（或卡住）
-                    if turn_attempt_count < MAX_TURN_ATTEMPTS:
-                        turn_attempt_count += 1
-                        logger.info(f"靜止判定觸發轉向機制 (第 {turn_attempt_count}/{MAX_TURN_ATTEMPTS} 次)，向左轉並等待 6 秒...")
-                        # 向左轉 (改用 Swipe 以確保生效)
-                        Swipe([450, 700], [250, 700])
-                        # 等待 6 秒（用戶指定）
-                        Sleep(6)
-                        
-                        # 重置狀態以重新判斷靜止
-                        still_count = 0
-                        lastscreen = None
-                        logger.info("轉向完成，重新開始靜止判定...")
-                        continue
-
-                    # 畫面靜止，檢查Resume按鈕
-                    # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
-                    if CheckIf(screen, 'mapFlag'):
-                        logger.info("StateMoving: 已在地圖狀態，跳過 Resume 檢測")
-                        dungState = DungeonState.Map
-                        break
-                    
-                    resume_pos = CheckIf(screen, 'resume')
-                    
-                    if resume_pos:
-                        # Resume按鈕存在 = 移動被打斷但未到達
-                        resume_consecutive_count += 1
-                        
-                        if resume_consecutive_count <= MAX_RESUME_RETRIES:
-                            # 繼續點擊Resume
-                            logger.info(f"檢測到Resume按鈕（畫面靜止），點擊繼續移動（第 {resume_consecutive_count} 次）位置:{resume_pos}")
-                            Press(resume_pos)
-                            Sleep(1)
-                            
-                            # 檢查 routenotfound 是否出現
-                            screen_after_resume = ScreenShot()
-                            if CheckIf(screen_after_resume, 'routenotfound'):
-                                logger.info("StateMoving: 檢測到routenotfound，已到達目的地，打開地圖")
-                                Sleep(1)  # routenotfound 會自動消失，稍等一下
-                                Press([777,150])  # 打開地圖
-                                dungState = DungeonState.Map
-                                break
-                            else:
-                                logger.info("StateMoving: 未檢測到routenotfound")
-                            
-                            lastscreen = None  # 重置lastscreen以重新開始檢測
-                            still_count = 0  # 重置靜止計數
-                            continue  # 繼續循環，不退出
-                        else:
-                            # Resume點擊多次仍然靜止 = 可能卡住，打開地圖重新導航
-                            logger.warning(f"Resume按鈕點擊{MAX_RESUME_RETRIES}次後畫面仍靜止，打開地圖重新導航")
-                            Press([777,150])  # 打開地圖
-                            Sleep(1)
-                            dungState = DungeonState.Map
-                            break
-                    else:
-                        # Resume按鈕不存在 = 已到達目標
-                        logger.info("已退出移動狀態（畫面靜止且Resume按鈕消失）.進行狀態檢查...")
-                        dungState = None
-                        break
-                else:
-                    # 畫面在移動，重置連續計數器
-                    # 使用 Soft Reset：不直接歸零，而是減少計數，以容忍偶爾的畫面閃爍（如暴風雪）
-                    if still_count > 0:
-                        decay = 1  # 衰減值
-                        old_count = still_count
-                        still_count = max(0, still_count - decay)
-                        if still_count == 0:
-                            logger.debug(f"畫面恢復變化，靜止計數歸零（之前: {old_count}）")
-                        else:
-                            logger.debug(f"畫面有變化，靜止計數衰減（{old_count} -> {still_count}）")
-                    if resume_consecutive_count > 0:
-                        logger.debug(f"畫面恢復移動，重置Resume計數器（之前: {resume_consecutive_count}）")
-                        resume_consecutive_count = 0
-                    if turn_attempt_count > 0:
-                        logger.debug(f"畫面恢復變化，重置轉向計數（之前: {turn_attempt_count}）")
-                        turn_attempt_count = 0
-            lastscreen = screen
-        return dungState
     def StateSearch(waitTimer, targetInfoList : list[TargetInfo]):
         normalPlace = ['harken','chest','leaveDung','position']
         targetInfo = targetInfoList[0]
@@ -3941,7 +3767,13 @@ def Factory():
                     logger.info("經過對比中心區域, 確認沒有抵達.")
                     Press(searchResult)
                     Press([138,1432]) # automove
-                    return StateMoving_CheckFrozen(),targetInfoList
+                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                    dungeon_mover.reset()
+                    dungeon_mover.current_target = target
+                    MonitorState.current_target = target
+                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                    MonitorState.is_gohome_mode = False
+                    return dungeon_mover._monitor_move(targetInfoList, runtimeContext), targetInfoList
                 else:
                     if setting._DUNGWAITTIMEOUT == 0:
                         logger.info("經過對比中心區域, 判斷爲抵達目標地點.")
@@ -4453,7 +4285,13 @@ def Factory():
                                 if not resume_pos:
                                     # Resume按鈕消失了，可能已經開始移動
                                     logger.info("Resume優化: Resume按鈕消失，進入移動監控")
-                                    dungState = StateMoving_CheckFrozen()
+                                    # 改用 DungeonMover 監控，避免舊超時邏輯
+                                    dungeon_mover.reset()
+                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
+                                    MonitorState.current_target = dungeon_mover.current_target or ""
+                                    MonitorState.state_start_time = dungeon_mover.move_start_time
+                                    MonitorState.is_gohome_mode = False
+                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                                     resume_success = True
                                     break
                             
@@ -4595,6 +4433,8 @@ def Factory():
         # 初始化監控狀態
         MonitorState.reset()
         MonitorState.karma_adjust = str(setting._KARMAADJUST)
+        if runtimeContext._LAPTIME == 0:
+            runtimeContext._LAPTIME = time.time()
 
         state = None
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
@@ -4610,7 +4450,10 @@ def Factory():
             MonitorState.dungeon_count = runtimeContext._COUNTERDUNG
             MonitorState.combat_count = runtimeContext._COUNTERCOMBAT
             MonitorState.chest_count = runtimeContext._COUNTERCHEST
-            MonitorState.total_time = runtimeContext._TOTALTIME
+            if runtimeContext._LAPTIME > 0:
+                MonitorState.total_time = runtimeContext._TOTALTIME + (time.time() - runtimeContext._LAPTIME)
+            else:
+                MonitorState.total_time = runtimeContext._TOTALTIME
             MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
             MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
             MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
