@@ -1724,10 +1724,10 @@ def Factory():
             MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
             MonitorState.flag_worldMap = GetMatchValue(screen, 'openWorldMap')
             MonitorState.flag_chest_auto = GetMatchValue(screen, 'chest_auto')
-            # combatActive 使用第一個模板的匹配度
+            # combatActive 使用所有模板的最高匹配度
             combat_templates = get_combat_active_templates()
             if combat_templates:
-                MonitorState.flag_combatActive = GetMatchValue(screen, combat_templates[0])
+                MonitorState.flag_combatActive = max(GetMatchValue(screen, t) for t in combat_templates)
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
@@ -2800,7 +2800,7 @@ def Factory():
         def update_combat_flag(scn):
             combat_templates = get_combat_active_templates()
             if combat_templates:
-                MonitorState.flag_combatActive = GetMatchValue(scn, combat_templates[0])
+                MonitorState.flag_combatActive = max(GetMatchValue(scn, t) for t in combat_templates)
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(1)
