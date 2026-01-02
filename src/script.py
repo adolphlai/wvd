@@ -1909,6 +1909,13 @@ def Factory():
                         MonitorState.current_dungeon_state = None
                         return State.Dungeon, None, ScreenShot()
 
+            if CheckIf(screen, "worldmapflag") and runtimeContext._DUNGEON_CONFIRMED:
+                runtimeContext._DUNGEON_CONFIRMED = False
+                logger.info("[狀態識別] 偵測到 worldmapflag，視為離開地城，回傳 Quit")
+                MonitorState.current_state = "Dungeon"
+                MonitorState.current_dungeon_state = "Quit"
+                return State.Dungeon, DungeonState.Quit, screen
+
             if pos:=CheckIf(screen,"openworldmap"):
                 if runtimeContext._DUNGEON_CONFIRMED:
                     runtimeContext._DUNGEON_CONFIRMED = False

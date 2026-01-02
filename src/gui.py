@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('800x640')  # 調整視窗大小以配合縮小的日誌區域
+        self.geometry('880x640')  # 調整視窗大小以配合縮小的日誌區域
         
         self.title(self.TITLE)
 
@@ -183,13 +183,11 @@ class ConfigPanelApp(tk.Toplevel):
 
         # 創建五個分頁
         self.tab_general = ttk.Frame(self.notebook, padding=10)
-        self.tab_battle = ttk.Frame(self.notebook, padding=10)
         self.tab_skills = ttk.Frame(self.notebook, padding=10)
         self.tab_advanced = ttk.Frame(self.notebook, padding=10)
         self.tab_test = ttk.Frame(self.notebook, padding=10)
 
         self.notebook.add(self.tab_general, text="一般設定")
-        self.notebook.add(self.tab_battle, text="戰鬥設定")
         self.notebook.add(self.tab_skills, text="技能設定")
         self.notebook.add(self.tab_advanced, text="進階設定")
         self.notebook.add(self.tab_test, text="測試")
@@ -205,11 +203,6 @@ class ConfigPanelApp(tk.Toplevel):
         # Tab 1: 一般設定
         # =============================================
         self._create_general_tab(vcmd_non_neg)
-
-        # =============================================
-        # Tab 2: 戰鬥設定
-        # =============================================
-        self._create_battle_tab()
 
         # =============================================
         # Tab 3: 技能設定
@@ -505,12 +498,16 @@ class ConfigPanelApp(tk.Toplevel):
         # 啟動監控更新定時器
         self._start_monitor_update()
 
-    def _create_battle_tab(self):
-        """戰鬥設定分頁：自動戰鬥模式、未設定預設、恢復設定"""
-        tab = self.tab_battle
+
+
+
+
+    def _create_skills_tab(self, vcmd_non_neg):
+        """技能設定分頁：技能施放順序設定（兩行設計：首戰+二戰後）"""
+        tab = self.tab_skills
         row = 0
 
-        # --- 自動戰鬥模式 ---
+        # --- 自動戰鬥模式 (從戰鬥設定移來) ---
         frame_auto = ttk.LabelFrame(tab, text="自動戰鬥模式", padding=5)
         frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
 
@@ -526,48 +523,10 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_auto, text="※ 完全自動=進入戰鬥即開自動，2場後自動=前2場手動施法", foreground="gray").grid(
             row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
-        # --- 恢復設定 ---
-        row += 1
-        frame_recover = ttk.LabelFrame(tab, text="恢復設定", padding=5)
-        frame_recover.grid(row=row, column=0, sticky="ew", pady=5)
-
-        self.skip_recover_check = ttk.Checkbutton(
-            frame_recover, text="跳過戰後恢復",
-            variable=self.skip_recover_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.skip_recover_check.grid(row=0, column=0, padx=5)
-
-        self.skip_chest_recover_check = ttk.Checkbutton(
-            frame_recover, text="跳過開箱後恢復",
-            variable=self.skip_chest_recover_var, command=self.save_config,
-            style="Custom.TCheckbutton"
-        )
-        self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
-
-        # --- 連續刷地城設定 ---
-        row += 1
-        frame_repeat = ttk.LabelFrame(tab, text="連續刷地城", padding=5)
-        frame_repeat.grid(row=row, column=0, sticky="ew", pady=5)
-
-        ttk.Label(frame_repeat, text="連續次數:").grid(row=0, column=0, padx=5, sticky=tk.W)
-        self.dungeon_repeat_limit_spinbox = ttk.Spinbox(
-            frame_repeat, from_=0, to=99, width=4,
-            textvariable=self.dungeon_repeat_limit_var,
-            command=self.save_config
-        )
-        self.dungeon_repeat_limit_spinbox.grid(row=0, column=1, padx=5, sticky=tk.W)
-
-        ttk.Label(frame_repeat, text="※ 0=每次回村，N=刷N次才回村", foreground="gray").grid(
-            row=0, column=2, padx=10, sticky=tk.W)
-
-    def _create_skills_tab(self, vcmd_non_neg):
-        """技能設定分頁：技能施放順序設定（兩行設計：首戰+二戰後）"""
-        tab = self.tab_skills
-
         # --- 技能施放設定 ---
+        row += 1
         frame_ae_caster = ttk.LabelFrame(tab, text="技能施放設定", padding=10)
-        frame_ae_caster.grid(row=0, column=0, sticky="ew", pady=5)
+        frame_ae_caster.grid(row=row, column=0, sticky="ew", pady=5)
 
         # Row 0: 間隔 + 單位數量
         ttk.Label(frame_ae_caster, text="觸發間隔:").grid(row=0, column=0, sticky=tk.W)
@@ -762,12 +721,24 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_rest, text="※ 回城時會自動執行以下設定", foreground="gray").grid(
             row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
 
+        # 新增：旅店休息 (原連續刷地城)
+        ttk.Label(frame_rest, text="旅店休息:").grid(row=1, column=0, padx=5, sticky=tk.W)
+        self.dungeon_repeat_limit_spinbox = ttk.Spinbox(
+            frame_rest, from_=0, to=99, width=4,
+            textvariable=self.dungeon_repeat_limit_var,
+            command=self.save_config
+        )
+        self.dungeon_repeat_limit_spinbox.grid(row=1, column=1, padx=5, sticky=tk.W)
+
+        ttk.Label(frame_rest, text="※ 0=每次回村，N=刷N次才回村", foreground="gray").grid(
+            row=1, column=2, padx=10, sticky=tk.W)
+
         self.active_royalsuite_rest = ttk.Checkbutton(
             frame_rest, variable=self.active_royalsuite_rest_var,
             text="住豪華房", command=checkcommand,
             style="Custom.TCheckbutton"
         )
-        self.active_royalsuite_rest.grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.active_royalsuite_rest.grid(row=2, column=0, sticky=tk.W, pady=2)
 
         # 自動補給選項
         self.auto_refill_check = ttk.Checkbutton(
@@ -775,7 +746,7 @@ class ConfigPanelApp(tk.Toplevel):
             text="自動補給", command=checkcommand,
             style="Custom.TCheckbutton"
         )
-        self.auto_refill_check.grid(row=1, column=1, sticky=tk.W, pady=2)
+        self.auto_refill_check.grid(row=2, column=1, sticky=tk.W, pady=2)
 
         # --- 整理背包 ---
         row += 1
@@ -844,6 +815,25 @@ class ConfigPanelApp(tk.Toplevel):
             style="Custom.TCheckbutton"
         )
         self.active_csc.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=5)
+
+        # --- 恢復設定 ---
+        row += 1
+        frame_recover = ttk.LabelFrame(tab, text="恢復設定", padding=5)
+        frame_recover.grid(row=row, column=0, sticky="ew", pady=5)
+
+        self.skip_recover_check = ttk.Checkbutton(
+            frame_recover, text="跳過戰後恢復",
+            variable=self.skip_recover_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.skip_recover_check.grid(row=0, column=0, padx=5)
+
+        self.skip_chest_recover_check = ttk.Checkbutton(
+            frame_recover, text="跳過開箱後恢復",
+            variable=self.skip_chest_recover_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
 
         # --- 其他進階選項 ---
         row += 1
