@@ -1739,8 +1739,11 @@ def Factory():
                 while click_count < 10:
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                         return State.Quit, DungeonState.Quit, screen
-                    Press([1, 1])
-                    Sleep(0.5)
+                    # 連點 3 下清戰利品
+                    for _ in range(3):
+                        Press([1, 1])
+                        Sleep(0.05)
+                    Sleep(0.1)
                     screen = ScreenShot()
                     MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
                     if MonitorState.flag_auto_text < 80:
