@@ -3546,13 +3546,19 @@ def Factory():
                         else:
                             logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
 
-                        # chest_auto 特殊處理：6次靜止 + mapFlag = PressReturn 退出
+                        # chest_auto 特殊處理：靜止達閾值
                         if is_chest_auto and self.still_count >= self.CHEST_AUTO_STILL_THRESHOLD:
                             logger.info(f"[DungeonMover] chest_auto 靜止達 {self.still_count} 次，檢查 mapFlag")
                             if CheckIf(screen, 'mapFlag'):
-                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次且在地圖狀態，PressReturn 退出")
+                                logger.info(f"[DungeonMover] chest_auto: 靜止且在地圖狀態，PressReturn 退出")
                                 PressReturn()
                                 Sleep(0.5)
+                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                    targetInfoList.pop(0)
+                                return self._cleanup_exit(DungeonState.Map)
+                            else:
+                                # 非地圖狀態，直接 pop 目標
+                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次，pop 目標")
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
                                 return self._cleanup_exit(DungeonState.Map)
@@ -3562,7 +3568,9 @@ def Factory():
 
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
-                                logger.info("[DungeonMover] 已在地圖狀態")
+                                logger.info("[DungeonMover] 已在地圖狀態，PressReturn 退出")
+                                PressReturn()
+                                Sleep(0.5)
                                 return self._cleanup_exit(DungeonState.Map)
                             
                             # Resume 檢查 (非 chest_auto)

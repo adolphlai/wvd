@@ -45,15 +45,18 @@ _start_chest_auto
 ```
 _monitor_move (is_chest_auto = True)
     │
-    ├─ 檢測 mapFlag（已在地圖狀態）
-    │   │
-    │   └─ 持續靜止 2 次
-    │       │
-    │       └─ pressreturn 離開地圖，pop 目標，返回 Map
+    ├─ 每次循環檢查
+    │   ├─ 偵測 notresure → pop 目標，返回 Map
+    │   ├─ 狀態轉換（戰鬥、寶箱等）→ 正常處理
+    │   └─ chest_resume: 每 5 秒點擊一次寶箱按鈕
     │
-    ├─ 偵測 notresure → pop 目標，返回 Map
-    │
-    └─ 其他狀態（戰鬥、寶箱等）→ 正常處理
+    └─ 靜止判定（連續 2 次 diff < 0.1）
+        │
+        ├─ 檢測 mapFlag（已在地圖狀態）
+        │   └─ PressReturn 離開地圖，pop 目標，返回 Map
+        │
+        └─ 無 mapFlag（主畫面狀態）
+            └─ 直接 pop 目標，返回 Map
 ```
 
 ---
@@ -66,7 +69,7 @@ _monitor_move (is_chest_auto = True)
 | 更新間隔 | 5 秒 | 3 秒 |
 | 搜索區域 | 固定 `[710,250,180,180]` | 依配置 |
 | 首次進入地城 | 跳過自動打開地圖 | 正常打開 |
-| 靜止判定 | 2 次 → pressreturn 離開 | 10 次 → 判定到達 |
+| 靜止判定 | 2 次 → pop 目標 | 10 次 → 判定到達 |
 
 ---
 
@@ -94,7 +97,8 @@ _monitor_move (is_chest_auto = True)
 | 情況 | 處理方式 |
 |------|---------|
 | 按鈕找不到 | 點擊盲點座標 `[459, 1248]` |
-| MAP 狀態持續靜止 2 次 | pressreturn 離開，pop 目標 |
+| 主畫面持續靜止 2 次 | 直接 pop 目標，返回 Map |
+| MAP 狀態持續靜止 2 次 | PressReturn 離開，pop 目標 |
 | 偵測到 `notresure` | 直接 pop 目標，返回 Map |
 
 ---
@@ -115,6 +119,7 @@ CHEST_AUTO_CLICK_INTERVAL = 5          # chest_auto 檢查間隔
 |------|---------|------|
 | 配置定義 | `resources/quest/quest.json` | 5-7, 20-22 等 |
 | TargetInfo 類 | `src/script.py` | 462-496 |
-| DungeonMover 類 | `src/script.py` | 3150-3633 |
+| DungeonMover 類 | `src/script.py` | 3150-3637 |
 | _start_chest_auto | `src/script.py` | 3273-3307 |
-| _monitor_move | `src/script.py` | 3380-3633 |
+| _monitor_move | `src/script.py` | 3381-3636 |
+| chest_auto 靜止處理 | `src/script.py` | 3549-3564 |
