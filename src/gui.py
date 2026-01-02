@@ -19,7 +19,7 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('1100x650')  # 加寬視窗以容納更寬的技能設定區域
+        self.geometry('800x640')  # 調整視窗大小以配合縮小的日誌區域
         
         self.title(self.TITLE)
 
@@ -597,11 +597,10 @@ class ConfigPanelApp(tk.Toplevel):
 
         # 儲存單位設定元件的參照
         self.ae_caster_rows = []
-        # 儲存類別變數
-        self.ae_caster_category_vars = []
+        # 原本的 self.ae_caster_category_vars 不再需要，因為改為局部變數綁定或直接存取
 
-        def update_skill_options_for_combo(category_var, skill_combo_first, skill_combo_after, i):
-            """根據類別更新首戰和二戰後的技能選項"""
+        def update_single_skill_combo(category_var, skill_combo, skill_var):
+            """根據類別更新單一技能下拉選單"""
             category = category_var.get()
             if category == "":
                 skill_options = [""]
@@ -613,18 +612,12 @@ class ConfigPanelApp(tk.Toplevel):
                 skill_options = ["", "attack"] + skills_from_folder
                 logger.debug(f"[技能選項] 類別={category}, 技能數={len(skills_from_folder)}")
 
-            # 更新首戰技能選項
-            skill_combo_first['values'] = skill_options
-            current_skill_first = getattr(self, f"ae_caster_{i}_skill_first_var").get()
-            if current_skill_first not in skill_options:
-                getattr(self, f"ae_caster_{i}_skill_first_var").set("")
-
-            # 更新二戰後技能選項
-            skill_combo_after['values'] = skill_options
-            current_skill_after = getattr(self, f"ae_caster_{i}_skill_after_var").get()
-            if current_skill_after not in skill_options:
-                getattr(self, f"ae_caster_{i}_skill_after_var").set("")
-
+            # 更新技能選項
+            skill_combo['values'] = skill_options
+            current_skill = skill_var.get()
+            if current_skill not in skill_options:
+                skill_var.set("")
+            
             self.save_config()
 
         # 創建 6 個單位的設定（每個單位佔 3 行：類別行 + 首戰行 + 二戰後行）
@@ -633,88 +626,122 @@ class ConfigPanelApp(tk.Toplevel):
         for i in range(1, 7):
             row_widgets = {}
 
-            # === 第一行：順序標籤 + 類別 ===
+            # === 第一行：順序標籤（原類別行已移除） ===
             row_widgets['label'] = ttk.Label(frame_ae_caster, text=f"順序 {i}:", font=("微軟雅黑", 9, "bold"))
             row_widgets['label'].grid(row=current_row, column=0, sticky=tk.W, pady=(8, 2))
 
-            # 類別下拉選單
-            category_var = tk.StringVar(value="")
-            self.ae_caster_category_vars.append(category_var)
-
-            ttk.Label(frame_ae_caster, text="類別").grid(row=current_row, column=1, sticky=tk.W, padx=(5, 2))
-            category_combo = ttk.Combobox(
-                frame_ae_caster, textvariable=category_var,
-                values=category_options, state="readonly", width=8
-            )
-            category_combo.grid(row=current_row, column=2, padx=2, sticky=tk.W, pady=(8, 2))
-            row_widgets['category_combo'] = category_combo
-
-            # === 第二行：首戰技能 + 等級 ===
+            # === 第二行：首戰技能設定 (類別 -> 技能 -> 等級) ===
             row_widgets['first_label'] = ttk.Label(frame_ae_caster, text="  首戰:", foreground="gray")
             row_widgets['first_label'].grid(row=current_row + 1, column=0, sticky=tk.W, pady=1)
 
-            ttk.Label(frame_ae_caster, text="技能").grid(row=current_row + 1, column=1, sticky=tk.W, padx=(5, 2))
+            # [首戰] 類別
+            first_category_var = tk.StringVar(value="")
+            row_widgets['first_category_label'] = ttk.Label(frame_ae_caster, text="類別")
+            row_widgets['first_category_label'].grid(row=current_row + 1, column=1, sticky=tk.W, padx=(5, 2))
+            
+            first_category_combo = ttk.Combobox(
+                frame_ae_caster, textvariable=first_category_var,
+                values=category_options, state="readonly", width=8
+            )
+            first_category_combo.grid(row=current_row + 1, column=2, padx=2, sticky=tk.W, pady=1)
+            row_widgets['first_category_combo'] = first_category_combo
+
+            # [首戰] 技能
+            row_widgets['first_skill_label'] = ttk.Label(frame_ae_caster, text="技能")
+            row_widgets['first_skill_label'].grid(row=current_row + 1, column=3, sticky=tk.W, padx=(5, 2))
+            
+            first_skill_var = getattr(self, f"ae_caster_{i}_skill_first_var")
             skill_first_combo = ttk.Combobox(
-                frame_ae_caster, textvariable=getattr(self, f"ae_caster_{i}_skill_first_var"),
+                frame_ae_caster, textvariable=first_skill_var,
                 values=[""], state="readonly", width=15
             )
-            skill_first_combo.grid(row=current_row + 1, column=2, padx=2, sticky=tk.W, pady=1)
+            skill_first_combo.grid(row=current_row + 1, column=4, padx=2, sticky=tk.W, pady=1)
             skill_first_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
             row_widgets['skill_first_combo'] = skill_first_combo
 
-            ttk.Label(frame_ae_caster, text="等級").grid(row=current_row + 1, column=3, sticky=tk.W, padx=(10, 2))
+            # 綁定首戰類別更新
+            first_category_combo.bind("<<ComboboxSelected>>", lambda e, cv=first_category_var, sc=skill_first_combo, sv=first_skill_var: update_single_skill_combo(cv, sc, sv))
+
+            # [首戰] 等級
+            row_widgets['first_level_label'] = ttk.Label(frame_ae_caster, text="等級")
+            row_widgets['first_level_label'].grid(row=current_row + 1, column=5, sticky=tk.W, padx=(5, 2))
             level_first_combo = ttk.Combobox(
                 frame_ae_caster, textvariable=getattr(self, f"ae_caster_{i}_level_first_var"),
-                values=level_options, state="readonly", width=6
+                values=level_options, state="readonly", width=5
             )
-            level_first_combo.grid(row=current_row + 1, column=4, padx=2, sticky=tk.W, pady=1)
+            level_first_combo.grid(row=current_row + 1, column=6, padx=2, sticky=tk.W, pady=1)
             level_first_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
             row_widgets['level_first_combo'] = level_first_combo
 
-            # === 第三行：二戰後技能 + 等級 ===
+
+            # === 第三行：二戰後技能設定 (類別 -> 技能 -> 等級) ===
             row_widgets['after_label'] = ttk.Label(frame_ae_caster, text="  二戰後:", foreground="gray")
             row_widgets['after_label'].grid(row=current_row + 2, column=0, sticky=tk.W, pady=1)
 
-            ttk.Label(frame_ae_caster, text="技能").grid(row=current_row + 2, column=1, sticky=tk.W, padx=(5, 2))
+            # [二戰後] 類別
+            after_category_var = tk.StringVar(value="")
+            row_widgets['after_category_label'] = ttk.Label(frame_ae_caster, text="類別")
+            row_widgets['after_category_label'].grid(row=current_row + 2, column=1, sticky=tk.W, padx=(5, 2))
+            
+            after_category_combo = ttk.Combobox(
+                frame_ae_caster, textvariable=after_category_var,
+                values=category_options, state="readonly", width=8
+            )
+            after_category_combo.grid(row=current_row + 2, column=2, padx=2, sticky=tk.W, pady=1)
+            row_widgets['after_category_combo'] = after_category_combo
+
+            # [二戰後] 技能
+            row_widgets['after_skill_label'] = ttk.Label(frame_ae_caster, text="技能")
+            row_widgets['after_skill_label'].grid(row=current_row + 2, column=3, sticky=tk.W, padx=(5, 2))
+            
+            after_skill_var = getattr(self, f"ae_caster_{i}_skill_after_var")
             skill_after_combo = ttk.Combobox(
-                frame_ae_caster, textvariable=getattr(self, f"ae_caster_{i}_skill_after_var"),
+                frame_ae_caster, textvariable=after_skill_var,
                 values=[""], state="readonly", width=15
             )
-            skill_after_combo.grid(row=current_row + 2, column=2, padx=2, sticky=tk.W, pady=1)
+            skill_after_combo.grid(row=current_row + 2, column=4, padx=2, sticky=tk.W, pady=1)
             skill_after_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
             row_widgets['skill_after_combo'] = skill_after_combo
 
-            ttk.Label(frame_ae_caster, text="等級").grid(row=current_row + 2, column=3, sticky=tk.W, padx=(10, 2))
+            # 綁定二戰後類別更新
+            after_category_combo.bind("<<ComboboxSelected>>", lambda e, cv=after_category_var, sc=skill_after_combo, sv=after_skill_var: update_single_skill_combo(cv, sc, sv))
+
+            # [二戰後] 等級
+            row_widgets['after_level_label'] = ttk.Label(frame_ae_caster, text="等級")
+            row_widgets['after_level_label'].grid(row=current_row + 2, column=5, sticky=tk.W, padx=(5, 2))
             level_after_combo = ttk.Combobox(
                 frame_ae_caster, textvariable=getattr(self, f"ae_caster_{i}_level_after_var"),
-                values=level_options, state="readonly", width=6
+                values=level_options, state="readonly", width=5
             )
-            level_after_combo.grid(row=current_row + 2, column=4, padx=2, sticky=tk.W, pady=1)
+            level_after_combo.grid(row=current_row + 2, column=6, padx=2, sticky=tk.W, pady=1)
             level_after_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
             row_widgets['level_after_combo'] = level_after_combo
 
-            # 綁定類別變更事件
-            idx = i  # 捕獲當前索引
-            category_combo.bind("<<ComboboxSelected>>",
-                lambda e, cv=category_var, scf=skill_first_combo, sca=skill_after_combo, idx=idx:
-                    update_skill_options_for_combo(cv, scf, sca, idx))
-
             self.ae_caster_rows.append(row_widgets)
 
-            # 初始化：根據已保存的技能反推類別
+            # 初始化：根據已保存的技能反推類別 (首戰)
             saved_skill_first = getattr(self, f"ae_caster_{i}_skill_first_var").get()
-            saved_skill_after = getattr(self, f"ae_caster_{i}_skill_after_var").get()
-            saved_skill = saved_skill_first or saved_skill_after
-            if saved_skill:
-                if saved_skill == "attack":
-                    category_var.set("普攻")
+            if saved_skill_first:
+                if saved_skill_first == "attack":
+                    first_category_var.set("普攻")
                 else:
                     for cat, skills in SKILLS_BY_CATEGORY.items():
-                        if saved_skill in skills:
-                            category_var.set(cat)
+                        if saved_skill_first in skills:
+                            first_category_var.set(cat)
                             break
-                # 更新技能選項列表
-                update_skill_options_for_combo(category_var, skill_first_combo, skill_after_combo, i)
+                update_single_skill_combo(first_category_var, skill_first_combo, getattr(self, f"ae_caster_{i}_skill_first_var"))
+
+            # 初始化：根據已保存的技能反推類別 (二戰後)
+            saved_skill_after = getattr(self, f"ae_caster_{i}_skill_after_var").get()
+            if saved_skill_after:
+                if saved_skill_after == "attack":
+                    after_category_var.set("普攻")
+                else:
+                    for cat, skills in SKILLS_BY_CATEGORY.items():
+                        if saved_skill_after in skills:
+                            after_category_var.set(cat)
+                            break
+                update_single_skill_combo(after_category_var, skill_after_combo, getattr(self, f"ae_caster_{i}_skill_after_var"))
 
             # 下一個單位的起始行（每個單位佔 3 行）
             current_row += 3
@@ -750,14 +777,14 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.auto_refill_check.grid(row=1, column=1, sticky=tk.W, pady=2)
 
-        # --- 整理揹包 ---
+        # --- 整理背包 ---
         row += 1
-        frame_organize = ttk.LabelFrame(tab, text="整理揹包", padding=5)
+        frame_organize = ttk.LabelFrame(tab, text="整理背包", padding=5)
         frame_organize.grid(row=row, column=0, sticky="ew", pady=5)
 
         self.organize_backpack_check = ttk.Checkbutton(
             frame_organize, variable=self.organize_backpack_enabled_var,
-            text="啟用整理揹包", command=self.update_organize_backpack_state,
+            text="啟用整理背包", command=self.update_organize_backpack_state,
             style="Custom.TCheckbutton"
         )
         self.organize_backpack_check.grid(row=0, column=0, padx=5)
@@ -1361,9 +1388,11 @@ class ConfigPanelApp(tk.Toplevel):
             self.auto_combat_mode_combo,
             self.dungeon_repeat_limit_spinbox,
             # 技能施放設定
+            # 技能施放設定
             self.ae_caster_interval_entry,
             self.ae_caster_count_combo,
-            *[row['category_combo'] for row in self.ae_caster_rows],
+            *[row['first_category_combo'] for row in self.ae_caster_rows],
+            *[row['after_category_combo'] for row in self.ae_caster_rows],
             *[row['skill_first_combo'] for row in self.ae_caster_rows],
             *[row['skill_after_combo'] for row in self.ae_caster_rows],
             *[row['level_first_combo'] for row in self.ae_caster_rows],
