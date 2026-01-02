@@ -1741,11 +1741,19 @@ def Factory():
             if setting._FORCESTOPING.is_set():
                 return State.Quit, DungeonState.Quit, screen
 
-            # [黑屏偵測] 首戰/二戰打斷自動戰鬥
-            # 當偵測到黑屏且 AE 手尚未觸發 AOE 時，提前開始點擊打斷
-            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）+ 非地城內啟動 + 非完全自動模式
+            # [黑屏偵測] 只在需要手動的戰鬥場次打斷自動戰鬥
+            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 非地城內啟動 + 黑屏 + 需要手動場次
             is_black = IsScreenBlack(screen)
-            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and not runtimeContext._MID_DUNGEON_START and is_black and setting._AUTO_COMBAT_MODE != "完全自動":
+            auto_combat_mode = setting._AUTO_COMBAT_MODE
+            manual_battles = {
+                "完全自動": 0,
+                "1 場後自動": 1,
+                "2 場後自動": 2,
+                "3 場後自動": 3,
+                "完全手動": -1
+            }.get(auto_combat_mode, 2)
+            should_interrupt_auto = (manual_battles == -1) or (runtimeContext._COMBAT_BATTLE_COUNT < manual_battles)
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and not runtimeContext._MID_DUNGEON_START and is_black and should_interrupt_auto:
                 # 檢查是否需要首戰打斷（任何順序有設定首戰技能）
                 need_first_combat_interrupt = any(
                     getattr(setting, f"_AE_CASTER_{i}_SKILL_FIRST", "") for i in range(1, 7)
@@ -2780,7 +2788,7 @@ def Factory():
         manual_battles = get_auto_combat_battles(auto_combat_mode)
         if manual_battles == -1:  # 完全手動
             return False
-        return battle_count >= manual_battles
+        return battle_count > manual_battles
 
     def cast_skill_by_category(category, skill_name, level="關閉"):
         """統一的技能施放函數
@@ -2919,6 +2927,7 @@ def Factory():
 
     def StateCombat():
         MonitorState.current_state = "Combat"
+        last_character_update = 0
         def update_combat_flag(scn):
             combat_templates = get_combat_active_templates()
             if combat_templates:
@@ -3069,8 +3078,11 @@ def Factory():
             
             if CheckIf(screen, 'flee'):
                 logger.info(f"[戰鬥] flee 出現，等待 {wait_count + 1} 次")
-                # 角色比對（flee 偵測成功後執行）
-                MonitorState.current_character = DetectCharacter(screen)
+                # 角色比對（flee 偵測成功後執行，節流避免過於頻繁）
+                now = time.time()
+                if now - last_character_update >= 1.0:
+                    MonitorState.current_character = DetectCharacter(screen)
+                    last_character_update = now
                 break
             Sleep(0.5)
         else:
@@ -3190,10 +3202,11 @@ def Factory():
         MAX_RESUME_RETRIES = 5
         RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
-        CHEST_AUTO_STILL_THRESHOLD = 3  # chest_auto 靜止判定次數
+        CHEST_AUTO_STILL_THRESHOLD = 5  # chest_auto 靜止判定次數
+        MONITOR_UPDATE_INTERVAL = 0.8  # 監控數值節流 (秒)
 
         # 轉向解卡設定
-        MAX_TURN_ATTEMPTS = 4
+        MAX_TURN_ATTEMPTS = 6
         
         def __init__(self):
             self.reset()
@@ -3207,6 +3220,7 @@ def Factory():
             self.resume_consecutive_count = 0
             self.last_resume_click_time = time.time()
             self.last_chest_auto_click_time = time.time()
+            self.last_monitor_update_time = 0
             self.is_gohome_mode = False
             self.current_target = None
             
@@ -3437,6 +3451,17 @@ def Factory():
                 # ========== C. 狀態檢查 ==========
                 # ========== C. 異常狀況預先檢查 (防止 IdentifyState 卡死) ==========
                 screen_pre = ScreenShot()
+
+                # 只在移動時更新監控相似度 (節流)
+                now = time.time()
+                if now - self.last_monitor_update_time >= self.MONITOR_UPDATE_INTERVAL:
+                    MonitorState.flag_dungFlag = GetMatchValue(screen_pre, 'dungFlag')
+                    MonitorState.flag_mapFlag = GetMatchValue(screen_pre, 'mapFlag')
+                    MonitorState.flag_chestFlag = GetMatchValue(screen_pre, 'chestFlag')
+                    MonitorState.flag_worldMap = GetMatchValue(screen_pre, 'worldmapflag')
+                    MonitorState.flag_chest_auto = GetMatchValue(screen_pre, 'chest_auto')
+                    MonitorState.flag_auto_text = GetMatchValue(screen_pre, 'AUTO')
+                    self.last_monitor_update_time = now
                 
                 # 1. 網路重試 / 異常彈窗
                 if TryPressRetry(screen_pre):
@@ -3561,7 +3586,7 @@ def Factory():
                     gray2 = cv2.cvtColor(self.last_screen, cv2.COLOR_BGR2GRAY)
                     diff = cv2.absdiff(gray1, gray2).mean() / 255
                     
-                    if diff < 0.1:
+                    if diff < 0.05:
                         self.still_count += 1
                         MonitorState.still_count = self.still_count  # 同步到監控
                         if is_chest_auto:
@@ -5426,6 +5451,28 @@ def Factory():
                     logger.info("pyscrcpy 串流已啟動，截圖將使用快速模式")
                 else:
                     logger.info("pyscrcpy 串流啟動失敗，將使用傳統 ADB 截圖")
+
+            # 檢查並啟動遊戲
+            package_name = "jp.co.drecom.wizardry.daphne"
+            try:
+                # 檢查遊戲是否在前台運行
+                current_focus = DeviceShell("dumpsys window | grep mCurrentFocus")
+                logger.debug(f"當前前台應用: {current_focus.strip()}")
+                
+                if package_name not in current_focus:
+                    logger.info("遊戲未在前台運行，正在啟動遊戲...")
+                    # 獲取主 Activity
+                    mainAct = DeviceShell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
+                    # 啟動遊戲
+                    logger.info("巫術, 啓動!")
+                    logger.debug(DeviceShell(f"am start -n {mainAct}"))
+                    # 等待遊戲載入
+                    logger.info("等待遊戲載入...")
+                    Sleep(15)  # 給遊戲足夠的啟動時間
+                else:
+                    logger.info("遊戲已在前台運行")
+            except Exception as e:
+                logger.warning(f"檢查/啟動遊戲時發生錯誤: {e}，繼續執行...")
 
             # 再次檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():

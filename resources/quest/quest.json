@@ -28,6 +28,21 @@
             ["press","AWD/AWD2F",[1,1],2]
         ]
     },
+    "DH-Church":{
+        "_TYPE":"dungeon",
+        "questName":"[刷怪]深雪教会区",
+        "_TARGETINFOLIST":[
+            ["position","左下",[240,810]],
+            ["position","左下",[130,400]],
+            ["position","右上",[500,930]],
+            ["chest_auto"],			
+            ["position","右上",[820,712]]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","stair_DH_Church","input swipe 650 900 650 250",2]
+        ]
+    },
     "Dist":{
         "_TYPE":"dungeon",
         "questName":"[寶箱]水路一號街",
