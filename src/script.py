@@ -1126,6 +1126,10 @@ def Factory():
         # 預設只返回原始目標
         return [target_name]
 
+    # [新增] 本地緩存包裝函數，確保腳本能正確調用 utils 的緩存邏輯
+    def _get_cached_template(shortPathOfTarget):
+        return LoadTemplateImage(shortPathOfTarget)
+
     def IsScreenBlack(screen, threshold=15):
         """檢測螢幕是否全黑（或接近全黑）
 
@@ -1739,9 +1743,9 @@ def Factory():
 
             # [黑屏偵測] 首戰/二戰打斷自動戰鬥
             # 當偵測到黑屏且 AE 手尚未觸發 AOE 時，提前開始點擊打斷
-            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）+ 非地城內啟動
+            # 條件：已確認進入地城 + AOE 尚未觸發 + 行動計數為 0 + 戰鬥次數 < 2（僅限前兩戰）+ 非地城內啟動 + 非完全自動模式
             is_black = IsScreenBlack(screen)
-            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and not runtimeContext._MID_DUNGEON_START and is_black:
+            if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and runtimeContext._COMBAT_BATTLE_COUNT < 2 and not runtimeContext._MID_DUNGEON_START and is_black and setting._AUTO_COMBAT_MODE != "完全自動":
                 # 檢查是否需要首戰打斷（任何順序有設定首戰技能）
                 need_first_combat_interrupt = any(
                     getattr(setting, f"_AE_CASTER_{i}_SKILL_FIRST", "") for i in range(1, 7)
@@ -1795,29 +1799,40 @@ def Factory():
                 # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
                 logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
 
-            # 動態掃描 combatActive 系列圖片
-            combat_active_config = [(t, DungeonState.Combat) for t in get_combat_active_templates()]
-            # 優先級順序：戰鬥 > 寶箱 > 地城 > 地圖
-            # 寶箱優先級高於地城，避免戰鬥結束時先偵測到 dungFlag 而走冗餘流程
-            identifyConfig = combat_active_config + [
-                ('chestFlag',     DungeonState.Chest),   # 寶箱優先
-                ('whowillopenit', DungeonState.Chest),   # 寶箱優先
-                ('dungFlag',      DungeonState.Dungeon),
-                ('mapFlag',       DungeonState.Map),
-                ]
-
-            # 更新 Flag 相似度到 MonitorState（供 GUI 即時顯示）
-            MonitorState.current_state = "Scanning"  # 標記正在識別中，確認循環有在跑
-            MonitorState.flag_dungFlag = GetMatchValue(screen, 'dungFlag')
-            MonitorState.flag_mapFlag = GetMatchValue(screen, 'mapFlag')
-            MonitorState.flag_chestFlag = GetMatchValue(screen, 'chestFlag')
-            MonitorState.flag_worldMap = GetMatchValue(screen, 'openWorldMap')
-            MonitorState.flag_chest_auto = GetMatchValue(screen, 'chest_auto')
-            MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
-            # combatActive 使用所有模板的最高匹配度
+            # [Optimization] 預先計算 combatActive (戰鬥偵測)
+            # 這是最耗時的部分，透過只計算一次並同時用於 Monitor 和 邏輯判斷 來優化效能
             combat_templates = get_combat_active_templates()
+            max_combat_val = 0
+            best_combat_pos = None
+            
             if combat_templates:
-                MonitorState.flag_combatActive = max(GetMatchValue(screen, t) for t in combat_templates)
+                for t in combat_templates:
+                    template = _get_cached_template(t)
+                    if template is None: continue
+                    
+                    try:
+                        res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+                        _, val, _, loc = cv2.minMaxLoc(res)
+                        if val > max_combat_val:
+                            max_combat_val = val
+                            best_combat_pos = [loc[0] + template.shape[1]//2, loc[1] + template.shape[0]//2]
+                    except:
+                        continue
+            
+            MonitorState.flag_combatActive = int(max_combat_val * 100)
+            
+            # 如果預先計算發現是戰鬥狀態 (>0.7)，直接返回，不用再跑後面的迴圈
+            if max_combat_val >= 0.70:
+                 elapsed_ms = (time.time() - state_check_start) * 1000
+                 logger.debug(f"[狀態識別] 匹配成功(預計算): combatActive -> Combat (耗時 {elapsed_ms:.0f} ms)")
+                 
+                 if not runtimeContext._DUNGEON_CONFIRMED:
+                     runtimeContext._DUNGEON_CONFIRMED = True
+                     logger.info("[狀態識別] 已確認進入地城")
+                 
+                 MonitorState.current_state = "Dungeon"
+                 MonitorState.current_dungeon_state = "Combat"
+                 return State.Dungeon, DungeonState.Combat, screen
 
             # 偵測到 AUTO 時，持續點擊直到消失
             if MonitorState.flag_auto_text >= 80:
@@ -1837,6 +1852,14 @@ def Factory():
                         logger.info("[AUTO] AUTO 已消失，停止點擊")
                         break
                     click_count += 1
+            
+            # 移除 combatActive 相關的配置，因為上面已經檢查過了
+            identifyConfig = [
+                ('chestFlag',     DungeonState.Chest),   # 寶箱優先
+                ('whowillopenit', DungeonState.Chest),   # 寶箱優先
+                ('dungFlag',      DungeonState.Dungeon),
+                ('mapFlag',       DungeonState.Map),
+                ]
 
             for pattern, state in identifyConfig:
                 # combatActive 和 dungFlag 使用較低閾值（串流品質問題）
@@ -2757,7 +2780,7 @@ def Factory():
         manual_battles = get_auto_combat_battles(auto_combat_mode)
         if manual_battles == -1:  # 完全手動
             return False
-        return battle_count > manual_battles
+        return battle_count >= manual_battles
 
     def cast_skill_by_category(category, skill_name, level="關閉"):
         """統一的技能施放函數
@@ -3167,10 +3190,10 @@ def Factory():
         MAX_RESUME_RETRIES = 5
         RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
-        CHEST_AUTO_STILL_THRESHOLD = 2  # chest_auto 靜止判定次數
+        CHEST_AUTO_STILL_THRESHOLD = 3  # chest_auto 靜止判定次數
 
         # 轉向解卡設定
-        MAX_TURN_ATTEMPTS = 3
+        MAX_TURN_ATTEMPTS = 4
         
         def __init__(self):
             self.reset()

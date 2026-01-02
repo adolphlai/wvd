@@ -347,10 +347,29 @@ def BuildQuestReflection():
         raise FileNotFoundError(f"{e}")
 ###########################################
 IMAGE_FOLDER = fr'resources/images/'
+
+# 全局模版快取 (In-Memory Cache)
+_TEMPLATE_CACHE = {}
+
 def LoadTemplateImage(shortPathOfTarget):
-    logger.trace(f"[LoadTemplate] {shortPathOfTarget}")
+    global _TEMPLATE_CACHE
+    
+    # 1. 檢查快取
+    if shortPathOfTarget in _TEMPLATE_CACHE:
+        # logger.trace(f"[LoadTemplate] Hit Cache: {shortPathOfTarget}")
+        return _TEMPLATE_CACHE[shortPathOfTarget]
+
+    logger.trace(f"[LoadTemplate] Loading from disk: {shortPathOfTarget}")
     pathOfTarget = ResourcePath(os.path.join(IMAGE_FOLDER + f"{shortPathOfTarget}.png"))
-    return LoadImage(pathOfTarget)
+    
+    # 2. 讀取並解碼
+    img = LoadImage(pathOfTarget)
+    
+    # 3. 存入快取 (即使是 None 也可以存，避免重複嘗試讀取不存在的檔案)
+    if img is not None:
+        _TEMPLATE_CACHE[shortPathOfTarget] = img
+        
+    return img
 
 # 快取 combatActive 圖片列表（避免每次都掃描資料夾）
 _COMBAT_ACTIVE_TEMPLATES_CACHE = None
