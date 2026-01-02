@@ -826,12 +826,14 @@ def Factory():
                     logger.warning("pyscrcpy 串流重啟失敗，將使用傳統 ADB 截圖")
     def DeviceShell(cmdStr):
         logger.trace(f"[DeviceShell] {cmdStr}")
+        MAX_ADB_RETRIES = 5  # 最大重試次數
+        adb_retry_count = 0
 
         while True:
             exception = None
             result = None
             completed = Event()
-            
+
             def adb_command_thread():
                 nonlocal exception, result
                 try:
@@ -840,25 +842,30 @@ def Factory():
                     exception = e
                 finally:
                     completed.set()
-            
+
             thread = Thread(target=adb_command_thread)
             thread.daemon = True
             thread.start()
-            
+
             try:
                 if not completed.wait(timeout=7):
                     # 線程超時未完成
                     logger.warning(f"ADB命令執行超時: {cmdStr}")
                     raise TimeoutError(f"ADB命令在{7}秒內未完成")
-                
+
                 if exception is not None:
                     raise exception
-                    
+
                 return result
             except (TimeoutError, RuntimeError, ConnectionResetError, cv2.error) as e:
-                logger.warning(f"ADB操作失敗 ({type(e).__name__}): {e}")
+                adb_retry_count += 1
+                logger.warning(f"ADB操作失敗 ({type(e).__name__}): {e} (重試 {adb_retry_count}/{MAX_ADB_RETRIES})")
+
+                if adb_retry_count >= MAX_ADB_RETRIES:
+                    logger.error(f"ADB 連續失敗 {MAX_ADB_RETRIES} 次，放棄重試")
+                    raise RuntimeError(f"ADB 連續失敗 {MAX_ADB_RETRIES} 次: {cmdStr}")
+
                 logger.info("嘗試重啓ADB服務...")
-                
                 ResetADBDevice()
                 time.sleep(1)
 
@@ -1499,7 +1506,9 @@ def Factory():
         pass
     def RestartableSequenceExecution(*operations):
         MonitorState.current_state = "Starting"
-        while True:
+        MAX_RESTART_RETRIES = 10  # 最大重啟次數
+        restart_count = 0
+        while restart_count < MAX_RESTART_RETRIES:
             try:
                 for op in operations:
                     # 在每個操作之前檢查停止信號
@@ -1509,12 +1518,15 @@ def Factory():
                     op()
                 return
             except RestartSignal:
-                logger.info("任務進度重置中...")
+                restart_count += 1
+                logger.info(f"任務進度重置中... (第 {restart_count}/{MAX_RESTART_RETRIES} 次)")
                 # 重置前也檢查停止信號
                 if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                     logger.info("重置過程中檢測到停止信號")
                     return
                 continue
+        logger.error(f"RestartableSequenceExecution 連續重啟 {MAX_RESTART_RETRIES} 次，放棄執行")
+        raise RuntimeError(f"任務序列執行失敗：連續重啟 {MAX_RESTART_RETRIES} 次")
     ##################################################################
 
     class State(Enum):
@@ -1587,12 +1599,14 @@ def Factory():
         Sleep(1)
 
         # 跳躍前嘗試調整因果
+        MAX_CSC_SWIPES = 30  # 最大滑動次數，防止無限循環
         while CheckIf(ScreenShot(), 'leap'):
             if CSC_symbol != None:
                 FindCoordsOrElseExecuteFallbackAndWait(CSC_symbol,'CSC',1)
                 last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
                 # 先關閉所有因果
-                while 1:
+                csc_swipe_count = 0
+                while csc_swipe_count < MAX_CSC_SWIPES:
                     Press(CheckIf(WrapImage(ScreenShot(),2,0,0),'didnottakethequest'))
                     DeviceShell(f"input swipe 150 500 150 400")
                     Sleep(1)
@@ -1602,10 +1616,14 @@ def Factory():
                         break
                     else:
                         last_scn = scn
+                    csc_swipe_count += 1
+                if csc_swipe_count >= MAX_CSC_SWIPES:
+                    logger.warning(f"因果關閉循環超過 {MAX_CSC_SWIPES} 次，強制退出")
                 # 然後調整每個因果
                 if CSC_setting!=None:
                     last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
-                    while 1:
+                    csc_adjust_count = 0
+                    while csc_adjust_count < MAX_CSC_SWIPES:
                         for option, r, g, b in CSC_setting:
                             Press(CheckIf(WrapImage(ScreenShot(),r,g,b),option))
                             Sleep(1)
@@ -1617,6 +1635,9 @@ def Factory():
                             break
                         else:
                             last_scn = scn
+                        csc_adjust_count += 1
+                    if csc_adjust_count >= MAX_CSC_SWIPES:
+                        logger.warning(f"因果調整循環超過 {MAX_CSC_SWIPES} 次，強制退出")
                 PressReturn()
                 Sleep(0.5)
             Press(CheckIf(ScreenShot(),'leap'))
@@ -2124,20 +2145,22 @@ def Factory():
             logger.info("步驟3: 開始整理物品")
             for item in items_to_organize:
                 item_path = f'Organize/{item}'
-                
+                MAX_ITEM_ORGANIZE = 50  # 單個物品最多整理次數
+                item_organize_count = 0
+
                 # 可能需要多次嘗試（如果有多個相同物品）
-                while True:
+                while item_organize_count < MAX_ITEM_ORGANIZE:
                     scn = ScreenShot()
                     item_pos = CheckIf(scn, item_path)
-                    
+
                     if not item_pos:
                         logger.info(f"沒有找到物品: {item}")
                         break  # 沒有找到物品，跳到下一個物品類型
-                    
+
                     logger.info(f"找到物品: {item}，位置: {item_pos}")
                     Press(item_pos)
                     Sleep(5)
-                    
+
                     # 點擊 putinstorage
                     scn = ScreenShot()
                     put_pos = CheckIf(scn, 'putinstorage')
@@ -2145,11 +2168,14 @@ def Factory():
                         Press(put_pos)
                         Sleep(5)
                         logger.info(f"已將 {item} 放入倉庫")
+                        item_organize_count += 1
                     else:
                         logger.warning("找不到 putinstorage 按鈕")
                         PressReturn()
                         Sleep(5)
                         break
+                if item_organize_count >= MAX_ITEM_ORGANIZE:
+                    logger.warning(f"物品 {item} 整理次數達到上限 {MAX_ITEM_ORGANIZE}，跳過")
             
             # 步驟4: 關閉 inventory 視窗
             logger.info("步驟4: 關閉 inventory")
@@ -3987,7 +4013,8 @@ def Factory():
         waitTimer = time.time()
         needRecoverBecauseCombat = False
         needRecoverBecauseChest = False
-        
+        resume_fail_counter = 0  # Resume 檢測失敗計數器，防止死循環
+
         nonlocal runtimeContext
         runtimeContext._SHOULDAPPLYSPELLSEQUENCE = True
         
@@ -4284,6 +4311,7 @@ def Factory():
                                         logger.warning("visibliityistoopoor，但繼續嘗試導航")
                                     dungState = DungeonState.Map
                                     resume_success = True
+                                    resume_fail_counter = 0  # 成功，重置計數器
                                     break
                                 else:
                                     logger.info("Resume優化: 未檢測到routenotfound")
@@ -4305,8 +4333,9 @@ def Factory():
                                     MonitorState.is_gohome_mode = False
                                     dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                                     resume_success = True
+                                    resume_fail_counter = 0  # 成功，重置計數器
                                     break
-                                
+
                                 # 畫面沒變化，準備重試
                                 logger.warning(f"Resume優化: 畫面無變化，準備重試 ({retry + 1}/{MAX_RESUME_RETRIES})")
                                 screen = screen_after  # 更新參考畫面
@@ -4322,8 +4351,9 @@ def Factory():
                                     MonitorState.is_gohome_mode = False
                                     dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
                                     resume_success = True
+                                    resume_fail_counter = 0  # 成功，重置計數器
                                     break
-                            
+
                             if not resume_success:
                                 # 5次Resume失敗
                                 # 檢查當前目標是否是樓梯：如果是樓梯，Resume失效代表換樓成功
@@ -4364,6 +4394,10 @@ def Factory():
                         else:
                             # 3次都沒檢測到Resume，打開地圖
                             logger.info("Resume優化: 3次均未檢測到Resume按鈕，打開地圖")
+                            resume_fail_counter += 1
+                            if resume_fail_counter >= 5:
+                                logger.warning(f"Resume 連續失敗 {resume_fail_counter} 次，疑似卡死，重啟遊戲")
+                                restartGame()
                             Press([777,150])
                             Sleep(1)
                             # 檢查能見度 - 如果太黑，嘗試緊急撤離
@@ -4754,12 +4788,17 @@ def Factory():
                     for i in range(setting._RESTINTERVEL):
                         logger.info(f"第{i+1}輪開始.")
                         secondcombat = False
-                        while 1:
+                        combat_loop_start = time.time()
+                        MAX_COMBAT_LOOP_TIME = 300  # 單輪最多 5 分鐘
+                        while time.time() - combat_loop_start < MAX_COMBAT_LOOP_TIME:
                             Press(FindCoordsOrElseExecuteFallbackAndWait(['icanstillgo','combatActive','combatActive_2'],['input swipe 400 400 400 100',[1,1]],1))
                             Sleep(1)
-                            while 1:
+                            inner_loop_count = 0
+                            MAX_INNER_LOOP = 200  # 內層循環最多 200 次
+                            while inner_loop_count < MAX_INNER_LOOP:
                                 scn=ScreenShot()
                                 if TryPressRetry(scn):
+                                    inner_loop_count += 1
                                     continue
                                 if CheckIf(scn,'icanstillgo'):
                                     break
@@ -4767,6 +4806,10 @@ def Factory():
                                     StateCombat()
                                 else:
                                     Press([1,1])
+                                inner_loop_count += 1
+                            if inner_loop_count >= MAX_INNER_LOOP:
+                                logger.warning(f"戰鬥內層循環超過 {MAX_INNER_LOOP} 次，強制退出")
+                                break
                             if not secondcombat:
                                 logger.info(f"第1場戰鬥結束.")
                                 secondcombat = True
@@ -4776,6 +4819,8 @@ def Factory():
                                 Press(CheckIf(ScreenShot(),'letswithdraw'))
                                 Sleep(1)
                                 break
+                        if time.time() - combat_loop_start >= MAX_COMBAT_LOOP_TIME:
+                            logger.warning(f"戰鬥循環超時 {MAX_COMBAT_LOOP_TIME} 秒，強制退出本輪")
                         logger.info(f"第{i+1}輪結束.")
                     RestartableSequenceExecution(
                         lambda:StateDungeon([TargetInfo('position','左上',[612,448])])
@@ -4985,14 +5030,19 @@ def Factory():
                         Sleep(1)
                         DeviceShell(f"input swipe 150 1300 150 200")
                         Sleep(2)
-                        while 1:
+                        MAX_SSC_SWIPES = 20  # 最大滑動次數
+                        ssc_swipe_count = 0
+                        while ssc_swipe_count < MAX_SSC_SWIPES:
                             pos = CheckIf(ScreenShot(),'SSC/Request')
                             if not pos:
                                 DeviceShell(f"input swipe 150 200 150 250")
                                 Sleep(1)
+                                ssc_swipe_count += 1
                             else:
                                 Press([pos[0]+300,pos[1]+150])
                                 break
+                        if ssc_swipe_count >= MAX_SSC_SWIPES:
+                            logger.warning(f"SSC 任務搜索超過 {MAX_SSC_SWIPES} 次，未找到任務")
                         FindCoordsOrElseExecuteFallbackAndWait('guildRequest',[1,1],1)
                         PressReturn()
                     RestartableSequenceExecution(
