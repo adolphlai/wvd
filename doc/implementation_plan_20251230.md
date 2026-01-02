@@ -132,6 +132,7 @@ flowchart TD
 2.  **狀態檢查 (`IdentifyState`)**:
     - 定期截圖並檢查是否進入 **戰鬥 (Combat)**、**寶箱 (Chest)** 或 **退出 (Quit)** 狀態。
     - 若偵測到上述狀態，暫停或終止移動，返回對應狀態。**重置 Soft Timeout 計時器**。
+    - **世界地圖 (openworldmap) 視為已離開地城**：在已確認進入地城後，偵測到世界地圖即回傳 `DungeonState.Quit`，讓移動監控立即結束並重置軟/硬超時計時（不等待回村）。
 
 3.  **靜止與卡死偵測**:
     - **畫面比對**: 比較前後幀的像素差異。
@@ -179,3 +180,10 @@ flowchart TD
 *   **場景 2 - 軟超時**: 模擬移動超過 60s，確認目標自動切換為 `gohome` 並開始撤離。
 *   **場景 3 - 硬超時**: 模擬 `gohome` 也卡住，總時間超過設定值 (90s)，人為觸發重啟。
 *   **場景 4 - 正常 Resume**: 模擬移動中出現 Resume 按鈕，確認能點擊並繼續移動，且不會誤觸超時（如果設計為 Resume 成功重置計時器，或者計時器夠長）。
+
+## 目前與實作差異（待處理）
+- **超時重置條件**：文件描述「偵測到 Combat/Chest/Quit 會重置 Soft Timeout」，但實作是直接退出監控，未在回傳前顯式重置。
+- **Resume 失敗觸發 gohome**：文件描述「Resume 多次失敗會切 gohome」，實作是「只警告，等待軟超時觸發 gohome」。
+- **監控整合完成度**：文件描述由 `DungeonMover` 統一取代 `StateMoving_CheckFrozen`，但實作仍多處呼叫 `StateMoving_CheckFrozen`。
+- **舊超時邏輯仍存在**：文件只描述分層超時（60/90），但 `StateMoving_CheckFrozen` 仍保留 60s 直接重啟的單層超時。
+- **openworldmap 退出路徑重疊**：文件已補上「openworldmap 視為離開地城」，實作在 `IdentifyState` 與 `DungeonMover` 皆有判斷，存在重複路徑。

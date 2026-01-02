@@ -339,6 +339,9 @@ class MonitorState:
     flag_chest_auto: int = 0
     flag_auto_text: int = 0
 
+    # 角色比對
+    current_character: str = "未找到"  # 當前比對到的角色名稱
+
     # 警告列表
     warnings: list = []
 
@@ -374,6 +377,7 @@ class MonitorState:
         cls.flag_worldMap = 0
         cls.flag_chest_auto = 0
         cls.flag_auto_text = 0
+        cls.current_character = "未找到"
         cls.warnings = []
 
     @classmethod
@@ -1153,6 +1157,56 @@ def Factory():
                 continue
         
         return int(best_val * 100)
+
+    def DetectCharacter(screenImage):
+        """偵測當前角色，比對 resources/images/character 資料夾內的圖片
+        
+        比對範圍: (0,0) 到 (242,133)
+        
+        Returns:
+            str: 比對到的角色名稱（不含副檔名），若未找到則返回 "未找到"
+        """
+        # ROI 區域: x=0, y=0, width=242, height=133
+        roi_x, roi_y = 0, 0
+        roi_w, roi_h = 242, 133
+        
+        # 裁切 ROI 區域
+        cropped = screenImage[roi_y:roi_y+roi_h, roi_x:roi_x+roi_w]
+        
+        # 取得角色圖片資料夾
+        character_dir = ResourcePath("resources/images/character")
+        if not os.path.isdir(character_dir):
+            return "未找到"
+        
+        # 掃描角色圖片
+        best_match = "未找到"
+        best_val = 0.80  # 最低門檻
+        
+        for filename in os.listdir(character_dir):
+            if not filename.lower().endswith('.png'):
+                continue
+            
+            template_path = os.path.join(character_dir, filename)
+            # 使用 numpy 讀取以支援中文檔名
+            try:
+                template = cv2.imdecode(np.fromfile(template_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+            except:
+                continue
+            if template is None:
+                continue
+            
+            try:
+                result = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                
+                if max_val > best_val:
+                    best_val = max_val
+                    best_match = os.path.splitext(filename)[0]
+            except:
+                continue
+        
+        return best_match
+
 
     def CheckIf(screenImage, shortPathOfTarget, roi = None, outputMatchResult = False, threshold = 0.80):
         # 檢查是否需要多模板匹配
@@ -2995,6 +3049,8 @@ def Factory():
             
             if CheckIf(screen, 'flee'):
                 logger.info(f"[戰鬥] flee 出現，等待 {wait_count + 1} 次")
+                # 角色比對（flee 偵測成功後執行）
+                MonitorState.current_character = DetectCharacter(screen)
                 break
             Sleep(0.5)
         else:
@@ -4392,34 +4448,51 @@ def Factory():
                                     else:
                                         dungState = DungeonState.Map
                         else:
-                            # 3次都沒檢測到Resume，打開地圖
-                            logger.info("Resume優化: 3次均未檢測到Resume按鈕，打開地圖")
+                            # 3次都沒檢測到Resume，重新識別狀態
+                            logger.info("Resume優化: 3次均未檢測到Resume按鈕，重新識別狀態")
                             resume_fail_counter += 1
                             if resume_fail_counter >= 5:
                                 logger.warning(f"Resume 連續失敗 {resume_fail_counter} 次，疑似卡死，重啟遊戲")
                                 restartGame()
-                            Press([777,150])
-                            Sleep(1)
-                            # 檢查能見度 - 如果太黑，嘗試緊急撤離
-                            if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                logger.warning("能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
-                                if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
-                                    logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
-                                    _panic_start = time.time()
-                                    while time.time() - _panic_start < 60:
-                                        if setting._FORCESTOPING.is_set(): break
-                                        Press(gohome_pos)
-                                        Sleep(0.5)
-                                        if not CheckIf(ScreenShot(), 'gohome'):
-                                            break
-                                    dungState = None
+                            
+                            # [Fix] 使用 IdentifyState 重新判斷當前狀態，避免在戰鬥中錯誤打開地圖
+                            s, dungState, scn = IdentifyState()
+                            
+                            # 如果識別到戰鬥或寶箱，直接進入對應狀態
+                            if dungState == DungeonState.Combat:
+                                logger.info("Resume優化: 識別到戰鬥狀態")
+                                # dungState 已設置，直接進入下一輪循環
+                            elif dungState == DungeonState.Chest:
+                                logger.info("Resume優化: 識別到寶箱狀態")
+                                # dungState 已設置，直接進入下一輪循環
+                            elif dungState == DungeonState.Dungeon or dungState is None:
+                                # 在 Dungeon 狀態或未識別到特定狀態，嘗試打開地圖
+                                logger.info("Resume優化: 未識別到戰鬥/寶箱，打開地圖")
+                                Press([777,150])
+                                Sleep(1)
+                                # 檢查能見度 - 如果太黑，嘗試緊急撤離
+                                if CheckIf(ScreenShot(), 'visibliityistoopoor'):
+                                    logger.warning("能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
+                                    if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
+                                        logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
+                                        _panic_start = time.time()
+                                        while time.time() - _panic_start < 60:
+                                            if setting._FORCESTOPING.is_set(): break
+                                            Press(gohome_pos)
+                                            Sleep(0.5)
+                                            if not CheckIf(ScreenShot(), 'gohome'):
+                                                break
+                                        dungState = None
+                                    else:
+                                        logger.warning("未找到 gohome，嘗試隨機移動脫困")
+                                        Press([1100, 360])
+                                        Sleep(2)
+                                        dungState = None
                                 else:
-                                    logger.warning("未找到 gohome，嘗試隨機移動脫困")
-                                    Press([1100, 360])
-                                    Sleep(2)
-                                    dungState = None
+                                    dungState = DungeonState.Map
                             else:
-                                dungState = DungeonState.Map
+                                # 其他狀態（如 Map），保持原狀態
+                                logger.info(f"Resume優化: 識別到其他狀態 {dungState}")
                     else:
                         # chest_auto 不需要打開地圖，直接回到 Map 狀態讓其專屬邏輯處理
                         if has_chest_auto:

@@ -3,8 +3,8 @@
         "_TYPE":"dungeon",
         "questName":"[寶箱]狼洞1f寶箱",
         "_TARGETINFOLIST":[
-            ["chest_auto"],
-            ["position","右上",[771,921]]
+            ["chest_auto"],		
+            ["position","右上",[771,921]]		
         ],
         "_preEOTcheck":"AWD/AWD",
         "_EOT":

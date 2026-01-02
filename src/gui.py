@@ -426,7 +426,7 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(self.monitor_frame, textvariable=self.monitor_total_efficiency_var, width=15).grid(row=4, column=3, sticky=tk.W)
 
         # 第六行：本地戰鬥 / 靜止計數
-        ttk.Label(self.monitor_frame, text="本地戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=0, sticky=tk.W, padx=2)
+        ttk.Label(self.monitor_frame, text="本次戰鬥:", font=("微軟雅黑", 9, "bold")).grid(row=5, column=0, sticky=tk.W, padx=2)
         self.monitor_battle_var = tk.StringVar(value="第 0 戰")
         ttk.Label(self.monitor_frame, textvariable=self.monitor_battle_var, width=12).grid(row=5, column=1, sticky=tk.W)
 
@@ -482,10 +482,22 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_flag_chest_auto_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_chest_auto_var, width=6)
         self.monitor_flag_chest_auto_label.grid(row=10, column=3, sticky=tk.W)
 
-        # 第十二行：警告區域
+        # 第十二行：AUTO比對
+        ttk.Label(self.monitor_frame, text="AUTO比對:", font=("微軟雅黑", 9, "bold")).grid(row=11, column=0, sticky=tk.W, padx=2)
+        self.monitor_flag_auto_var = tk.StringVar(value="0%")
+        self.monitor_flag_auto_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_auto_var, width=6)
+        self.monitor_flag_auto_label.grid(row=11, column=1, sticky=tk.W)
+
+        # 第十三行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
-        self.monitor_warning_label.grid(row=11, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+        self.monitor_warning_label.grid(row=12, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+
+        # 第十四行：角色比對
+        ttk.Label(self.monitor_frame, text="角色:", font=("微軟雅黑", 9, "bold")).grid(row=13, column=0, sticky=tk.W, padx=2)
+        self.monitor_character_var = tk.StringVar(value="未找到")
+        self.monitor_character_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_character_var, width=20)
+        self.monitor_character_label.grid(row=13, column=1, columnspan=3, sticky=tk.W)
 
         # 保留未顯示但被引用的變數
         self.monitor_dungeon_state_var = tk.StringVar(value="-")
@@ -1300,11 +1312,19 @@ class ConfigPanelApp(tk.Toplevel):
             self.monitor_flag_chest_auto_var.set(f"{ca}%")
             self.monitor_flag_chest_auto_label.configure(foreground="red" if ca >= 80 else "black")
 
+            # AUTO 比對：閾值 80%
+            a = MonitorState.flag_auto_text
+            self.monitor_flag_auto_var.set(f"{a}%")
+            self.monitor_flag_auto_label.configure(foreground="red" if a >= 80 else "black")
+
             # 更新警告
             if MonitorState.warnings:
                 self.monitor_warning_var.set(" | ".join(MonitorState.warnings))
             else:
                 self.monitor_warning_var.set("")
+
+            # 更新角色比對
+            self.monitor_character_var.set(MonitorState.current_character or "未找到")
         except Exception as e:
             logger.debug(f"監控更新異常: {e}")
 
