@@ -1909,12 +1909,7 @@ def Factory():
                         MonitorState.current_dungeon_state = None
                         return State.Dungeon, None, ScreenShot()
 
-            if CheckIf(screen, "worldmapflag") and runtimeContext._DUNGEON_CONFIRMED:
-                runtimeContext._DUNGEON_CONFIRMED = False
-                logger.info("[狀態識別] 偵測到 worldmapflag，視為離開地城，回傳 Quit")
-                MonitorState.current_state = "Dungeon"
-                MonitorState.current_dungeon_state = "Quit"
-                return State.Dungeon, DungeonState.Quit, screen
+
 
             if pos:=CheckIf(screen,"openworldmap"):
                 if runtimeContext._DUNGEON_CONFIRMED:
@@ -1964,6 +1959,67 @@ def Factory():
                     return State.Inn,DungeonState.Quit, screen
                 elif CheckIf(scn,'dungFlag'):
                     return State.Dungeon,None, screen
+
+            if CheckIf(screen, "Deepsnow", threshold=0.7):
+                logger.info(f"[狀態識別] 發現 Deepsnow (低閾值觸發), 嘗試進入...")
+                FindCoordsOrElseExecuteFallbackAndWait(['Inn','dungFlag'],['Deepsnow',[1,1]],1)
+                if CheckIf(scn:=ScreenShot(),'Inn'):
+                    MonitorState.current_state = "Inn"
+                    MonitorState.current_dungeon_state = "Quit"
+                    return State.Inn, DungeonState.Quit, screen
+                elif CheckIf(scn,'dungFlag'):
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = None
+                    return State.Dungeon, None, screen
+
+            # [新增] 通用世界地圖處理 (放在特定城鎮判斷之後)
+            # 這段邏輯是為了防止 openworldmap 判斷失敗時的長時間等待
+            # 它模仿了 fallback 的縮放與確認邏輯，但改為在第一時間執行
+            if CheckIf(screen, "worldmapflag"):
+                if runtimeContext._DUNGEON_CONFIRMED:
+                    runtimeContext._DUNGEON_CONFIRMED = False
+                    logger.info("[狀態識別] 偵測到 worldmapflag，視為離開地城，回傳 Quit")
+                    MonitorState.current_state = "Dungeon"
+                    MonitorState.current_dungeon_state = "Quit"
+                    return State.Dungeon, DungeonState.Quit, screen
+                else:
+                    logger.info("[狀態識別] 偵測到 worldmapflag (無地城確認)，嘗試處理回城或接續")
+                    
+                    if not should_skip_return_to_town():
+                         # [關鍵] 複製 fallback 的縮放與確認邏輯
+                         logger.info("檢測到世界地圖, 嘗試縮放並返回城市...")
+                         for _ in range(3):
+                             Press([100,1500])
+                             Sleep(0.5)
+                         Press([250,1500])
+                         Sleep(1)
+                         
+                         # 強制使用 ADB 截圖
+                         scn = _ScreenShot_ADB()
+                         if pos := CheckIf(scn, 'Deepsnow'):
+                             logger.info(f"點擊 Deepsnow 返回城市 (位置: {pos})")
+                             Press(pos)
+                             Sleep(2)
+                             return IdentifyState()
+                         else:
+                             # 找不到 Deepsnow
+                             logger.info("找不到 Deepsnow, 嘗試關閉世界地圖")
+                             PressReturn()
+                             Sleep(1)
+                             return IdentifyState()
+                    else:
+                        # 跳過回城，繼續刷地城
+                        reset_ae_caster_flags()
+                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+                        for info in quest._EOT:
+                            if info[1] == "intoWorldMap": continue
+                            else:
+                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                                if info[0] == "press": Press(pos)
+                        Sleep(2)
+                        MonitorState.current_state = "Dungeon"
+                        MonitorState.current_dungeon_state = None
+                        return State.Dungeon, None, ScreenShot()
 
             if (CheckIf(screen,'Inn')):
                 return State.Inn, None, screen
@@ -3111,7 +3167,8 @@ def Factory():
         MAX_RESUME_RETRIES = 5
         RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
-        
+        CHEST_AUTO_STILL_THRESHOLD = 2  # chest_auto 靜止判定次數
+
         # 轉向解卡設定
         MAX_TURN_ATTEMPTS = 3
         
@@ -3484,36 +3541,28 @@ def Factory():
                     if diff < 0.1:
                         self.still_count += 1
                         MonitorState.still_count = self.still_count  # 同步到監控
-                        logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
-                        
+                        if is_chest_auto:
+                            logger.info(f"[DungeonMover] chest_auto 靜止 {self.still_count}/{self.CHEST_AUTO_STILL_THRESHOLD} (diff={diff:.3f})")
+                        else:
+                            logger.debug(f"[DungeonMover] 靜止 {self.still_count}/{self.STILL_REQUIRED}")
+
+                        # chest_auto 特殊處理：6次靜止 + mapFlag = PressReturn 退出
+                        if is_chest_auto and self.still_count >= self.CHEST_AUTO_STILL_THRESHOLD:
+                            logger.info(f"[DungeonMover] chest_auto 靜止達 {self.still_count} 次，檢查 mapFlag")
+                            if CheckIf(screen, 'mapFlag'):
+                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次且在地圖狀態，PressReturn 退出")
+                                PressReturn()
+                                Sleep(0.5)
+                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                    targetInfoList.pop(0)
+                                return self._cleanup_exit(DungeonState.Map)
+
                         if self.still_count >= self.STILL_REQUIRED:
                             logger.info(f"[DungeonMover] 連續靜止 {self.STILL_REQUIRED} 次")
-                            
+
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
                                 logger.info("[DungeonMover] 已在地圖狀態")
-                                
-                                # chest_auto 特殊處理：地圖已開但找不到按鈕
-                                if is_chest_auto:
-                                    # 增加地圖靜止計數（使用 resume_consecutive_count 復用）
-                                    self.resume_consecutive_count += 1
-                                    logger.info(f"[DungeonMover] chest_auto 地圖靜止 {self.resume_consecutive_count}/3")
-                                    
-                                    if self.resume_consecutive_count >= 3:
-                                        # 連續 3 次找不到，移除 chest_auto 目標
-                                        logger.warning("[DungeonMover] chest_auto 連續 3 次找不到，移除目標繼續")
-                                        if targetInfoList and targetInfoList[0].target == 'chest_auto':
-                                            targetInfoList.pop(0)
-                                        return self._cleanup_exit(DungeonState.Map)
-                                    
-                                    # 嘗試再次點擊預設位置
-                                    logger.info("[DungeonMover] 嘗試點擊 chest_auto 預設區域")
-                                    Press([800, 340])  # 預設位置
-                                    Sleep(1)
-                                    self.still_count = 0  # 重置靜止計數
-                                    self.last_screen = None
-                                    continue
-                                
                                 return self._cleanup_exit(DungeonState.Map)
                             
                             # Resume 檢查 (非 chest_auto)
@@ -3567,6 +3616,8 @@ def Factory():
                                 return self._cleanup_exit(DungeonState.Map)
                     else:
                         # 畫面有變化
+                        if is_chest_auto and self.still_count > 0:
+                            logger.info(f"[DungeonMover] chest_auto 畫面變化 (diff={diff:.3f})，靜止計數重置")
                         if self.still_count > 0:
                             self.still_count = max(0, self.still_count - 1)
                         if self.resume_consecutive_count > 0:
@@ -3814,7 +3865,7 @@ def Factory():
                 if dungflag_consecutive_count >= DUNGFLAG_CONFIRM_REQUIRED:
                     logger.info(f"[StateChest] dungFlag 已連續穩定確認 {dungflag_consecutive_count} 次，畫面無彈窗幹擾，開箱流程結束")
                     return DungeonState.Dungeon
-                
+
                 # [優化] 即使看到 dungFlag，也不馬上退出，而是繼續執行下方的 Spam Click
                 # 這樣可以利用主循環的點擊能力來消除潛在的殘留彈窗
                 logger.debug(f"[StateChest] 檢測到 dungFlag ({dungflag_consecutive_count}/5)，繼續執行清理點擊以確保彈窗關閉...")
@@ -3883,17 +3934,37 @@ def Factory():
 
             # [優化] 突發連點 (Burst Click) - 減少次數和間隔
             # 從 5次x0.1s 改為 3次x0.05s，節省約 0.35s/循環
-            
-            # [新增] 黑幕檢測：如果畫面太暗，可能正在進入戰鬥，停止點擊
+
+            # 黑幕檢測：如果畫面太暗，可能正在進入戰鬥，停止點擊
             screen_brightness = scn.mean()
             if screen_brightness < 30:
                 logger.info(f"[StateChest] 偵測到黑幕 (亮度={screen_brightness:.1f})，可能正在進入戰鬥，停止點擊")
                 return DungeonState.Combat
-            
-            logger.debug(f"[StateChest] 執行 Burst Click (3次) - has_interaction={has_interaction}, dungFlag計數={dungflag_consecutive_count}")
+
+            logger.debug(f"[StateChest] 執行 Burst Click (3次) - has_interaction={has_interaction}")
             for _ in range(3):
                 Press(disarm)
                 Sleep(0.05)
+
+            # AUTO 偵測：偵測到 AUTO 時持續點擊直到消失
+            auto_match = GetMatchValue(scn, 'AUTO')
+            if auto_match >= 80:
+                logger.info(f"[StateChest] 偵測到 AUTO (匹配度={auto_match:.0f}%)，開始連續點擊")
+                auto_click_count = 0
+                while auto_click_count < 10:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return None
+                    # 連點 3 下清對話
+                    for _ in range(3):
+                        Press(disarm)
+                        Sleep(0.05)
+                    Sleep(0.1)
+                    scn = ScreenShot()
+                    auto_match = GetMatchValue(scn, 'AUTO')
+                    if auto_match < 80:
+                        logger.info("[StateChest] AUTO 已消失，停止點擊")
+                        break
+                    auto_click_count += 1
     def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
