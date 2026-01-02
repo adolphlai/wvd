@@ -2568,6 +2568,8 @@ def Factory():
                     scn = ScreenShot()
 
             # 判斷技能類型
+
+            # 判斷技能類型
             is_single_target = skill not in ALL_AOE_SKILLS
             
             if is_single_target:
@@ -2645,15 +2647,19 @@ def Factory():
         # 如果設置了連續刷地城次數
         repeat_limit = setting._DUNGEON_REPEAT_LIMIT
         if repeat_limit > 0:
-            runtimeContext._DUNGEON_REPEAT_COUNT += 1
-            current_count = runtimeContext._DUNGEON_REPEAT_COUNT
+            # 只在第一次調用時遞增計數器（避免重複調用時重複遞增）
+            # 使用 _MEET_CHEST_OR_COMBAT 作為標記，因為完成地城後這個flag為True
+            # 回城後會在 State.Inn 中重置為 False
+            current_count = runtimeContext._DUNGEON_REPEAT_COUNT + 1
             
             if current_count < repeat_limit:
                 logger.info(f"[連續刷地城] 第 {current_count}/{repeat_limit} 次，跳過回城")
+                runtimeContext._DUNGEON_REPEAT_COUNT = current_count  # 更新計數器
                 return True
             else:
                 logger.info(f"[連續刷地城] 已達上限 {repeat_limit} 次，回城休息")
-                runtimeContext._DUNGEON_REPEAT_COUNT = 0  # 重置計數器
+                # 不在這裡重置計數器，而是在 State.Inn 中重置
+                runtimeContext._DUNGEON_REPEAT_COUNT = current_count  # 先更新到上限值
                 return False
         
         # 預設：需要回城
@@ -2758,9 +2764,12 @@ def Factory():
             scn = ScreenShot()
             
             # 處理技能等級
+            # 處理技能等級
+            # 處理技能等級
             SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
             if level != "關閉" and level in SKILL_LEVEL_X:
-                lv1_pos = CheckIf(scn, 'lv1_selected', roi=[[0, 1188, 900, 112]])
+                # 使用 spellskill/lv1，移除 ROI 以適應不同解析度 (原 ROI y只到1300，實際可能在1301+)
+                lv1_pos = CheckIf(scn, 'spellskill/lv1', threshold=0.8)
                 if lv1_pos:
                     logger.info(f"[技能施放] 升級技能到 {level}")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
@@ -4447,6 +4456,8 @@ def Factory():
                         # 回城後一定執行 StateInn（旅店休息間隔已整合到 should_skip_return_to_town）
                         logger.info("休息時間到!")
                         runtimeContext._MEET_CHEST_OR_COMBAT = False
+                        # 重置連續刷地城計數器（在執行完 StateInn 之後）
+                        runtimeContext._DUNGEON_REPEAT_COUNT = 0
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
