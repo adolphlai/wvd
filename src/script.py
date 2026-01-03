@@ -3634,9 +3634,10 @@ def Factory():
                     
                     # 低血量恢復檢查（啟用時觸發）
                     if setting._LOWHP_RECOVER and MonitorState.flag_low_hp:
-                        logger.info("[DungeonMover] 偵測到低血量，觸發恢復流程...")
-                        # 返回 Map 狀態，讓 StateDungeon 處理恢復
-                        return self._cleanup_exit(DungeonState.Map)
+                        logger.info("[DungeonMover] 偵測到低血量，觸發強制恢復流程...")
+                        runtimeContext._FORCE_LOWHP_RECOVER = True
+                        # 返回 Dungeon 狀態，讓 StateDungeon 處理恢復
+                        return self._cleanup_exit(DungeonState.Dungeon)
                 
                 # 1. 網路重試 / 異常彈窗
                 if TryPressRetry(screen_pre):
@@ -4250,6 +4251,34 @@ def Factory():
                     logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                     break
                 case DungeonState.Dungeon:
+                    # --- 新增：低血量強制恢復邏輯 ---
+                    if runtimeContext._FORCE_LOWHP_RECOVER:
+                        logger.info("[StateDungeon] 檢測到低血量強制恢復標誌")
+                        
+                        # 1. 安全檢查：確認當前不是戰鬥或寶箱
+                        # 使用 IdentifyState (較慢但準確) 或 CheckIf (如果確定畫面)
+                        # 這裡使用 IdentifyState 來確保安全
+                        s, current_real_state, scn = IdentifyState()
+                        
+                        if current_real_state == DungeonState.Combat:
+                            logger.warning("[StateDungeon] 欲恢復但已進入戰鬥，轉移至 Combat 狀態 (恢復將在戰後進行)")
+                            dungState = DungeonState.Combat
+                            # 注意：保留 _FORCE_LOWHP_RECOVER 標誌，讓戰後恢復邏輯決定是否強制恢復
+                            # 或者戰後邏輯會檢查 _SKIPCOMBATRECOVER，如果用戶設置跳過，則這裡可能需要額外處理
+                            # 但通常戰鬥優先，戰鬥後是否有空恢復取決於設定。
+                            # 為了安全，我們讓戰鬥先打完。
+                            continue
+                            
+                        elif current_real_state == DungeonState.Chest:
+                            logger.warning("[StateDungeon] 欲恢復但已進入寶箱，轉移至 Chest 狀態")
+                            dungState = DungeonState.Chest
+                            continue
+
+                        # 2. 若安全，則執行恢復
+                        logger.info("[StateDungeon] 環境安全，準備執行低血量恢復")
+                        shouldRecover = True 
+                        runtimeContext._FORCE_LOWHP_RECOVER = False # 清除標誌 (本次執行)
+
                     Press([1,1])
                     ########### COMBAT RESET
                     # 戰鬥結束了, 我們將一些設置復位
@@ -4691,6 +4720,7 @@ def Factory():
         # [Fix] 初始化戰鬥計數器，確保定點戰鬥邏輯正常運作
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._COMBAT_BATTLE_COUNT = 0
+        runtimeContext._FORCE_LOWHP_RECOVER = False  # 初始化低血量強制恢復標誌
 
         # 初始化監控狀態
         MonitorState.reset()
