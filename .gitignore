@@ -52,3 +52,7 @@ src/output.txt
 
 # Test tools (downloadable from official sources)
 test_minimap_package/
+detect/
+doc/
+src/*
+!src/*.py
