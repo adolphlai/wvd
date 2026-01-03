@@ -50,7 +50,7 @@ _monitor_move (is_chest_auto = True)
     │   ├─ 狀態轉換（戰鬥、寶箱等）→ 正常處理
     │   └─ chest_resume: 每 5 秒點擊一次寶箱按鈕
     │
-    └─ 靜止判定（連續 2 次 diff < 0.1）
+    └─ 靜止判定（連續 2 次 diff < 0.05）
         │
         ├─ 檢測 mapFlag（已在地圖狀態）
         │   └─ PressReturn 離開地圖，pop 目標，返回 Map

@@ -260,10 +260,59 @@ def SaveConfigToFile(config_data):
     except Exception as e:
         logger.error(f"保存配置時發生錯誤: {e}")
         return False
+def migrate_skill_config(config):
+    """遷移舊版配置到新版角色配置
+
+    新配置結構: {"first": {character, skill, level}, "after": {character, skill, level}}
+    """
+    needs_save = False
+
+    # 檢查是否有舊版順序配置
+    has_old_order_config = any(
+        f"_AE_CASTER_{i}_SKILL_FIRST" in config
+        for i in range(1, 7)
+    )
+
+    if has_old_order_config:
+        logger.warning("[配置遷移] 偵測到舊版順序配置，已升級為角色配置模式")
+        logger.warning("[配置遷移] 請重新設定技能配置")
+
+        # 初始化空的角色配置
+        config["_CHARACTER_SKILL_CONFIG"] = {
+            "first": {"character": "", "skill": "", "level": "關閉"},
+            "after": {"character": "", "skill": "", "level": "關閉"}
+        }
+
+        # 清理舊版欄位
+        for i in range(1, 7):
+            config.pop(f"_AE_CASTER_{i}_SKILL_FIRST", None)
+            config.pop(f"_AE_CASTER_{i}_LEVEL_FIRST", None)
+            config.pop(f"_AE_CASTER_{i}_SKILL_AFTER", None)
+            config.pop(f"_AE_CASTER_{i}_LEVEL_AFTER", None)
+        config.pop("_AE_CASTER_COUNT", None)
+        needs_save = True
+
+    # 若配置是舊版列表格式，轉換為新字典格式 - 已移除，因为 list 才是新格式
+    # if "_CHARACTER_SKILL_CONFIG" in config:
+    #    existing = config["_CHARACTER_SKILL_CONFIG"]
+    #    if isinstance(existing, list):
+    #        logger.warning("[配置遷移] 偵測到列表格式配置，已轉換為新格式")
+    #        config["_CHARACTER_SKILL_CONFIG"] = {
+    #            "first": {"character": "", "skill": "", "level": "關閉"},
+    #            "after": {"character": "", "skill": "", "level": "關閉"}
+    #        }
+    #        needs_save = True
+
+    if needs_save:
+        SaveConfigToFile(config)
+
+    return config
+
 def LoadConfigFromFile(config_file_path = CONFIG_FILE):
     if config_file_path == None:
         config_file_path = CONFIG_FILE
-    return LoadJson((config_file_path))
+    config = LoadJson((config_file_path))
+    return migrate_skill_config(config)
 def SetOneVarInConfig(var, value):
     data = LoadConfigFromFile()
     data[var] = value
