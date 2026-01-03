@@ -2366,7 +2366,7 @@ def Factory():
         return [os.path.splitext(os.path.basename(f))[0] for f in items]
     
     def StateOrganizeBackpack(num_characters):
-        """整理揹包功能：將 Organize 資料夾中的物品放入倉庫
+        """整理背包功能：將 Organize 資料夾中的物品放入倉庫
 
         流程：
         0. 點選 Inn 打開角色選擇畫面（等待看到 inventory 按鈕）
@@ -2388,10 +2388,10 @@ def Factory():
             logger.info("Organize 資料夾為空，跳過整理")
             return
 
-        logger.info(f"開始整理 {num_characters} 人的揹包，物品: {items_to_organize}")
+        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
 
         for char_index in range(num_characters):
-            logger.info(f"整理第 {char_index} 號角色揹包")
+            logger.info(f"整理第 {char_index} 號角色背包")
             
             # 角色座標（固定值）
             char_positions = [
@@ -2409,8 +2409,8 @@ def Factory():
             Press(char_pos)
             Sleep(5)  # 等待角色詳情載入
             
-            # 步驟2: 點選 inventory 打開揹包
-            logger.info("步驟2: 點選 inventory 打開揹包")
+            # 步驟2: 點選 inventory 打開背包
+            logger.info("步驟2: 點選 inventory 打開背包")
             scn = ScreenShot()
             inv_pos = CheckIf(scn, 'inventory')
             if inv_pos:
@@ -2473,7 +2473,7 @@ def Factory():
         PressReturn()
         Sleep(5)
 
-        logger.info("揹包整理完成")
+        logger.info("背包整理完成")
 
     def StateInn():
         MonitorState.current_state = "Inn"
@@ -2491,18 +2491,18 @@ def Factory():
             Press([1, 1])
             Sleep(2)
 
-        # 3. 整理揹包（可選）
+        # 3. 整理背包（可選）
         if setting._ORGANIZE_BACKPACK_ENABLED and setting._ORGANIZE_BACKPACK_COUNT > 0:
             try:
                 StateOrganizeBackpack(setting._ORGANIZE_BACKPACK_COUNT)
                 # StateOrganizeBackpack 內部已有 PressReturn 離開旅館
             except Exception as e:
-                logger.error(f"整理揹包失敗: {e}")
+                logger.error(f"整理背包失敗: {e}")
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
         else:
-            # 沒有整理揹包時，在這裡離開旅館
+            # 沒有整理背包時，在這裡離開旅館
             logger.info("離開旅館")
             PressReturn()
             Sleep(2)
@@ -3792,10 +3792,15 @@ def Factory():
 
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
-                                logger.info("[DungeonMover] 已在地圖狀態，PressReturn 退出")
+                                logger.warning("[DungeonMover] 已在地圖狀態且靜止，嘗試關閉地圖並觸發 GoHome")
                                 PressReturn()
                                 Sleep(0.5)
-                                return self._cleanup_exit(DungeonState.Map)
+                                if targetInfoList:
+                                    targetInfoList.pop(0)
+                                self.is_gohome_mode = True
+                                MonitorState.is_gohome_mode = True
+                                self.still_count = 0
+                                continue
                             
                             # Resume 檢查 (非 chest_auto)
                             if not is_chest_auto:
@@ -5835,7 +5840,7 @@ def TestFactory():
         return None
 
     def TestOrganizeBackpack(num_characters):
-        """測試整理揹包功能"""
+        """測試整理背包功能"""
         if num_characters <= 0:
             return
         
@@ -5844,15 +5849,15 @@ def TestFactory():
             logger.info("Organize 資料夾為空，跳過整理")
             return
         
-        logger.info(f"開始整理 {num_characters} 人的揹包，物品: {items_to_organize}")
+        logger.info(f"開始整理 {num_characters} 人的背包，物品: {items_to_organize}")
         
         for char_index in range(num_characters):
             # 檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                logger.info("收到停止信號，終止整理揹包")
+                logger.info("收到停止信號，終止整理背包")
                 return
             
-            logger.info(f"整理第 {char_index} 號角色揹包")
+            logger.info(f"整理第 {char_index} 號角色背包")
             
             # 角色座標（固定值）
             char_positions = [
@@ -5873,8 +5878,8 @@ def TestFactory():
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 return
             
-            # 步驟2: 點選 inventory 打開揹包
-            logger.info("步驟2: 點選 inventory 打開揹包")
+            # 步驟2: 點選 inventory 打開背包
+            logger.info("步驟2: 點選 inventory 打開背包")
             scn = ScreenShot()
             inv_pos = CheckIf(scn, 'inventory')
             if inv_pos:
@@ -5937,10 +5942,10 @@ def TestFactory():
                 PressReturn()
             Sleep(5)
 
-        logger.info("揹包整理完成")
+        logger.info("背包整理完成")
 
     def TestStateInn(num_characters, use_royal_suite=False):
-        """測試完整的 StateInn 流程：住宿 → 補給 → 整理揹包"""
+        """測試完整的 StateInn 流程：住宿 → 補給 → 整理背包"""
         logger.info("=== 開始測試 StateInn 流程 ===")
 
         # 1. 住宿
@@ -5965,18 +5970,18 @@ def TestFactory():
         if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
             return
 
-        # 3. 整理揹包
+        # 3. 整理背包
         if num_characters > 0:
-            logger.info("步驟3: 整理揹包")
+            logger.info("步驟3: 整理背包")
             try:
                 TestOrganizeBackpack(num_characters)
             except Exception as e:
-                logger.error(f"整理揹包失敗: {e}")
+                logger.error(f"整理背包失敗: {e}")
                 for _ in range(3):
                     PressReturn()
                     Sleep(1)
         else:
-            logger.info("步驟3: 跳過整理揹包（未設定角色數量）")
+            logger.info("步驟3: 跳過整理背包（未設定角色數量）")
 
         logger.info("=== StateInn 流程測試完成 ===")
 
