@@ -1123,6 +1123,27 @@ def Factory():
                 if templates:
                     return templates
         
+        # 對於 spellskill 路徑，掃描對應資料夾的所有技能圖片
+        if target_name.startswith('spellskill/'):
+            parts = target_name.split('/')
+            if len(parts) >= 2:  # 例如: spellskill/單體 或 spellskill/單體/14_鎖腹刺
+                category_folder = parts[1]  # 取得類別資料夾名稱
+                skill_folder_path = ResourcePath(os.path.join(IMAGE_FOLDER, 'spellskill', category_folder))
+                
+                if os.path.isdir(skill_folder_path):
+                    templates = []
+                    # 掃描資料夾內所有 .png 檔案
+                    for filename in sorted(os.listdir(skill_folder_path)):
+                        if filename.lower().endswith('.png'):
+                            # 構建相對路徑: spellskill/類別/檔名(不含.png)
+                            name_without_ext = filename.rsplit('.', 1)[0]
+                            template_path = f'spellskill/{category_folder}/{name_without_ext}'
+                            templates.append(template_path)
+                    
+                    if templates:
+                        logger.debug(f"[多模板] 找到 {len(templates)} 個技能模板於 {category_folder} 資料夾")
+                        return templates
+        
         # 預設只返回原始目標
         return [target_name]
 
@@ -2846,10 +2867,8 @@ def Factory():
         scn = ScreenShot()
         
         # 搜尋技能按鈕
+        # CheckIf 內部會透過 get_multi_templates 自動掃描整個資料夾的所有技能
         skill_pos = CheckIf(scn, image_path, threshold=0.70)
-        if not skill_pos:
-            # 嘗試舊路徑格式
-            skill_pos = CheckIf(scn, 'spellskill/' + skill_name, threshold=0.70)
         
         if skill_pos:
             logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
@@ -3372,13 +3391,62 @@ def Factory():
             """啟動一般移動 (position, harken, stair)"""
             target_info = targetInfoList[0]
             
-            # 確保地圖開啟
+            # 在嘗試打開地圖前，先檢查是否在戰鬥或寶箱（無法打開地圖的狀態）
             screen = ScreenShot()
+            
+            # 檢查戰鬥狀態（使用與 IdentifyState 完全相同的邏輯）
+            combat_templates = get_combat_active_templates()
+            max_combat_val = 0
+            if combat_templates:
+                for t in combat_templates:
+                    template = _get_cached_template(t)
+                    if template is None:
+                        continue
+                    try:
+                        res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+                        _, val, _, _ = cv2.minMaxLoc(res)
+                        if val > max_combat_val:
+                            max_combat_val = val
+                    except:
+                        continue
+            
+            if max_combat_val >= 0.70:
+                logger.info(f"[DungeonMover] 偵測到戰鬥狀態 (匹配度 {max_combat_val*100:.2f}%)，直接進入戰鬥")
+                return DungeonState.Combat
+            
+            # 檢查寶箱狀態
+            if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
+                logger.info("[DungeonMover] 偵測到寶箱狀態，直接進入寶箱")
+                return DungeonState.Chest
+            
+            # 確保地圖開啟
             if not CheckIf(screen, 'mapFlag'):
                 logger.info("[DungeonMover] 打開地圖")
                 Press([777, 150])
                 Sleep(1)
                 screen = ScreenShot()
+                
+                # 再次檢查戰鬥/寶箱（可能點擊地圖按鈕期間進入）
+                max_combat_val = 0
+                if combat_templates:
+                    for t in combat_templates:
+                        template = _get_cached_template(t)
+                        if template is None:
+                            continue
+                        try:
+                            res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+                            _, val, _, _ = cv2.minMaxLoc(res)
+                            if val > max_combat_val:
+                                max_combat_val = val
+                        except:
+                            continue
+                
+                if max_combat_val >= 0.70:
+                    logger.info(f"[DungeonMover] 打開地圖期間進入戰鬥 (匹配度 {max_combat_val*100:.2f}%)")
+                    return DungeonState.Combat
+                if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
+                    logger.info("[DungeonMover] 打開地圖期間進入寶箱")
+                    return DungeonState.Chest
                 
                 # 檢查暴風雪（無法開地圖）
                 if CheckIf(screen, 'visibliityistoopoor'):
