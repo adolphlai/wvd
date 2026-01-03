@@ -30,7 +30,7 @@
     },
     "DH-Church":{
         "_TYPE":"dungeon",
-        "questName":"[刷怪]深雪教会区",
+        "questName":"[刷怪]深雪教會區",
         "_TARGETINFOLIST":[
             ["position","左下",[240,810]],
             ["position","左下",[130,400]],
