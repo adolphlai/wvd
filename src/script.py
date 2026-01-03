@@ -269,6 +269,7 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
+            ["lowhp_recover_var",           tk.BooleanVar, "_LOWHP_RECOVER",             False],
             # 角色技能施放設定
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             # 自動戰鬥模式設定
@@ -3630,6 +3631,12 @@ def Factory():
                     # 血量偵測 (只在地城移動時更新)
                     MonitorState.flag_low_hp = CheckLowHP(screen_pre)
                     self.last_monitor_update_time = now
+                    
+                    # 低血量恢復檢查（啟用時觸發）
+                    if setting._LOWHP_RECOVER and MonitorState.flag_low_hp:
+                        logger.info("[DungeonMover] 偵測到低血量，觸發恢復流程...")
+                        # 返回 Map 狀態，讓 StateDungeon 處理恢復
+                        return self._cleanup_exit(DungeonState.Map)
                 
                 # 1. 網路重試 / 異常彈窗
                 if TryPressRetry(screen_pre):

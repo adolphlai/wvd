@@ -882,6 +882,13 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.skip_chest_recover_check.grid(row=0, column=1, padx=5)
 
+        self.lowhp_recover_check = ttk.Checkbutton(
+            frame_recover, text="低血量恢復",
+            variable=self.lowhp_recover_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.lowhp_recover_check.grid(row=0, column=2, padx=5)
+
         # --- 其他進階選項 ---
         row += 1
         frame_other = ttk.LabelFrame(tab, text="其他", padding=5)
