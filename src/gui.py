@@ -484,6 +484,11 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_flag_auto_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_flag_auto_var, width=6)
         self.monitor_flag_auto_label.grid(row=11, column=1, sticky=tk.W)
 
+        ttk.Label(self.monitor_frame, text="血量偵測:", font=("微軟雅黑", 9, "bold")).grid(row=11, column=2, sticky=tk.W, padx=(10, 2))
+        self.monitor_hp_status_var = tk.StringVar(value="--")
+        self.monitor_hp_status_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_hp_status_var, width=8)
+        self.monitor_hp_status_label.grid(row=11, column=3, sticky=tk.W)
+
         # 第十三行：警告區域
         self.monitor_warning_var = tk.StringVar(value="")
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
@@ -976,10 +981,35 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.screenshot_btn.grid(row=0, column=3, padx=10, pady=5)
 
+        self.capture_char_btn = ttk.Button(
+            frame_screenshot,
+            text="擷取角色(ROI)",
+            command=self._capture_character_roi
+        )
+        self.capture_char_btn.grid(row=0, column=4, padx=5, pady=5)
+
         self.screenshot_status_var = tk.StringVar(value="")
         ttk.Label(frame_screenshot, textvariable=self.screenshot_status_var, foreground="green").grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=2)
+
+        # ROI 設定區域 (讓你自定義裁切範圍)
+        frame_roi = ttk.LabelFrame(frame_screenshot, text="ROI 設定 (x,y,w,h)", padding=2)
+        frame_roi.grid(row=2, column=0, columnspan=6, sticky=tk.W, pady=2)
         
-        ttk.Label(frame_screenshot, text="※ 使用串流方式截圖，儲存至 resources/images/", foreground="gray").grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=2)
+        self.roi_x = tk.IntVar(value=89)
+        self.roi_y = tk.IntVar(value=53)
+        self.roi_w = tk.IntVar(value=106)
+        self.roi_h = tk.IntVar(value=47)
+        
+        ttk.Label(frame_roi, text="X:").pack(side=tk.LEFT, padx=2)
+        ttk.Entry(frame_roi, textvariable=self.roi_x, width=5).pack(side=tk.LEFT)
+        ttk.Label(frame_roi, text="Y:").pack(side=tk.LEFT, padx=2)
+        ttk.Entry(frame_roi, textvariable=self.roi_y, width=5).pack(side=tk.LEFT)
+        ttk.Label(frame_roi, text="W:").pack(side=tk.LEFT, padx=2)
+        ttk.Entry(frame_roi, textvariable=self.roi_w, width=5).pack(side=tk.LEFT)
+        ttk.Label(frame_roi, text="H:").pack(side=tk.LEFT, padx=2)
+        ttk.Entry(frame_roi, textvariable=self.roi_h, width=5).pack(side=tk.LEFT)
+        
+        ttk.Label(frame_screenshot, text="※ 使用串流方式截圖，儲存至 resources/images/character/", foreground="gray").grid(row=3, column=0, columnspan=5, sticky=tk.W, pady=2)
 
         row += 1
         ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試小地圖偵測：請確保遊戲在地城中\n3. 不需要啟動主任務",
@@ -1200,6 +1230,92 @@ class ConfigPanelApp(tk.Toplevel):
         thread = threading.Thread(target=run_capture, daemon=True)
         thread.start()
 
+    def _capture_character_roi(self):
+        """使用串流方式擷取角色 ROI 並儲存到 resources/images/character/"""
+        import threading
+        import cv2
+        import os
+
+        # 禁用按鈕防止重複點擊
+        self.capture_char_btn.config(state="disabled")
+        self.screenshot_status_var.set("正在連接...")
+
+        def run_capture():
+            try:
+                filename = self.screenshot_filename_var.get().strip()
+                if not filename:
+                    filename = "new_character"
+                
+                # 初始化設定
+                setting = FarmConfig()
+                config = LoadConfigFromFile()
+                for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
+                    setattr(setting, var_config_name, config.get(var_config_name, var_default_value))
+                
+                # 設置停止信號
+                from threading import Event
+                setting._FORCESTOPING = Event()
+                
+                # 使用 TestFactory 來連接並取得截圖
+                test_func = TestFactory()
+                
+                self.screenshot_status_var.set("正在連接並擷取...")
+                
+                # 呼叫 test factory 取得截圖 (使用串流方式)
+                frame = test_func(setting, "screenshot")
+                
+                if frame is None:
+                    self.screenshot_status_var.set("❌ 無法取得畫面")
+                    return
+                
+                # 讀取 ROI 設定
+                try:
+                    x = self.roi_x.get()
+                    y = self.roi_y.get()
+                    w = self.roi_w.get()
+                    h = self.roi_h.get()
+                except:
+                    self.screenshot_status_var.set("❌ ROI 格式錯誤")
+                    return
+
+                # 執行裁切 ROI
+                # frame[y:y+h, x:x+w]
+                roi_img = frame[y:y+h, x:x+w]
+                
+                if roi_img.size == 0:
+                     self.screenshot_status_var.set("❌ ROI 裁切失敗")
+                     return
+
+                # 決定儲存路徑
+                # 如果當前目錄下有 _internal (通常是打包後的 OneDir 環境)，優先使用
+                if os.path.exists("_internal"):
+                    base_dir = "_internal"
+                else:
+                    # 开发环境：src/gui.py -> ../resources
+                    base_dir = os.path.join(os.path.dirname(__file__), "..")
+                
+                save_dir = os.path.join(base_dir, "resources", "images", "character")
+                os.makedirs(save_dir, exist_ok=True)
+                save_path = os.path.join(save_dir, f"{filename}.png")
+                
+                # 使用 PIL 儲存，指定 DPI 為 144 (與手動處理的圖片一致)
+                from PIL import Image
+                img_pil = Image.fromarray(cv2.cvtColor(roi_img, cv2.COLOR_BGR2RGB))
+                img_pil.save(save_path, dpi=(144, 144))
+                
+                abs_path = os.path.abspath(save_path)
+                self.screenshot_status_var.set(f"✓ 已儲存角色: {filename}.png")
+                logger.info(f"角色截圖已儲存: {abs_path}")
+                
+            except Exception as e:
+                logger.error(f"角色截圖失敗: {e}")
+                self.screenshot_status_var.set(f"❌ 失敗: {e}")
+            finally:
+                self.capture_char_btn.config(state="normal")
+        
+        thread = threading.Thread(target=run_capture, daemon=True)
+        thread.start()
+
     def _start_monitor_update(self):
         """啟動監控面板定時更新"""
         self._update_monitor()
@@ -1392,6 +1508,18 @@ class ConfigPanelApp(tk.Toplevel):
             a_text, a_color = get_display_value(a, 80, 'AUTO')
             self.monitor_flag_auto_var.set(a_text)
             self.monitor_flag_auto_label.configure(foreground=a_color)
+
+            # 血量偵測：只在地城移動時顯示
+            if current_target == "position":  # 地城移動狀態
+                if MonitorState.flag_low_hp:
+                    self.monitor_hp_status_var.set("低血量")
+                    self.monitor_hp_status_label.configure(foreground="red")
+                else:
+                    self.monitor_hp_status_var.set("正常")
+                    self.monitor_hp_status_label.configure(foreground="green")
+            else:
+                self.monitor_hp_status_var.set("--")
+                self.monitor_hp_status_label.configure(foreground="gray")
 
             # 更新警告
             if MonitorState.warnings:

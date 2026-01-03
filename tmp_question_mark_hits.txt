@@ -1,7 +1,0 @@
-D:\Project\wvd\src\gui.py:14: self.INTRODUCTION = f"遇到問題? 請訪問:\n{self.URL} \n或加入Q羣: 922497356."
-D:\Project\wvd\src\script.py:1328: # CSC_symbol: 是否開啓因果? 如果開啓因果, 將用這個作爲是否點開ui的檢查標識
-D:\Project\wvd\src\upstream_script.py:886: logger.info("開始智能開箱(?)...")
-D:\Project\wvd\src\upstream_script.py:990: # CSC_symbol: 是否開啓因果? 如果開啓因果, 將用這個作爲是否點開ui的檢查標識
-D:\Project\wvd\src\logs\log_251231-002554.txt:7: 2025-12-31 00:25:55 - INFO - [gui:__init__:66] - 遇到問題? 請訪問:
-D:\Project\wvd\src\logs\log_251231-002554_verbose.txt:7: 2025-12-31 00:25:55 - INFO - [gui:__init__:66] - 遇到問題? 請訪問:
-total_hits=6

@@ -388,6 +388,7 @@ class MonitorState:
     flag_worldMap: int = 0
     flag_chest_auto: int = 0
     flag_auto_text: int = 0
+    flag_low_hp: bool = False             # 是否偵測到低血量角色
 
     # 角色比對
     current_character: str = "未找到"  # 當前比對到的角色名稱
@@ -1233,6 +1234,53 @@ def Factory():
         
         return int(best_val * 100)
 
+    def CheckLowHP(screenImage):
+        """檢查是否有角色處於低血量狀態 (紅色 10%~20%)
+        
+        ROI 座標 (6個角色):
+        Row 1: [(130,1300),(190,1330)], [(420,1300),(480,1330)], [(700,1300),(760,1330)]
+        Row 2: [(130,1485),(190,1505)], [(420,1485),(480,1505)], [(700,1485),(760,1505)]
+        
+        Returns:
+            bool: True if any character has low HP (red 10%~20%)
+        """
+        rois = [
+            (130, 1300, 60, 30),  # 角色0: x, y, w, h
+            (420, 1300, 60, 30),  # 角色1
+            (700, 1300, 60, 30),  # 角色2
+            (130, 1485, 60, 20),  # 角色3
+            (420, 1485, 60, 20),  # 角色4
+            (700, 1485, 60, 20),  # 角色5
+        ]
+        
+        for (x, y, w, h) in rois:
+            # 確保 ROI 在圖片範圍內
+            if y + h > screenImage.shape[0] or x + w > screenImage.shape[1]:
+                continue
+                
+            roi = screenImage[y:y+h, x:x+w]
+            hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+            
+            # 紅色偵測 (HSV 範圍)
+            red_lower1 = np.array([0, 100, 100])
+            red_upper1 = np.array([10, 255, 255])
+            red_lower2 = np.array([160, 100, 100])
+            red_upper2 = np.array([180, 255, 255])
+            
+            red_mask1 = cv2.inRange(hsv, red_lower1, red_upper1)
+            red_mask2 = cv2.inRange(hsv, red_lower2, red_upper2)
+            red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+            
+            total = roi.shape[0] * roi.shape[1]
+            red_pct = (cv2.countNonZero(red_mask) / total) * 100
+            
+            if 10 <= red_pct <= 20:
+                logger.debug(f"[血量偵測] 偵測到低血量，紅色比例: {red_pct:.1f}%")
+                return True
+        
+        return False
+
+
     def DetectCharacter(screenImage):
         """偵測當前角色，比對 resources/images/character 資料夾內的圖片
         
@@ -1914,6 +1962,7 @@ def Factory():
                  return State.Dungeon, DungeonState.Combat, screen
 
             # 偵測到 AUTO 時，持續點擊直到消失
+            MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
             if MonitorState.flag_auto_text >= 80:
                 logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
                 click_count = 0
@@ -3578,6 +3627,8 @@ def Factory():
                     MonitorState.flag_worldMap = GetMatchValue(screen_pre, 'worldmapflag')
                     MonitorState.flag_chest_auto = GetMatchValue(screen_pre, 'chest_auto')
                     MonitorState.flag_auto_text = GetMatchValue(screen_pre, 'AUTO')
+                    # 血量偵測 (只在地城移動時更新)
+                    MonitorState.flag_low_hp = CheckLowHP(screen_pre)
                     self.last_monitor_update_time = now
                 
                 # 1. 網路重試 / 異常彈窗
@@ -6055,6 +6106,10 @@ def TestFactory():
                 stair_coords = kwargs.get('stair_coords', [294, 239])
                 swipe_dir = kwargs.get('swipe_dir', '右上')
                 TestMinimapStairDetection(floor_image, stair_coords, swipe_dir)
+            elif test_type == "screenshot_adb":
+                # 強制使用 ADB 方式截圖
+                logger.info("強制使用 ADB 方式截圖 (高畫質)")
+                return ScreenShot()
             elif test_type == "screenshot":
                 # 嘗試使用串流截圖
                 global _scrcpy_stream
