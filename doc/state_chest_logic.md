@@ -76,7 +76,13 @@ graph TD
 
     %% Burst Click
     BurstClick[Burst Click<br/>3次 x 0.05s]
-    BurstClick --> MainLoop
+    BurstClick --> AutoCheck
+
+    %% AUTO Detection
+    AutoCheck{"AUTO?"}
+    AutoCheck -- "是" --> SpamClickAuto["連點消除 AUTO<br/>最多10次循環"]
+    SpamClickAuto --> MainLoop
+    AutoCheck -- "否" --> MainLoop
 
     style AbnormalCheck fill:#fff0f0
     style CombatCheck fill:#fff0f0
@@ -86,6 +92,7 @@ graph TD
     style OpeningCheck fill:#f0f0ff
     style BurstClick fill:#ffffd0
     style BlackScreen fill:#ffcccc
+    style AutoCheck fill:#e0e0e0
 ```
 
 ---
@@ -104,6 +111,7 @@ graph TD
 | 8 | 快進 / 網路重試 | 每 2 次 | 點擊後 continue |
 | 9 | 黑幕檢測 | 每次 | return Combat |
 | 10 | Burst Click (3次) | 每次 | 連點後回主循環 |
+| 11 | AUTO 偵測 | 每次 | 連點消除直到消失 |
 
 ---
 
@@ -128,6 +136,26 @@ graph TD
 - 進入 Spam Click 區塊
 - 執行快進/重試檢查
 - 執行 Burst Click
+- 執行 AUTO 偵測與消除
+
+---
+
+## AUTO 偵測與消除機制
+
+```python
+auto_match = GetMatchValue(scn, 'AUTO')
+if auto_match >= 80:
+    # 進入消除循環 (最多 10 次)
+    for _ in range(10):
+        # 連點 3 次
+        Press(disarm)
+        Sleep(0.05)
+        # 檢查是否消失
+        if GetMatchValue(scn, 'AUTO') < 80:
+            break
+```
+
+**目的**: 防止誤觸自動戰鬥導致畫面出現 `AUTO` 對話框或狀態，透過連點將其消除。
 
 ---
 

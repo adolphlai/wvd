@@ -223,6 +223,32 @@ def get_skill_image_path(category, skill_name):
 # 載入技能列表（程式啟動時執行）
 SKILLS_BY_CATEGORY = load_skills_from_folder()
 
+def scan_characters_from_folder():
+    """從資料夾掃描角色列表
+
+    掃描 resources/images/character/ 資料夾，
+    返回所有角色名稱（不含副檔名）。
+
+    Returns:
+        list: [角色名稱, ...]
+    """
+    character_dir = ResourcePath("resources/images/character")
+    characters = []
+
+    if os.path.isdir(character_dir):
+        for filename in os.listdir(character_dir):
+            if filename.lower().endswith('.png'):
+                # 移除副檔名取得角色名稱
+                char_name = os.path.splitext(filename)[0]
+                characters.append(char_name)
+        characters.sort()  # 按名稱排序
+
+    logger.debug(f"[角色載入] 找到 {len(characters)} 個角色: {characters}")
+    return characters
+
+# 載入角色列表（程式啟動時執行）
+AVAILABLE_CHARACTERS = scan_characters_from_folder()
+
 # 相容性：維持舊常數供現有程式碼使用（之後會移除）
 CC_SKILLS = SKILLS_BY_CATEGORY.get("群控", ["KANTIOS"])
 SECRET_AOE_SKILLS = SKILLS_BY_CATEGORY.get("秘術", ["SAoLABADIOS", "SAoLAERLIK", "SAoLAFOROS"])
@@ -243,39 +269,8 @@ CONFIG_VAR_LIST = [
             ["who_will_open_it_var",        tk.IntVar,     "_WHOWILLOPENIT",             0],
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
-            # 戰鬥順序設定（首戰 + 二戰後）
-            ["ae_caster_count_var", tk.IntVar, "_AE_CASTER_COUNT", 6],  # 設定單位數量：1~6
+            # 角色技能施放設定
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
-            # 順序 1
-            ["ae_caster_1_skill_first_var", tk.StringVar, "_AE_CASTER_1_SKILL_FIRST", ""],      # 順序 1 首戰技能
-            ["ae_caster_1_level_first_var", tk.StringVar, "_AE_CASTER_1_LEVEL_FIRST", "關閉"],  # 順序 1 首戰等級
-            ["ae_caster_1_skill_after_var", tk.StringVar, "_AE_CASTER_1_SKILL_AFTER", ""],      # 順序 1 二戰後技能
-            ["ae_caster_1_level_after_var", tk.StringVar, "_AE_CASTER_1_LEVEL_AFTER", "關閉"],  # 順序 1 二戰後等級
-            # 順序 2
-            ["ae_caster_2_skill_first_var", tk.StringVar, "_AE_CASTER_2_SKILL_FIRST", ""],
-            ["ae_caster_2_level_first_var", tk.StringVar, "_AE_CASTER_2_LEVEL_FIRST", "關閉"],
-            ["ae_caster_2_skill_after_var", tk.StringVar, "_AE_CASTER_2_SKILL_AFTER", ""],
-            ["ae_caster_2_level_after_var", tk.StringVar, "_AE_CASTER_2_LEVEL_AFTER", "關閉"],
-            # 順序 3
-            ["ae_caster_3_skill_first_var", tk.StringVar, "_AE_CASTER_3_SKILL_FIRST", ""],
-            ["ae_caster_3_level_first_var", tk.StringVar, "_AE_CASTER_3_LEVEL_FIRST", "關閉"],
-            ["ae_caster_3_skill_after_var", tk.StringVar, "_AE_CASTER_3_SKILL_AFTER", ""],
-            ["ae_caster_3_level_after_var", tk.StringVar, "_AE_CASTER_3_LEVEL_AFTER", "關閉"],
-            # 順序 4
-            ["ae_caster_4_skill_first_var", tk.StringVar, "_AE_CASTER_4_SKILL_FIRST", ""],
-            ["ae_caster_4_level_first_var", tk.StringVar, "_AE_CASTER_4_LEVEL_FIRST", "關閉"],
-            ["ae_caster_4_skill_after_var", tk.StringVar, "_AE_CASTER_4_SKILL_AFTER", ""],
-            ["ae_caster_4_level_after_var", tk.StringVar, "_AE_CASTER_4_LEVEL_AFTER", "關閉"],
-            # 順序 5
-            ["ae_caster_5_skill_first_var", tk.StringVar, "_AE_CASTER_5_SKILL_FIRST", ""],
-            ["ae_caster_5_level_first_var", tk.StringVar, "_AE_CASTER_5_LEVEL_FIRST", "關閉"],
-            ["ae_caster_5_skill_after_var", tk.StringVar, "_AE_CASTER_5_SKILL_AFTER", ""],
-            ["ae_caster_5_level_after_var", tk.StringVar, "_AE_CASTER_5_LEVEL_AFTER", "關閉"],
-            # 順序 6
-            ["ae_caster_6_skill_first_var", tk.StringVar, "_AE_CASTER_6_SKILL_FIRST", ""],
-            ["ae_caster_6_level_first_var", tk.StringVar, "_AE_CASTER_6_LEVEL_FIRST", "關閉"],
-            ["ae_caster_6_skill_after_var", tk.StringVar, "_AE_CASTER_6_SKILL_AFTER", ""],
-            ["ae_caster_6_level_after_var", tk.StringVar, "_AE_CASTER_6_LEVEL_AFTER", "關閉"],
             # 自動戰鬥模式設定
             ["auto_combat_mode_var",        tk.StringVar,  "_AUTO_COMBAT_MODE",          "2 場後自動"],  # 完全自動/1場後自動/2場後自動/完全手動
             ["dungeon_repeat_limit_var",    tk.IntVar,     "_DUNGEON_REPEAT_LIMIT",      0],             # 連續刷地城次數：0=每次回村
@@ -297,6 +292,11 @@ CONFIG_VAR_LIST = [
 class FarmConfig:
     for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
         locals()[var_config_name] = var_default_value
+
+    # 角色技能配置列表（動態載入）
+    # 格式: [{character, skill_first, level_first, skill_after, level_after}, ...]
+    _CHARACTER_SKILL_CONFIG = []
+
     def __init__(self):
         #### 面板配置其他
         self._FORCESTOPING = None
@@ -304,6 +304,41 @@ class FarmConfig:
         self._MSGQUEUE = None
         #### 底層接口
         self._ADBDEVICE = None
+
+    def get_skill_for_character(self, char_name, battle_num):
+        """取得角色的技能配置
+
+        Args:
+            char_name: 角色名稱
+            battle_num: 第幾戰 (1=首戰, 2+=二戰後)
+
+        Returns:
+            tuple: (skill, level) 或 ("attack", "關閉") 若未配置
+        """
+        # 配置結構: [{character, skill_first, level_first, skill_after, level_after}, ...]
+        config_list = self._CHARACTER_SKILL_CONFIG if isinstance(self._CHARACTER_SKILL_CONFIG, list) else []
+
+        skill = ""
+        level = "關閉"
+
+        # 遍歷列表查找匹配的角色
+        for char_config in config_list:
+            if char_config.get("character") == char_name:
+                if battle_num == 1:
+                    skill = char_config.get("skill_first", "")
+                    level = char_config.get("level_first", "關閉")
+                else:
+                    skill = char_config.get("skill_after", "")
+                    level = char_config.get("level_after", "關閉")
+                break
+
+        # 未配置時返回普攻
+        if not skill:
+            skill = "attack"
+            level = "關閉"
+
+        return skill, level
+
     def __getattr__(self, name):
         # 當訪問不存在的屬性時，拋出AttributeError
         raise AttributeError(f"FarmConfig對象沒有屬性'{name}'")
@@ -356,6 +391,9 @@ class MonitorState:
 
     # 角色比對
     current_character: str = "未找到"  # 當前比對到的角色名稱
+    
+    # Flag 更新時間戳
+    flag_updates: dict = {}
 
     # 警告列表
     warnings: list = []
@@ -392,6 +430,7 @@ class MonitorState:
         cls.flag_worldMap = 0
         cls.flag_chest_auto = 0
         cls.flag_auto_text = 0
+        cls.flag_updates = {}
         cls.current_character = "未找到"
         cls.warnings = []
 
@@ -1126,7 +1165,7 @@ def Factory():
         # 對於 spellskill 路徑，掃描對應資料夾的所有技能圖片
         if target_name.startswith('spellskill/'):
             parts = target_name.split('/')
-            if len(parts) >= 2:  # 例如: spellskill/單體 或 spellskill/單體/14_鎖腹刺
+            if len(parts) == 2:  # 例如: spellskill/單體 (僅當只指定類別時才掃描整個資料夾)
                 category_folder = parts[1]  # 取得類別資料夾名稱
                 skill_folder_path = ResourcePath(os.path.join(IMAGE_FOLDER, 'spellskill', category_folder))
                 
@@ -1282,6 +1321,15 @@ def Factory():
                 best_val = max_val
                 best_pos = [max_loc[0] + template.shape[1]//2, max_loc[1] + template.shape[0]//2]
                 best_template_name = template_name
+
+        # [Monitor Update] 循環結束後，確保 MonitorState 存的是最佳匹配值 (如果是目標 Flag)
+        if shortPathOfTarget in ['dungFlag', 'mapFlag', 'chestFlag', 'combatActive', 'worldMap', 'chest_auto', 'AUTO']:
+            flag_attr = f"flag_{shortPathOfTarget}" if shortPathOfTarget != 'AUTO' else 'flag_auto_text'
+            if hasattr(MonitorState, flag_attr):
+                setattr(MonitorState, flag_attr, int(best_val * 100))
+                # 記錄更新時間
+                if hasattr(MonitorState, 'flag_updates'):
+                    MonitorState.flag_updates[shortPathOfTarget] = time.time()
 
         if outputMatchResult and best_pos:
             cv2.imwrite("origin.png", screenImage)
@@ -1775,9 +1823,11 @@ def Factory():
             }.get(auto_combat_mode, 2)
             should_interrupt_auto = (manual_battles == -1) or (runtimeContext._COMBAT_BATTLE_COUNT < manual_battles)
             if runtimeContext._DUNGEON_CONFIRMED and not runtimeContext._AOE_TRIGGERED_THIS_DUNGEON and runtimeContext._COMBAT_ACTION_COUNT == 0 and not runtimeContext._MID_DUNGEON_START and is_black and should_interrupt_auto:
-                # 檢查是否需要首戰打斷（任何順序有設定首戰技能）
+                # 檢查是否需要首戰打斷（有設定任何角色的首戰技能）
+                skill_config_list = setting._CHARACTER_SKILL_CONFIG if isinstance(setting._CHARACTER_SKILL_CONFIG, list) else []
                 need_first_combat_interrupt = any(
-                    getattr(setting, f"_AE_CASTER_{i}_SKILL_FIRST", "") for i in range(1, 7)
+                    cfg.get("character") and cfg.get("skill_first")
+                    for cfg in skill_config_list
                 )
 
                 if need_first_combat_interrupt:
@@ -2871,6 +2921,7 @@ def Factory():
         skill_pos = CheckIf(scn, image_path, threshold=0.70)
         
         if skill_pos:
+            logger.info(f"[技能施放-DEBUG] 找到技能圖片 {image_path} 於 {skill_pos}")
             logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
             Press(skill_pos)
             Sleep(1)
@@ -3118,11 +3169,12 @@ def Factory():
                 screen = ScreenShot()
 
         # === 技能施放設定 ===
-        # 檢查是否有任何順序設定了技能（首戰或二戰後）
+        # 檢查是否有任何角色設定了技能（首戰或二戰後）
+        # 配置結構: [{character, skill_first, level_first, skill_after, level_after}, ...]
+        skill_config_list = setting._CHARACTER_SKILL_CONFIG if isinstance(setting._CHARACTER_SKILL_CONFIG, list) else []
         has_skill_config = any(
-            getattr(setting, f"_AE_CASTER_{i}_SKILL_FIRST", "") or
-            getattr(setting, f"_AE_CASTER_{i}_SKILL_AFTER", "")
-            for i in range(1, 7)
+            cfg.get("character") and (cfg.get("skill_first") or cfg.get("skill_after"))
+            for cfg in skill_config_list
         )
         # 觸發間隔判斷
         eff_counter = runtimeContext._COUNTERDUNG if runtimeContext._COUNTERDUNG > 0 else 1
@@ -3165,39 +3217,36 @@ def Factory():
         if runtimeContext._SUICIDE:
             Press(CheckIf(screen,'spellskill/'+'defend'))
         else:
-            # === 技能施放邏輯（首戰 / 二戰後）===
-            position = ((action_count - 1) % 6) + 1  # 當前角色順序 (1~6)
+            # === 技能施放邏輯（按角色識別）===
+            # 偵測當前角色
+            current_char = DetectCharacter(screen)
+            skill_type = "首戰" if battle_num == 1 else "二戰後"
 
-            # 根據戰鬥場次選擇首戰或二戰後技能
-            if battle_num == 1:
-                skill = getattr(setting, f"_AE_CASTER_{position}_SKILL_FIRST", "")
-                level = getattr(setting, f"_AE_CASTER_{position}_LEVEL_FIRST", "關閉")
-                skill_type = "首戰"
+            # 取得角色技能配置
+            if current_char == "未找到":
+                # 識別失敗：使用普攻
+                logger.warning(f"[技能施放] 角色識別失敗，使用普攻")
+                skill, level = "attack", "關閉"
             else:
-                skill = getattr(setting, f"_AE_CASTER_{position}_SKILL_AFTER", "")
-                level = getattr(setting, f"_AE_CASTER_{position}_LEVEL_AFTER", "關閉")
-                skill_type = "二戰後"
+                # 從配置取得技能
+                skill, level = setting.get_skill_for_character(current_char, battle_num)
 
             # 判斷技能類別
             category = None
-            if skill:
+            if skill and skill != "attack":
                 for cat, skills in SKILLS_BY_CATEGORY.items():
-                    if skill in skills or skill == "attack":
+                    if skill in skills:
                         category = cat
                         break
 
-            logger.info(f"[順序 {position}] 第{battle_num}戰（{skill_type}），技能: {skill or '未設定'}")
+            logger.info(f"[角色 {current_char}] 第{battle_num}戰（{skill_type}），技能: {skill or '普攻'}")
 
-            if skill == "attack":
+            if skill == "attack" or not category:
                 # 使用普攻
                 use_normal_attack()
             elif skill and category:
                 # 有設定技能，使用設定的技能
                 cast_skill_by_category(category, skill, level)
-            else:
-                # 未設定：使用單體技能 (fallback)
-                logger.info(f"[順序 {position}] 未設定，使用單體技能 fallback")
-                useForcedPhysicalSkill(screen, doubleConfirmCastSpell, f"順序{position}")
 
     # ==================== DungeonMover 類別 ====================
     # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯
@@ -3221,7 +3270,7 @@ def Factory():
         MAX_RESUME_RETRIES = 5
         RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
-        CHEST_AUTO_STILL_THRESHOLD = 5  # chest_auto 靜止判定次數
+        CHEST_AUTO_STILL_THRESHOLD = 3  # chest_auto 靜止判定次數
         MONITOR_UPDATE_INTERVAL = 0.8  # 監控數值節流 (秒)
 
         # 轉向解卡設定
@@ -4089,6 +4138,8 @@ def Factory():
                         logger.info("[StateChest] AUTO 已消失，停止點擊")
                         break
                     auto_click_count += 1
+
+
     def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
@@ -4266,9 +4317,11 @@ def Factory():
                         logger.debug("chest_auto 模式：跳過第一次進入地城打開地圖，直接進入 Map 狀態")
                         runtimeContext._FIRST_DUNGEON_ENTRY = False
                         dungState = DungeonState.Map  # 仍需進入 Map 狀態以處理 chest_auto 邏輯
-                    # 重啓後：跳過Resume優化，直接嘗試打開地圖
-                    elif runtimeContext._RESTART_OPEN_MAP_PENDING:
-                        logger.info("重啓後：跳過Resume優化，嘗試打開地圖")
+                    # 重啓後/地城內啟動：跳過Resume優化，直接嘗試打開地圖
+                    elif runtimeContext._RESTART_OPEN_MAP_PENDING or runtimeContext._MID_DUNGEON_START:
+                        logger.info("重啓/地城內啟動：跳過Resume優化，嘗試打開地圖")
+                        if runtimeContext._MID_DUNGEON_START:
+                            runtimeContext._MID_DUNGEON_START = False  # 重置標誌
                         Sleep(1)
                         Press([777,150])
                         Sleep(1)
