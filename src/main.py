@@ -120,7 +120,12 @@ class AppController(tk.Tk):
                     if hasattr(self, 'quest_threading') and self.quest_threading.is_alive():
                         if hasattr(self.quest_setting, '_FORCESTOPING'):
                             self.quest_setting._FORCESTOPING.set()
-                
+
+                case 'task_finished':
+                    # 從主線程調用 finishingcallback，避免 Tkinter 線程安全問題
+                    if self.main_window:
+                        self.main_window.finishingcallback()
+
                 case 'turn_to_7000G':
                     logger.info('開始要錢...')
                     self.quest_setting._FARMTARGET = "7000G"

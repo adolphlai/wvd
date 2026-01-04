@@ -4852,7 +4852,13 @@ def Factory():
                         )
                     initial_dungState = None  # 使用後清除
                     state = None
-        setting._FINISHINGCALLBACK()
+        # 停止時重置監控狀態，避免 GUI 超時進度條繼續計算
+        MonitorState.reset()
+        # 通過消息隊列通知主線程，避免從工作線程直接調用 Tkinter 方法
+        if setting._MSGQUEUE:
+            setting._MSGQUEUE.put(('task_finished', None))
+        elif setting._FINISHINGCALLBACK:
+            setting._FINISHINGCALLBACK()
     def QuestFarm():
         nonlocal setting # 強制自動戰鬥 等等.
         nonlocal runtimeContext
@@ -5627,7 +5633,12 @@ def Factory():
             #         quest._SPECIALDIALOGOPTION = ["bounty/Slayhim"]
             #         # StateDungeon([TargetInfo('position','左下',[612,1132])])
             #         StateDungeon([TargetInfo('position','右上',[553,821])])
-        setting._FINISHINGCALLBACK()
+        MonitorState.reset()
+        # 通過消息隊列通知主線程，避免從工作線程直接調用 Tkinter 方法
+        if setting._MSGQUEUE:
+            setting._MSGQUEUE.put(('task_finished', None))
+        elif setting._FINISHINGCALLBACK:
+            setting._FINISHINGCALLBACK()
         return
     def Farm(set:FarmConfig):
         nonlocal quest
@@ -5666,7 +5677,12 @@ def Factory():
             # 檢查停止信號
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 logger.info("Farm 初始化時檢測到停止信號")
-                setting._FINISHINGCALLBACK()
+                MonitorState.reset()
+                # 通過消息隊列通知主線程
+                if setting._MSGQUEUE:
+                    setting._MSGQUEUE.put(('task_finished', None))
+                elif setting._FINISHINGCALLBACK:
+                    setting._FINISHINGCALLBACK()
                 return
 
             ResetADBDevice()
@@ -5674,7 +5690,12 @@ def Factory():
             # 檢查 ADB 連接是否成功
             if not setting._ADBDEVICE:
                 logger.error("ADB 連接失敗或被中斷，無法啟動任務")
-                setting._FINISHINGCALLBACK()
+                MonitorState.reset()
+                # 通過消息隊列通知主線程
+                if setting._MSGQUEUE:
+                    setting._MSGQUEUE.put(('task_finished', None))
+                elif setting._FINISHINGCALLBACK:
+                    setting._FINISHINGCALLBACK()
                 return
 
             # 啟動 pyscrcpy 串流（如果可用）
@@ -5712,7 +5733,12 @@ def Factory():
                 logger.info("Farm ADB 初始化後檢測到停止信號")
                 if stream:
                     stream.stop()
-                setting._FINISHINGCALLBACK()
+                MonitorState.reset()
+                # 通過消息隊列通知主線程
+                if setting._MSGQUEUE:
+                    setting._MSGQUEUE.put(('task_finished', None))
+                elif setting._FINISHINGCALLBACK:
+                    setting._FINISHINGCALLBACK()
                 return
 
             quest = LoadQuest(setting._FARMTARGET)
@@ -5722,10 +5748,20 @@ def Factory():
                 else:
                     QuestFarm()
             else:
-                setting._FINISHINGCALLBACK()
+                MonitorState.reset()
+                # 通過消息隊列通知主線程
+                if setting._MSGQUEUE:
+                    setting._MSGQUEUE.put(('task_finished', None))
+                elif setting._FINISHINGCALLBACK:
+                    setting._FINISHINGCALLBACK()
         except Exception as e:
             logger.error(f"Farm 執行時發生錯誤: {e}")
-            setting._FINISHINGCALLBACK()
+            MonitorState.reset()
+            # 通過消息隊列通知主線程
+            if setting._MSGQUEUE:
+                setting._MSGQUEUE.put(('task_finished', None))
+            elif setting._FINISHINGCALLBACK:
+                setting._FINISHINGCALLBACK()
         finally:
             # 清理：停止 pyscrcpy 串流
             stream = get_scrcpy_stream()
