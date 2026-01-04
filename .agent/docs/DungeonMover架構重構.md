@@ -160,6 +160,14 @@ _fallback_gohome
 
 ---
 
+## ⚠️ 架構變更記錄
+
+### `DungeonMover` vs `IdentifyState` 的權威性
+- **問題**：原設計依賴 `IdentifyState` 進行所有狀態判定。但在地城中，`DungeonMover` 的戰鬥偵測（基於特定 UI 模板）比 `IdentifyState` 更靈敏。這導致 `DungeonMover` 看到戰鬥 -> 交給 `IdentifyState` -> `IdentifyState` 沒看到 -> 跳回移動邏輯 -> 無限循環。
+- **修正**：賦予 `DungeonMover` 在地城環境下的**狀態Override權限**。當 `_check_combat_or_chest` 偵測到戰鬥或寶箱時，**直接返回** `DungeonState.Combat` 或 `DungeonState.Chest`，不再經過 `IdentifyState` 確認。這是為了避免多重權威衝突導致的死循環。
+
+---
+
 ## Proposed Changes
 
 ### [MODIFY] [script.py](file:///d:/Project/wvd/src/script.py)

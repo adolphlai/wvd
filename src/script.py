@@ -2800,7 +2800,7 @@ def Factory():
                 if lv1_pos:
                     logger.info(f"[順序 {caster_type}] 升級技能到 {level}")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
-                    Sleep(1)
+                    Sleep(0.3)
                     scn = ScreenShot()
 
             # 判斷技能類型
@@ -3001,7 +3001,7 @@ def Factory():
             logger.info(f"[技能施放-DEBUG] 找到技能圖片 {image_path} 於 {skill_pos}")
             logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
             Press(skill_pos)
-            Sleep(1)
+            Sleep(0.5)
             scn = ScreenShot()
             
             # 處理技能等級
@@ -3014,7 +3014,7 @@ def Factory():
                 if lv1_pos:
                     logger.info(f"[技能施放] 升級技能到 {level}")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
-                    Sleep(1)
+                    Sleep(0.5)
                     scn = ScreenShot()
             
             # 根據施放方式確認技能
@@ -3058,15 +3058,10 @@ def Factory():
                     Sleep(0.2)
                     Press([450, 800])
                 
-                Sleep(0.5)
-                scn = ScreenShot()
-                if CheckIf(scn, 'notenoughsp') or CheckIf(scn, 'notenoughmp'):
-                    logger.info("[技能施放] SP/MP 不足，改用普攻")
-                    Press(CheckIf(scn, 'notenough_close'))
-                    Sleep(0.5)
-                    return use_normal_attack()
+            Sleep(0.5)
+            # scn = ScreenShot() # 移除多餘截圖
             
-            Sleep(1)
+            Sleep(0.5)
             return True
         
         logger.warning(f"[技能施放] 找不到技能: {skill_name}，改用普攻")
@@ -3467,7 +3462,7 @@ def Factory():
                     return self.resume_navigation(targetInfoList, ctx)
             except Exception as e:
                 logger.error(f"[DungeonMover] 啟動移動發生例外: {e}")
-                return DungeonState.Dungeon
+                return None
         
         def chest_search(self, targetInfoList, ctx):
             """啟動 chest_auto 移動"""
@@ -3541,8 +3536,8 @@ def Factory():
                     screen = ScreenShot()
                     
                     # 同時檢查戰鬥/寶箱 (避免錯過剛出現的狀態)
-                    if self._check_combat_or_chest(screen):
-                        return DungeonState.Dungeon # 讓外層重新 IdentifyState
+                    if detected_state := self._check_combat_or_chest(screen):
+                        return detected_state
 
                     resume_pos = CheckIf(screen, 'resume')
                     if resume_pos:
@@ -3568,8 +3563,8 @@ def Factory():
             # 在嘗試打開地圖前，先檢查是否在戰鬥或寶箱（無法打開地圖的狀態）
             screen = ScreenShot()
             
-            if self._check_combat_or_chest(screen):
-                return DungeonState.Dungeon
+            if detected_state := self._check_combat_or_chest(screen):
+                return detected_state
             
             # 確保地圖開啟
             if not CheckIf(screen, 'mapFlag'):
@@ -3578,8 +3573,8 @@ def Factory():
                 Sleep(1)
                 screen = ScreenShot()
                 
-                if self._check_combat_or_chest(screen):
-                    return DungeonState.Dungeon
+                if detected_state := self._check_combat_or_chest(screen):
+                    return detected_state
 
                 if not CheckIf(screen, 'mapFlag'):
                     logger.warning("[DungeonMover] 無法打開地圖")
@@ -3588,7 +3583,7 @@ def Factory():
                         logger.error(f"[DungeonMover] 連續 {self.consecutive_map_open_failures} 次無法打開地圖，判定為卡死，觸發重啟 protection")
                         self.consecutive_map_open_failures = 0
                         restartGame()
-                        return DungeonState.Dungeon
+                        return None
                     
                     # [Fallback] 如果是因為暴風雪/能見度低，觸發 GoHome
                     if CheckIf(screen, 'visibliityistoopoor'):
@@ -3944,14 +3939,14 @@ def Factory():
             
             if max_combat_val >= 0.70:
                 logger.info(f"[DungeonMover] 偵測到戰鬥狀態 (匹配度 {max_combat_val*100:.2f}%)")
-                return True
+                return DungeonState.Combat
             
             # 檢查寶箱狀態
             if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
                 logger.info("[DungeonMover] 偵測到寶箱狀態")
-                return True
+                return DungeonState.Chest
                 
-            return False
+            return None
     
     # 全域 DungeonMover 實例
     dungeon_mover = DungeonMover()
