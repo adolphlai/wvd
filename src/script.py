@@ -1969,7 +1969,7 @@ def Factory():
                     logger.debug(f"[AUTO] 截圖耗時: {shot_ms:.0f}ms ({'串流' if shot_ms < 50 else 'ADB'})")
 
                     # [穿插異常檢測] 避免 AUTO 卡住時延遲處理
-                    if Press(CheckIf(screen, "returnText")):
+                    if Press(CheckIf(screen, "returnText")) or Press(CheckIf(screen, "ReturnText")):
                         logger.info("[AUTO] 偵測到 returnText，中斷並處理")
                         Sleep(1)
                         return IdentifyState()
@@ -1983,7 +1983,26 @@ def Factory():
                         logger.info("[AUTO] AUTO 已消失，停止點擊")
                         break
                     click_count += 1
-            
+                else:
+                    # AUTO 循環 5 次後仍存在，直接進入異常處理
+                    logger.warning("[AUTO] 5 次點擊後 AUTO 仍在，執行異常處理")
+                    # 檢測各種對話框選項
+                    dialogOption = [
+                        'adventurersbones', 'halfBone', 'nothanks', 'strange_things',
+                        'blessing', 'DontBuyIt', 'donthelp', 'buyNothing', 'Nope',
+                        'ignorethequest', 'dontGiveAntitoxin', 'pass',
+                    ]
+                    for op in dialogOption:
+                        if Press(CheckIf(screen, op)):
+                            logger.info(f"[AUTO] 偵測到對話選項 {op}，點擊處理")
+                            Sleep(2)
+                            return IdentifyState()
+                    # 如果都沒匹配到，點擊螢幕中心嘗試關閉對話框
+                    logger.info("[AUTO] 未匹配到已知對話框，點擊螢幕中心")
+                    Press([450, 800])
+                    Sleep(0.5)
+                    return IdentifyState()
+
             # 移除 combatActive 相關的配置，因為上面已經檢查過了
             identifyConfig = [
                 ('chestFlag',     DungeonState.Chest),   # 寶箱優先
@@ -3168,7 +3187,7 @@ def Factory():
                 logger.info("[戰鬥] flee 等待中偵測到 RiseAgain，中斷並處理復活")
                 RiseAgainReset(reason='combat')
                 return IdentifyState()
-            if Press(CheckIf(screen, 'returnText')):
+            if Press(CheckIf(screen, 'returnText')) or Press(CheckIf(screen, 'ReturnText')):
                 logger.info("[戰鬥] flee 等待中偵測到 returnText，中斷並處理對話")
                 Sleep(1)
                 return IdentifyState()
