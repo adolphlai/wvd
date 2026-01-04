@@ -31,6 +31,11 @@ chest_search（開始找 = 中斷恢復，遊戲機制決定）
     │
     ├─ 2. 進入 _monitor_move
     │   ├─ 狀態轉換（戰鬥/寶箱）→ return 給 StateDungeon 處理
+    │   ├─ 檢測到 `visibilityistoopoor` → 點擊 Resume
+    │   │   └─ 進入臨時導航監控 (Flag: waiting_for_arrival)
+    │   │       ├─ 檢測到 `routenotfound` → break (視為臨時導航完成)
+    │   │       └─ 繼續執行戰鬥/異常/靜止檢測
+    │   │           └─ break 後回到 Step 1 (重新找寶箱/開地圖)
     │   ├─ 每 5 秒點擊寶箱按鈕 → 檢測 notresure
     │   └─ 靜止判定（連續 3 次）
     │       ├─ 在地城中 (dungflag)
@@ -60,6 +65,7 @@ resume_navigation
     │
     ├─ 2. 進入 _monitor_move
     │   ├─ 狀態轉換（戰鬥/寶箱）→ return 給 StateDungeon 處理
+    │   ├─ 檢測到 `visibilityistoopoor` → 點擊 Resume (嘗試脫困)
     │   ├─ 【依目標類型執行完成檢測】
     │   └─ 靜止判定 → _fallback_gohome()（防卡死）
     │
@@ -126,7 +132,6 @@ resume_navigation
 **觸發條件：**
 - chest_search/resume_navigation 靜止時檢測到 mapFlag（防卡死）
 - 軟超時 (60s)
-- 能見度過低 (visibilityistoopoor)
 
 ```
 _fallback_gohome

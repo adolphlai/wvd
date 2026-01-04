@@ -3455,6 +3455,7 @@ def Factory():
             self.last_monitor_update_time = 0
             self.is_gohome_mode = False
             self.current_target = None
+            self.waiting_for_arrival_after_resume = False
             
             # 同步到 MonitorState
             MonitorState.state_start_time = self.move_start_time
@@ -3663,9 +3664,18 @@ def Factory():
                     
                     # [Fallback] 如果是因為暴風雪/能見度低，觸發 GoHome
                     if CheckIf(screen, 'visibliityistoopoor'):
-                         logger.warning("[DungeonMover] 能見度過低，直接觸發 GoHome")
-                         self.is_gohome_mode = True
-                         return self._fallback_gohome(targetInfoList, ctx)
+                         logger.warning("[DungeonMover] 能見度過低，嘗試點擊 Resume 恢復")
+                         resume_pos = CheckIf(screen, 'resume')
+                         if resume_pos:
+                             Press(resume_pos)
+                             Sleep(1)
+                             # 點擊後直接進入監控
+                             return self._monitor_move(targetInfoList, ctx)
+                         else:
+                             # 找不到 resume 才 GoHome
+                             logger.warning("[DungeonMover] 能見度過低且無 Resume，觸發 GoHome")
+                             self.is_gohome_mode = True
+                             return self._fallback_gohome(targetInfoList, ctx)
                     return DungeonState.Dungeon
             
             # 搜索並點擊目標
@@ -3712,6 +3722,31 @@ def Factory():
                     return self._cleanup_exit(DungeonState.Quit)
                 
                 Sleep(self.POLL_INTERVAL)
+
+                # [新增] 臨時導航完成檢測 (Only for chest_search visibility resume)
+                # waiting_for_arrival_after_resume 是一個臨時標誌，表示我們點擊了 Resume
+                # 正在等待到達目標 (routenotfound) 或再次靜止
+                if getattr(self, 'waiting_for_arrival_after_resume', False):
+                    screen_temp = ScreenShot()
+                    # 1. 檢測到達
+                    if CheckIf(screen_temp, 'routenotfound'):
+                        logger.info("[DungeonMover] 臨時導航已到達 (routenotfound)，跳出監控以重啟 chest_search")
+                        self.waiting_for_arrival_after_resume = False
+                        # 返回 None 或特定狀態讓 chest_search 重啟 (這裡返回 None 會導致 initiate_move 結束)
+                        # 但 chest_search 是一個 loop，我們需要讓 _monitor_move 結束，這樣 chest_search 內部的 return 會觸發
+                        # 根據 script.py 邏輯，chest_search 直接 return _monitor_move
+                        # 所以我們需要返回一個信號讓 StateDungeon 知道並非真正的結束?
+                        # 不，User 說 "繼續跳回 chest_search 流程"。
+                        # 如果我們返回 None，StateDungeon 會認為目標完成並 pop (如果我們不 pop 的話)。
+                        # 但 chest_search 沒有 pop。
+                        # 讓我們看看 initiate_move -> chest_search -> _monitor_move
+                        # 如果 _monitor_move 返回 None:
+                        # initiate_move 返回 None -> StateDungeon(L4580) -> dungState = None -> IdentifyState
+                        # 如果 IdentifyState 還是 Dungeon，那就會再次進入 StateDungeon -> initiate_move -> chest_search
+                        # 這符合 "重啟流程" 的定義 (重新找按鈕/開地圖)
+                        return None
+                    
+                    # 2. 檢測再次靜止 (稍後在靜止判定區塊處理)
                 
                 # ========== A. 硬超時檢查 (60s) ==========
                 elapsed = time.time() - self.move_start_time
@@ -3725,7 +3760,7 @@ def Factory():
                     self.is_gohome_mode = True
                     MonitorState.is_gohome_mode = True
                     # 不重置計時器，讓硬超時繼續計時
-                    return self._start_gohome(targetInfoList, ctx)
+                    return self._fallback_gohome(targetInfoList, ctx)
                 
                 # ========== C. 狀態檢查 ==========
                 # ========== C. 異常狀況預先檢查 (防止 IdentifyState 卡死) ==========
@@ -3743,6 +3778,28 @@ def Factory():
                     # 血量偵測 (只在地城移動時更新)
                     MonitorState.flag_low_hp = CheckLowHP(screen_pre)
                     self.last_monitor_update_time = now
+                    
+                    # [新增] Visibility Resume Check
+                    # 在監控中途如果遇到能見度過低
+                    if CheckIf(screen_pre, 'visibliityistoopoor'):
+                        logger.warning("[DungeonMover] 移動中偵測到能見度過低")
+                        resume_pos = CheckIf(screen_pre, 'resume')
+                        if resume_pos:
+                            logger.info(f"[DungeonMover] 點擊 Resume 嘗試脫困: {resume_pos}")
+                            Press(resume_pos)
+                            Sleep(1)
+                            
+                            # 如果是 chest_auto 模式，啟用 "等待到達" 邏輯
+                            if is_chest_auto:
+                                logger.info("[DungeonMover] chest_search 模式下觸發 Resume，進入臨時導航等待模式 (等待 routenotfound)")
+                                self.waiting_for_arrival_after_resume = True
+                                # 重置靜止計數，給予移動時間
+                                self.still_count = 0
+                            
+                            continue
+                        else:
+                             # 無 Resume，不處理，讓它自然落入 GoHome (如果靜止)
+                             pass
                     
                     # 低血量恢復檢查（啟用時觸發）
                     if setting._LOWHP_RECOVER and MonitorState.flag_low_hp:
