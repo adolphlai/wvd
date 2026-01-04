@@ -3359,7 +3359,7 @@ def Factory():
         STILL_REQUIRED = 10  # 約 5 秒靜止判定
         
         # Resume 設定
-        MAX_RESUME_RETRIES = 5
+        MAX_RESUME_RETRIES = 3
         RESUME_CLICK_INTERVAL = 3  # 每 3 秒主動檢查
         CHEST_AUTO_CLICK_INTERVAL = 5  # chest_auto 每 5 秒檢查
         CHEST_AUTO_STILL_THRESHOLD = 3  # chest_auto 靜止判定次數
