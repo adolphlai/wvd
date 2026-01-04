@@ -886,6 +886,8 @@ def Factory():
         adb_retry_count = 0
 
         while True:
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return ""
             exception = None
             result = None
             completed = Event()
@@ -940,8 +942,11 @@ def Factory():
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 logger.debug(f"Sleep 中檢測到停止信號，提前退出")
                 return
-            # 檢查遊戲進程是否崩潰
+            # 檢查遊戲進程是否崩潰（但如果正在停止則忽略）
             if hasattr(setting, '_GAME_CRASHED') and setting._GAME_CRASHED.is_set():
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    setting._GAME_CRASHED.clear()  # 停止時清除崩潰標記
+                    return
                 logger.warning("[Sleep] 檢測到遊戲崩潰，觸發重啟")
                 setting._GAME_CRASHED.clear()
                 restartGame(skipScreenShot=True)
@@ -1656,7 +1661,7 @@ def Factory():
     def _monitor_game_process():
         """守護線程：監控遊戲進程是否存活"""
         package_name = "jp.co.drecom.wizardry.daphne"
-        while not setting._FORCESTOPING.is_set():
+        while not (setting._FORCESTOPING and setting._FORCESTOPING.is_set()):
             try:
                 result = setting._ADBDEVICE.shell(f"pidof {package_name}", timeout=3)
                 if not result.strip():
@@ -1823,12 +1828,16 @@ def Factory():
         # 跳躍前嘗試調整因果
         MAX_CSC_SWIPES = 30  # 最大滑動次數，防止無限循環
         while CheckIf(ScreenShot(), 'leap'):
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return
             if CSC_symbol != None:
                 FindCoordsOrElseExecuteFallbackAndWait(CSC_symbol,'CSC',1)
                 last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
                 # 先關閉所有因果
                 csc_swipe_count = 0
                 while csc_swipe_count < MAX_CSC_SWIPES:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return
                     Press(CheckIf(WrapImage(ScreenShot(),2,0,0),'didnottakethequest'))
                     DeviceShell(f"input swipe 150 500 150 400")
                     Sleep(1)
@@ -1846,6 +1855,8 @@ def Factory():
                     last_scn = CutRoI(ScreenShot(), [[77,349,757,1068]])
                     csc_adjust_count = 0
                     while csc_adjust_count < MAX_CSC_SWIPES:
+                        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                            return
                         for option, r, g, b in CSC_setting:
                             Press(CheckIf(WrapImage(ScreenShot(),r,g,b),option))
                             Sleep(1)
@@ -1919,6 +1930,8 @@ def Factory():
                     click_count = 0
                     # 在黑屏期間持續點擊打斷
                     while IsScreenBlack(ScreenShot()):
+                        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                            return State.Quit, DungeonState.Quit, screen
                         Press([1, 1])
                         click_count += 1
                         Sleep(0.1)  # 快速點擊
@@ -2499,6 +2512,8 @@ def Factory():
 
                 # 可能需要多次嘗試（如果有多個相同物品）
                 while item_organize_count < MAX_ITEM_ORGANIZE:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return
                     scn = ScreenShot()
                     item_pos = CheckIf(scn, item_path)
 
@@ -4256,6 +4271,8 @@ def Factory():
             if CheckIf(scn, 'whowillopenit'):
                 logger.info("[StateChest] 選擇開箱角色")
                 while True:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return None
                     pointSomeone = setting._WHOWILLOPENIT - 1
                     if (pointSomeone != -1) and (pointSomeone in availableChar) and (not haveBeenTried):
                         whowillopenit = pointSomeone 
