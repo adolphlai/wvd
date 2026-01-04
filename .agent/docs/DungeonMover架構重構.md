@@ -40,7 +40,7 @@ chest_search（開始找 = 中斷恢復，遊戲機制決定）
     │   └─ 靜止判定（連續 3 次）
     │       ├─ 在地城中 (dungflag)
     │       │   ├─ 檢測到 notresure → pop（無寶箱），返回 DungeonState.Map
-    │       │   └─ 未檢測到 notresure → pop（無法判斷），返回 DungeonState.Map
+    │       │   └─ 未檢測到 notresure → 不 pop，返回 DungeonState.Dungeon (交回主流程判斷)
     │       └─ 在地圖中 (mapflag) → PressReturn → pop → _fallback_gohome()（防卡死）
     │
     └─ 3. 主流程整合：戰鬥/寶箱後 StateDungeon 再次呼叫 → 回到 Step 1（開始找 = 中斷恢復）

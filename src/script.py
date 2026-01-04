@@ -3973,11 +3973,12 @@ def Factory():
                                     targetInfoList.pop(0)
                                 return self._cleanup_exit(DungeonState.Map)
                             else:
-                                # 非地圖狀態，直接 pop 目標
-                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次，pop 目標")
-                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
-                                    targetInfoList.pop(0)
-                                return self._cleanup_exit(DungeonState.Map)
+                                # 非地圖狀態，且沒有 notresure，可能只是暫時停下 (例如剛開完箱，或正在移動中被卡住)
+                                # [Fix] 不 pop 目標，而是返回 Dungeon 狀態讓主流程重新判斷 (可能進入 StateChest 或重新嘗試)
+                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次但無 notresure，保留目標並返回 DungeonState.Dungeon")
+                                # if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                #    targetInfoList.pop(0)  <-- Removed pop
+                                return self._cleanup_exit(DungeonState.Dungeon)
 
                         if self.still_count >= self.STILL_REQUIRED:
                             logger.info(f"[DungeonMover] 連續靜止 {self.STILL_REQUIRED} 次")
