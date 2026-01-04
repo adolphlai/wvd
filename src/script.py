@@ -3369,6 +3369,7 @@ def Factory():
         MAX_TURN_ATTEMPTS = 6
         
         def __init__(self):
+            self.consecutive_map_open_failures = 0
             self.reset()
         
         def reset(self):
@@ -3457,18 +3458,18 @@ def Factory():
             
             try:
                 if self.current_target == 'chest_auto':
-                    return self._start_chest_auto(targetInfoList, ctx)
+                    return self.chest_search(targetInfoList, ctx)
                 elif self.current_target == 'gohome':
                     self.is_gohome_mode = True
-                    return self._start_gohome(targetInfoList, ctx)
+                    return self._fallback_gohome(targetInfoList, ctx)
                 else:
                     # position, harken, stair 等
-                    return self._start_normal_move(targetInfoList, ctx)
+                    return self.resume_navigation(targetInfoList, ctx)
             except Exception as e:
                 logger.error(f"[DungeonMover] 啟動移動發生例外: {e}")
                 return DungeonState.Dungeon
         
-        def _start_chest_auto(self, targetInfoList, ctx):
+        def chest_search(self, targetInfoList, ctx):
             """啟動 chest_auto 移動"""
             screen = ScreenShot()
             pos = CheckIf(screen, "chest_auto", [[710,250,180,180]])
@@ -3504,7 +3505,7 @@ def Factory():
 
             return self._monitor_move(targetInfoList, ctx)
         
-        def _start_gohome(self, targetInfoList, ctx):
+        def _fallback_gohome(self, targetInfoList, ctx):
             """啟動 gohome 移動（內部 Fallback 機制）"""
             screen = ScreenShot()
             pos = CheckIf(screen, "gohome")
@@ -3528,37 +3529,47 @@ def Factory():
             
             return self._monitor_move(targetInfoList, ctx)
         
-        def _start_normal_move(self, targetInfoList, ctx):
+        def resume_navigation(self, targetInfoList, ctx):
             """啟動一般移動 (position, harken, stair)"""
             target_info = targetInfoList[0]
             
+            # [新增] Resume 優化：非重啟後的第一步，嘗試直接點擊 Resume 恢復移動
+            if not ctx._STEPAFTERRESTART:
+                logger.info("[DungeonMover] 嘗試 Resume 優化...")
+                # 嘗試檢測 Resume 按鈕 (最多 3 次)
+                for retry in range(3):
+                    screen = ScreenShot()
+                    
+                    # 同時檢查戰鬥/寶箱 (避免錯過剛出現的狀態)
+                    if self._check_combat_or_chest(screen):
+                        return DungeonState.Dungeon # 讓外層重新 IdentifyState
+
+                    resume_pos = CheckIf(screen, 'resume')
+                    if resume_pos:
+                        logger.info(f"[DungeonMover] 發現 Resume 按鈕 {resume_pos}，點擊恢復移動")
+                        Press(resume_pos)
+                        Sleep(1)
+                        
+                        # 檢查點擊後效果 (Resume 是否消失)
+                        screen_after = ScreenShot()
+                        if not CheckIf(screen_after, 'resume'):
+                            logger.info("[DungeonMover] Resume 點擊成功，進入監控")
+                            self.consecutive_map_open_failures = 0
+                            return self._monitor_move(targetInfoList, ctx)
+                        else:
+                            logger.warning(f"[DungeonMover] Resume 點擊後無效 (嘗試 {retry+1}/3)")
+                    else:
+                        logger.debug(f"[DungeonMover] 未找到 Resume 按鈕 (嘗試 {retry+1}/3)")
+                    
+                    Sleep(0.5)
+            
+            logger.info("[DungeonMover] Resume 優化結束或不適用，執行標準導航流程")
+
             # 在嘗試打開地圖前，先檢查是否在戰鬥或寶箱（無法打開地圖的狀態）
             screen = ScreenShot()
             
-            # 檢查戰鬥狀態（使用與 IdentifyState 完全相同的邏輯）
-            combat_templates = get_combat_active_templates()
-            max_combat_val = 0
-            if combat_templates:
-                for t in combat_templates:
-                    template = _get_cached_template(t)
-                    if template is None:
-                        continue
-                    try:
-                        res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
-                        _, val, _, _ = cv2.minMaxLoc(res)
-                        if val > max_combat_val:
-                            max_combat_val = val
-                    except:
-                        continue
-            
-            if max_combat_val >= 0.70:
-                logger.info(f"[DungeonMover] 偵測到戰鬥狀態 (匹配度 {max_combat_val*100:.2f}%)，直接進入戰鬥")
-                return DungeonState.Combat
-            
-            # 檢查寶箱狀態
-            if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
-                logger.info("[DungeonMover] 偵測到寶箱狀態，直接進入寶箱")
-                return DungeonState.Chest
+            if self._check_combat_or_chest(screen):
+                return DungeonState.Dungeon
             
             # 確保地圖開啟
             if not CheckIf(screen, 'mapFlag'):
@@ -3567,42 +3578,30 @@ def Factory():
                 Sleep(1)
                 screen = ScreenShot()
                 
-                # 再次檢查戰鬥/寶箱（可能點擊地圖按鈕期間進入）
-                max_combat_val = 0
-                if combat_templates:
-                    for t in combat_templates:
-                        template = _get_cached_template(t)
-                        if template is None:
-                            continue
-                        try:
-                            res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
-                            _, val, _, _ = cv2.minMaxLoc(res)
-                            if val > max_combat_val:
-                                max_combat_val = val
-                        except:
-                            continue
-                
-                if max_combat_val >= 0.70:
-                    logger.info(f"[DungeonMover] 打開地圖期間進入戰鬥 (匹配度 {max_combat_val*100:.2f}%)")
-                    return DungeonState.Combat
-                if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
-                    logger.info("[DungeonMover] 打開地圖期間進入寶箱")
-                    return DungeonState.Chest
-                
-                # 檢查暴風雪（無法開地圖）
-                if CheckIf(screen, 'visibliityistoopoor'):
-                    logger.warning("[DungeonMover] 能見度過低，直接觸發 GoHome")
-                    self.is_gohome_mode = True
-                    return self._start_gohome(targetInfoList, ctx)
-                
+                if self._check_combat_or_chest(screen):
+                    return DungeonState.Dungeon
+
                 if not CheckIf(screen, 'mapFlag'):
                     logger.warning("[DungeonMover] 無法打開地圖")
+                    self.consecutive_map_open_failures += 1
+                    if self.consecutive_map_open_failures >= 3:
+                        logger.error(f"[DungeonMover] 連續 {self.consecutive_map_open_failures} 次無法打開地圖，判定為卡死，觸發重啟 protection")
+                        self.consecutive_map_open_failures = 0
+                        restartGame()
+                        return DungeonState.Dungeon
+                    
+                    # [Fallback] 如果是因為暴風雪/能見度低，觸發 GoHome
+                    if CheckIf(screen, 'visibliityistoopoor'):
+                         logger.warning("[DungeonMover] 能見度過低，直接觸發 GoHome")
+                         self.is_gohome_mode = True
+                         return self._fallback_gohome(targetInfoList, ctx)
                     return DungeonState.Dungeon
             
             # 搜索並點擊目標
             try:
                 search_result = StateMap_FindSwipeClick(target_info)
                 if search_result:
+                    self.consecutive_map_open_failures = 0
                     # 設定特殊 Flag
                     if target_info.target == 'harken' and target_info.floorImage:
                         ctx._HARKEN_FLOOR_TARGET = target_info.floorImage
@@ -3736,6 +3735,8 @@ def Factory():
                             targetInfoList.pop(0)
                         return self._cleanup_exit(DungeonState.Map)
                 
+
+                
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
@@ -3800,6 +3801,17 @@ def Factory():
                                 Sleep(0.2)
                         self.last_resume_click_time = time.time()
                 
+                # ========== Minimap Stair 即時檢測 ==========
+                if hasattr(ctx, '_MINIMAP_STAIR_IN_PROGRESS') and ctx._MINIMAP_STAIR_IN_PROGRESS and hasattr(ctx, '_MINIMAP_STAIR_FLOOR_TARGET') and ctx._MINIMAP_STAIR_FLOOR_TARGET:
+                    result = CheckIf_minimapFloor(screen, ctx._MINIMAP_STAIR_FLOOR_TARGET)
+                    if result["found"]:
+                        logger.info(f"[DungeonMover] 到達目標樓層 (MiniMap: {ctx._MINIMAP_STAIR_FLOOR_TARGET})")
+                        ctx._MINIMAP_STAIR_IN_PROGRESS = False
+                        # 確保彈出的是 minimap_stair 目標
+                        if targetInfoList and targetInfoList[0].target == 'minimap_stair':
+                            targetInfoList.pop(0)
+                        return self._cleanup_exit(DungeonState.Map)
+
                 # ========== F. 靜止與 Resume 偵測 ==========
                 if self.last_screen is not None:
                     gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
@@ -3887,14 +3899,7 @@ def Factory():
                                 self.last_screen = None
                                 continue
                             
-                            # Minimap Stair 檢測
-                            if ctx._MINIMAP_STAIR_IN_PROGRESS and ctx._MINIMAP_STAIR_FLOOR_TARGET:
-                                result = CheckIf_minimapFloor(screen, ctx._MINIMAP_STAIR_FLOOR_TARGET)
-                                if result["found"]:
-                                    logger.info("[DungeonMover] 到達目標樓層 (MiniMap)")
-                                    ctx._MINIMAP_STAIR_IN_PROGRESS = False
-                                    targetInfoList.pop(0)
-                                    return self._cleanup_exit(DungeonState.Map)
+
                             
                             # 判定停止（無 Resume 且靜止）
                             if not is_chest_auto and not CheckIf(screen, 'resume'):
@@ -3914,6 +3919,39 @@ def Factory():
                             self.turn_attempt_count = 0
                 
                 self.last_screen = screen
+
+        def _check_combat_or_chest(self, screen):
+            """
+            檢查是否在戰鬥或寶箱狀態（這些狀態下無法打開地圖）
+            Returns:
+                bool: True=在戰鬥或寶箱狀態, False=否
+            """
+            # 檢查戰鬥狀態
+            combat_templates = get_combat_active_templates()
+            max_combat_val = 0
+            if combat_templates:
+                for t in combat_templates:
+                    template = _get_cached_template(t)
+                    if template is None:
+                        continue
+                    try:
+                        res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+                        _, val, _, _ = cv2.minMaxLoc(res)
+                        if val > max_combat_val:
+                            max_combat_val = val
+                    except:
+                        continue
+            
+            if max_combat_val >= 0.70:
+                logger.info(f"[DungeonMover] 偵測到戰鬥狀態 (匹配度 {max_combat_val*100:.2f}%)")
+                return True
+            
+            # 檢查寶箱狀態
+            if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
+                logger.info("[DungeonMover] 偵測到寶箱狀態")
+                return True
+                
+            return False
     
     # 全域 DungeonMover 實例
     dungeon_mover = DungeonMover()
@@ -4425,8 +4463,11 @@ def Factory():
                                     break
                     ########### OPEN MAP
                     ########### 防止轉圈 (from upstream 1.9.27)
-                    has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList)
-                    logger.debug(f"[StateDungeon] targetInfoList: {[t.target for t in targetInfoList]}, has_chest_auto: {has_chest_auto}")
+                    ########### OPEN MAP / RESUME LOGIC (Refactored)
+                    # 這一大塊現在只負責環境初始化和轉態，具體移動逻辑交給 DungeonMover
+                    
+                    has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList) if targetInfoList else False
+                    
                     if not runtimeContext._STEPAFTERRESTART:
                         # 防止轉圈：前後左右平移一次（僅重啟後執行）
                         logger.info("防止轉圈: 前後左右平移一次")
@@ -4448,287 +4489,20 @@ def Factory():
                         Sleep(1)
 
                         runtimeContext._STEPAFTERRESTART = True
-                    # 第一次進入地城時，無條件打開地圖（不檢查能見度）
-                    # 例外：chest_auto 跳過此機制
-                    if runtimeContext._FIRST_DUNGEON_ENTRY and not has_chest_auto:
-                        logger.info("第一次進入地城，打開地圖")
-                        Sleep(1)
-                        Press([777,150])
-                        dungState = DungeonState.Map
-                        runtimeContext._FIRST_DUNGEON_ENTRY = False  # 標記爲已進入過
-                    elif runtimeContext._FIRST_DUNGEON_ENTRY and has_chest_auto:
-                        logger.debug("chest_auto 模式：跳過第一次進入地城打開地圖，直接進入 Map 狀態")
+
+                    # 重置一次性標記
+                    if runtimeContext._FIRST_DUNGEON_ENTRY:
                         runtimeContext._FIRST_DUNGEON_ENTRY = False
-                        dungState = DungeonState.Map  # 仍需進入 Map 狀態以處理 chest_auto 邏輯
-                    # 重啓後/地城內啟動：跳過Resume優化，直接嘗試打開地圖
-                    elif runtimeContext._RESTART_OPEN_MAP_PENDING or runtimeContext._MID_DUNGEON_START:
-                        logger.info("重啓/地城內啟動：跳過Resume優化，嘗試打開地圖")
-                        if runtimeContext._MID_DUNGEON_START:
-                            runtimeContext._MID_DUNGEON_START = False  # 重置標誌
-                        Sleep(1)
-                        Press([777,150])
-                        Sleep(1)
-                        screen = ScreenShot()
-                        mapFlag_result = CheckIf(screen, 'mapFlag')
-                        logger.debug(f"[圖片偵測] mapFlag: {mapFlag_result}")
-                        if mapFlag_result:
-                            logger.info("重啓後：成功打開地圖")
-                            dungState = DungeonState.Map
-                            runtimeContext._RESTART_OPEN_MAP_PENDING = False
-                        else:
-                            visib_result = CheckIf(screen, 'visibliityistoopoor')
-                            logger.debug(f"[圖片偵測] visibliityistoopoor: {visib_result}")
-                            if visib_result:
-                                # 能見度太低，無法打開地圖，等待後重新檢測
-                                logger.warning("重啓後：能見度太低無法打開地圖，等待後重新檢測狀態")
-                                runtimeContext._RESTART_OPEN_MAP_PENDING = False
-                                Sleep(3)
-                                dungState = None
-                            else:
-                                # 其他情況（可能在戰鬥/寶箱），重新檢測狀態
-                                logger.info("重啓後：地圖未打開，重新檢測狀態")
-                                dungState = None
-                    # minimap_stair 恢復監控：如果標誌仍在（戰鬥/寶箱打斷後），繼續移動並監控小地圖
-                    elif runtimeContext._MINIMAP_STAIR_IN_PROGRESS and runtimeContext._MINIMAP_STAIR_FLOOR_TARGET:
-                        logger.info(f"minimap_stair 恢復監控: 繼續尋找樓層標識 {runtimeContext._MINIMAP_STAIR_FLOOR_TARGET}")
-                        Sleep(1)
-                        # 檢測 Resume 按鈕並繼續移動
-                        screen = ScreenShot()
-                        resume_pos = CheckIf(screen, 'resume')
-                        logger.debug(f"[圖片偵測] resume (minimap_stair): {resume_pos}")
-                        if resume_pos:
-                            logger.info(f"minimap_stair: 檢測到 Resume 按鈕，繼續移動 {resume_pos}")
-                            Press(resume_pos)
-                            Sleep(1)
-                            # 改用 DungeonMover 監控，避免舊超時邏輯
-                            dungeon_mover.reset()
-                            dungeon_mover.current_target = "minimap_stair"
-                            MonitorState.current_target = "minimap_stair"
-                            MonitorState.state_start_time = dungeon_mover.move_start_time
-                            MonitorState.is_gohome_mode = False
-                            result_state = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
-                            if not runtimeContext._MINIMAP_STAIR_IN_PROGRESS:
-                                # minimap_stair 完成（在 StateMoving_CheckFrozen 中清除 flag）
-                                logger.info("minimap_stair: 目標完成，彈出目標並返回 Map 狀態")
-                                # 彈出當前目標
-                                if targetInfoList and len(targetInfoList) > 0:
-                                    targetInfoList.pop(0)
-                                dungState = DungeonState.Map
-                            elif result_state == DungeonState.Map:
-                                dungState = DungeonState.Map
-                            else:
-                                dungState = result_state
-                        else:
-                            # 沒有 Resume 按鈕，可能角色已停止，嘗試打開地圖
-                            logger.info("minimap_stair: 未檢測到 Resume 按鈕，打開地圖繼續")
-                            Press([777,150])
-                            dungState = DungeonState.Map
-                    # Resume: 非第一次進入，檢查Resume按鈕決定下一步動作
-                    # 注意: 重啓後跳過Resume優化，因爲之前的路徑可能已失效
-                    # 注意: chest_auto 跳過 Resume，使用自己的移動等待邏輯
-                    elif runtimeContext._STEPAFTERRESTART and not has_chest_auto:
-                        # 檢測Resume按鈕，最多重試3次（等待畫面過渡）
-                        # 同時檢測寶箱和戰鬥狀態，避免錯過剛出現的寶箱
-                        MAX_RESUME_DETECT_RETRIES = 3
-                        resume_pos = None
-                        detected_other_state = False
-                        for detect_retry in range(MAX_RESUME_DETECT_RETRIES):
-                            screen = ScreenShot()
-                            
-                            # 先檢查是否已在地圖狀態（避免不必要的 Resume 檢測）
-                            if CheckIf(screen, 'mapFlag'):
-                                logger.info("Resume優化: 已在地圖狀態，跳過 Resume 檢測")
-                                dungState = DungeonState.Map
-                                detected_other_state = True
-                                break
-                            
-                            # 先檢查是否有寶箱或戰鬥
-                            if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
-                                logger.info(f"Resume優化: 檢測到寶箱狀態（第 {detect_retry + 1} 次嘗試）")
-                                dungState = DungeonState.Chest
-                                detected_other_state = True
-                                break
-                            if CheckIf(screen, 'combatActive') or CheckIf(screen, 'combatActive_2'):
-                                logger.info(f"Resume優化: 檢測到戰鬥狀態（第 {detect_retry + 1} 次嘗試）")
-                                dungState = DungeonState.Combat
-                                detected_other_state = True
-                                break
-                            
-                            # 檢查Resume按鈕
-                            resume_pos = CheckIf(screen, 'resume')
-                            if resume_pos:
-                                logger.info(f"Resume優化: 檢測到Resume按鈕（第 {detect_retry + 1} 次嘗試）")
-                                break
-                            else:
-                                if detect_retry < MAX_RESUME_DETECT_RETRIES - 1:
-                                    logger.info(f"Resume優化: 未檢測到Resume按鈕，等待重試（{detect_retry + 1}/{MAX_RESUME_DETECT_RETRIES}）")
-                                    Sleep(0.5)  # 縮短等待時間
+                    
+                    if runtimeContext._MID_DUNGEON_START:
+                        runtimeContext._MID_DUNGEON_START = False
                         
-                        # 如果檢測到其他狀態，跳過Resume優化
-                        if detected_other_state:
-                            pass  # dungState已設置，直接進入下一輪循環
-                        elif resume_pos:
-                            # Resume存在，點擊Resume，最多重試3次
-                            MAX_RESUME_RETRIES = 3
-                            resume_success = False
-                            
-                            for retry in range(MAX_RESUME_RETRIES):
-                                logger.info(f"Resume優化: 點擊Resume按鈕（第 {retry + 1}/{MAX_RESUME_RETRIES} 次）位置:{resume_pos}")
-                                Press(resume_pos)
-                                Sleep(1)  # 等待 routenotfound 可能出現
-                                
-                                # 檢查 routenotfound 是否出現
-                                screen_after = ScreenShot()
-                                if CheckIf(screen_after, 'routenotfound'):
-                                    # routenotfound 出現 = 已到達目的地
-                                    logger.info("Resume優化: 檢測到routenotfound，已到達目的地，打開地圖")
-                                    Sleep(1)  # routenotfound 會自動消失，稍等一下
-                                    Press([777,150])  # 打開地圖
-                                    Sleep(1)
-                                    # 檢查能見度（僅記錄日誌，不再觸發回城）
-                                    if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                        logger.warning("visibliityistoopoor，但繼續嘗試導航")
-                                    dungState = DungeonState.Map
-                                    resume_success = True
-                                    resume_fail_counter = 0  # 成功，重置計數器
-                                    break
-                                else:
-                                    logger.info("Resume優化: 未檢測到routenotfound")
-                                
-                                # 檢查畫面是否有變化（表示正在移動）
-                                gray1 = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
-                                gray2 = cv2.cvtColor(screen_after, cv2.COLOR_BGR2GRAY)
-                                mean_diff = cv2.absdiff(gray1, gray2).mean() / 255
-                                logger.info(f"Resume優化: 畫面變化檢測 mean_diff={mean_diff:.4f}")
-                                
-                                if mean_diff >= 0.02:  # 閾值降低到 2%
-                                    # 畫面有變化 = 還在路上，繼續移動監控
-                                    logger.info("Resume優化: 畫面有變化，繼續移動監控")
-                                    # 改用 DungeonMover 監控，避免舊超時邏輯
-                                    dungeon_mover.reset()
-                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
-                                    MonitorState.current_target = dungeon_mover.current_target or ""
-                                    MonitorState.state_start_time = dungeon_mover.move_start_time
-                                    MonitorState.is_gohome_mode = False
-                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
-                                    resume_success = True
-                                    resume_fail_counter = 0  # 成功，重置計數器
-                                    break
+                    if runtimeContext._RESTART_OPEN_MAP_PENDING:
+                        runtimeContext._RESTART_OPEN_MAP_PENDING = False
 
-                                # 畫面沒變化，準備重試
-                                logger.warning(f"Resume優化: 畫面無變化，準備重試 ({retry + 1}/{MAX_RESUME_RETRIES})")
-                                screen = screen_after  # 更新參考畫面
-                                resume_pos = CheckIf(screen, 'resume')
-                                if not resume_pos:
-                                    # Resume按鈕消失了，可能已經開始移動
-                                    logger.info("Resume優化: Resume按鈕消失，進入移動監控")
-                                    # 改用 DungeonMover 監控，避免舊超時邏輯
-                                    dungeon_mover.reset()
-                                    dungeon_mover.current_target = targetInfoList[0].target if targetInfoList else None
-                                    MonitorState.current_target = dungeon_mover.current_target or ""
-                                    MonitorState.state_start_time = dungeon_mover.move_start_time
-                                    MonitorState.is_gohome_mode = False
-                                    dungState = dungeon_mover._monitor_move(targetInfoList, runtimeContext)
-                                    resume_success = True
-                                    resume_fail_counter = 0  # 成功，重置計數器
-                                    break
-
-                            if not resume_success:
-                                # 5次Resume失敗
-                                # 檢查當前目標是否是樓梯：如果是樓梯，Resume失效代表換樓成功
-                                current_target = targetInfoList[0].target if targetInfoList else None
-                                if current_target and current_target.startswith('stair'):
-                                    logger.info(f"Resume優化: {MAX_RESUME_RETRIES}次Resume失敗，但目標是樓梯({current_target})，判定爲換樓成功")
-                                    targetInfoList.pop(0)  # 彈出當前樓梯目標
-                                    logger.info("Resume優化: 打開地圖繼續下一個目標")
-                                    Press([777,150])  # 打開地圖
-                                    Sleep(1)
-                                    dungState = DungeonState.Map
-                                else:
-                                    # 非樓梯目標，打開地圖重新導航
-                                    logger.warning(f"Resume優化: {MAX_RESUME_RETRIES}次Resume失敗，打開地圖重新導航")
-                                    Press([777,150])  # 打開地圖
-                                    Sleep(1)
-                                    
-                                    # [Fix] 黑暗區域緊急撤離 (Panic Mode)
-                                    if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                        logger.warning("Resume失敗且能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
-                                        if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
-                                            logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
-                                            _panic_start = time.time()
-                                            while time.time() - _panic_start < 60:
-                                                if setting._FORCESTOPING.is_set(): break
-                                                Press(gohome_pos)
-                                                Sleep(0.5)
-                                                if not CheckIf(ScreenShot(), 'gohome'):
-                                                    break
-                                            dungState = None
-                                        else:
-                                            logger.warning("未找到 gohome，嘗試隨機移動脫困")
-                                            Press([1100, 360])
-                                            Sleep(2)
-                                            dungState = None
-                                    else:
-                                        dungState = DungeonState.Map
-                        else:
-                            # 3次都沒檢測到Resume，重新識別狀態
-                            logger.info("Resume優化: 3次均未檢測到Resume按鈕，重新識別狀態")
-                            resume_fail_counter += 1
-                            if resume_fail_counter >= 5:
-                                logger.warning(f"Resume 連續失敗 {resume_fail_counter} 次，疑似卡死，重啟遊戲")
-                                restartGame()
-                            
-                            # [Fix] 使用 IdentifyState 重新判斷當前狀態，避免在戰鬥中錯誤打開地圖
-                            s, dungState, scn = IdentifyState()
-                            
-                            # 如果識別到戰鬥或寶箱，直接進入對應狀態
-                            if dungState == DungeonState.Combat:
-                                logger.info("Resume優化: 識別到戰鬥狀態")
-                                # dungState 已設置，直接進入下一輪循環
-                            elif dungState == DungeonState.Chest:
-                                logger.info("Resume優化: 識別到寶箱狀態")
-                                # dungState 已設置，直接進入下一輪循環
-                            elif dungState == DungeonState.Dungeon or dungState is None:
-                                # 在 Dungeon 狀態或未識別到特定狀態，嘗試打開地圖
-                                logger.info("Resume優化: 未識別到戰鬥/寶箱，打開地圖")
-                                Press([777,150])
-                                Sleep(1)
-                                # 檢查能見度 - 如果太黑，嘗試緊急撤離
-                                if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                    logger.warning("能見度過低(visibliityistoopoor)，進入緊急撤離邏輯")
-                                    if gohome_pos := CheckIf(ScreenShot(), 'gohome'):
-                                        logger.info(f"找到 gohome {gohome_pos}，持續點擊直到撤離")
-                                        _panic_start = time.time()
-                                        while time.time() - _panic_start < 60:
-                                            if setting._FORCESTOPING.is_set(): break
-                                            Press(gohome_pos)
-                                            Sleep(0.5)
-                                            if not CheckIf(ScreenShot(), 'gohome'):
-                                                break
-                                        dungState = None
-                                    else:
-                                        logger.warning("未找到 gohome，嘗試隨機移動脫困")
-                                        Press([1100, 360])
-                                        Sleep(2)
-                                        dungState = None
-                                else:
-                                    dungState = DungeonState.Map
-                            else:
-                                # 其他狀態（如 Map），保持原狀態
-                                logger.info(f"Resume優化: 識別到其他狀態 {dungState}")
-                    else:
-                        # chest_auto 不需要打開地圖，直接回到 Map 狀態讓其專屬邏輯處理
-                        if has_chest_auto:
-                            logger.debug("chest_auto: 跳過打開地圖，直接進入 Map 狀態")
-                            dungState = DungeonState.Map
-                        else:
-                            Sleep(1)
-                            Press([777,150])
-                            Sleep(1)
-                            # 檢查能見度（僅記錄日誌，不再觸發回城）
-                            if CheckIf(ScreenShot(), 'visibliityistoopoor'):
-                                logger.warning("visibliityistoopoor，但繼續嘗試導航")
-                            dungState = DungeonState.Map
+                    # 無論是 Resume 還是 Open Map，都統一轉交給 Map 狀態
+                    # DungeonMover.initiate_move -> resume_navigation 會處理 Resume 和開地圖
+                    dungState = DungeonState.Map
                 case DungeonState.Map:
                     # ==================== 使用 DungeonMover 統一處理移動 ====================
                     logger.info("[StateDungeon] 使用 DungeonMover 處理移動")
