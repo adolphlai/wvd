@@ -3721,14 +3721,16 @@ def Factory():
                         if pos:
                             logger.info(f"[DungeonMover] chest_resume: 點擊 {pos}")
                             Press(pos)
+                            Sleep(0.5)  # 點擊後等待
+                            # 重新截圖檢查 notresure
+                            screen = ScreenShot()
+                            if CheckIf(screen, 'notresure'):
+                                logger.info("[DungeonMover] chest_auto: 無寶箱 (notresure)")
+                                Press([1, 1])
+                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                    targetInfoList.pop(0)
+                                return self._cleanup_exit(DungeonState.Map)
                         self.last_chest_auto_click_time = time.time()
-                    
-                    # 檢查無寶箱
-                    if CheckIf(screen, 'notresure'):
-                        logger.info("[DungeonMover] chest_auto: 無寶箱 (notresure)")
-                        Press([1, 1])
-                        targetInfoList.pop(0)
-                        return self._cleanup_exit(DungeonState.Map)
                 
                 # ========== E. gohome Keep-Alive ==========
                 if self.is_gohome_mode:
@@ -3782,8 +3784,15 @@ def Factory():
 
                         # chest_auto 特殊處理：靜止達閾值
                         if is_chest_auto and self.still_count >= self.CHEST_AUTO_STILL_THRESHOLD:
-                            logger.info(f"[DungeonMover] chest_auto 靜止達 {self.still_count} 次，檢查 mapFlag")
-                            if CheckIf(screen, 'mapFlag'):
+                            logger.info(f"[DungeonMover] chest_auto 靜止達 {self.still_count} 次，檢查狀態")
+                            # 先檢查 notresure（無寶箱）
+                            if CheckIf(screen, 'notresure'):
+                                logger.info(f"[DungeonMover] chest_auto: 靜止且無寶箱 (notresure)")
+                                Press([1, 1])
+                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
+                                    targetInfoList.pop(0)
+                                return self._cleanup_exit(DungeonState.Map)
+                            elif CheckIf(screen, 'mapFlag'):
                                 logger.info(f"[DungeonMover] chest_auto: 靜止且在地圖狀態，PressReturn 退出")
                                 PressReturn()
                                 Sleep(0.5)
