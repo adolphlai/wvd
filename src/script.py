@@ -3162,7 +3162,17 @@ def Factory():
         for wait_count in range(30):  # 最多等待 15 秒
             screen = ScreenShot()
             update_combat_flag(screen)
-            
+
+            # [異常檢測] 穿插檢測復活/對話，避免卡在等待 flee
+            if CheckIf(screen, 'RiseAgain'):
+                logger.info("[戰鬥] flee 等待中偵測到 RiseAgain，中斷並處理復活")
+                RiseAgainReset(reason='combat')
+                return IdentifyState()
+            if Press(CheckIf(screen, 'returnText')):
+                logger.info("[戰鬥] flee 等待中偵測到 returnText，中斷並處理對話")
+                Sleep(1)
+                return IdentifyState()
+
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
