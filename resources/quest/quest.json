@@ -28,6 +28,18 @@
             ["press","AWD/AWD2F",[1,1],2]
         ]
     },
+    "DH-Church1":{
+        "_TYPE":"dungeon",
+        "questName":"[打王]深雪教會區",
+        "_TARGETINFOLIST":[
+            ["position","右下",[872,976]],
+            ["position","右上",[820,712]]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","stair_DH_Church","input swipe 650 900 650 250",2]
+        ]
+    },	
     "DH-Church":{
         "_TYPE":"dungeon",
         "questName":"[刷怪]深雪教會區",

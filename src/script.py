@@ -3182,10 +3182,13 @@ def Factory():
             screen = ScreenShot()
             update_combat_flag(screen)
 
-            # [異常檢測] 穿插檢測復活/對話，避免卡在等待 flee
+            # [異常檢測] 穿插檢測復活/對話/死亡，避免卡在等待 flee
             if CheckIf(screen, 'RiseAgain'):
                 logger.info("[戰鬥] flee 等待中偵測到 RiseAgain，中斷並處理復活")
                 RiseAgainReset(reason='combat')
+                return IdentifyState()
+            if CheckIf(screen, 'someonedead'):
+                logger.info("[戰鬥] flee 等待中偵測到 someonedead，中斷並處理死亡")
                 return IdentifyState()
             if Press(CheckIf(screen, 'returnText')) or Press(CheckIf(screen, 'ReturnText')):
                 logger.info("[戰鬥] flee 等待中偵測到 returnText，中斷並處理對話")
