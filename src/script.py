@@ -1032,21 +1032,6 @@ def Factory():
         if final_img is None:
             final_img = _ScreenShot_ADB()
 
-        # [功能] 定期截圖記錄 (每 60 秒)
-        try:
-            # 使用函數屬性來存儲上次記錄時間，避免使用全域變量
-            if not hasattr(ScreenShot, "last_record_time"):
-                ScreenShot.last_record_time = 0
-            
-            # 使用函數屬性來存儲記錄目錄路徑 (初始化一次)
-            if not hasattr(ScreenShot, "record_dir"):
-                ScreenShot.record_dir = os.path.join(LOGS_FOLDER_NAME, "record")
-                if not os.path.exists(ScreenShot.record_dir):
-                    os.makedirs(ScreenShot.record_dir, exist_ok=True)
-
-        except Exception as e:
-            logger.error(f"[自動截圖] 保存失敗: {e}")
-
         return final_img
     
     def _ScreenShot_ADB():
@@ -1127,6 +1112,9 @@ def Factory():
                     logger.info("[截圖模式] 使用 ADB 截圖 (~150-570ms)")
                     _adb_mode_logged = True
                 return image
+            except RestartSignal:
+                # RestartSignal 不應被截圖捕獲，直接拋出讓外層處理
+                raise
             except Exception as e:
                 retry_count += 1
                 logger.warning(f"截圖失敗: {e}")
@@ -1967,7 +1955,7 @@ def Factory():
             if MonitorState.flag_auto_text >= 80:
                 logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
                 click_count = 0
-                while click_count < 10:
+                while click_count < 5:
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                         return State.Quit, DungeonState.Quit, screen
                     # 連點 3 下清戰利品
@@ -1975,7 +1963,21 @@ def Factory():
                         Press([1, 1])
                         Sleep(0.05)
                     Sleep(0.1)
+                    shot_start = time.time()
                     screen = ScreenShot()
+                    shot_ms = (time.time() - shot_start) * 1000
+                    logger.debug(f"[AUTO] 截圖耗時: {shot_ms:.0f}ms ({'串流' if shot_ms < 50 else 'ADB'})")
+
+                    # [穿插異常檢測] 避免 AUTO 卡住時延遲處理
+                    if Press(CheckIf(screen, "returnText")):
+                        logger.info("[AUTO] 偵測到 returnText，中斷並處理")
+                        Sleep(1)
+                        return IdentifyState()
+                    if CheckIf(screen, 'RiseAgain'):
+                        logger.info("[AUTO] 偵測到 RiseAgain，中斷並處理")
+                        RiseAgainReset(reason='combat')
+                        return IdentifyState()
+
                     MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
                     if MonitorState.flag_auto_text < 80:
                         logger.info("[AUTO] AUTO 已消失，停止點擊")
@@ -2191,10 +2193,10 @@ def Factory():
                 # [異常截圖] 只在首次進入異常狀態時截圖
                 if counter == 4:
                     try:
-                        if not os.path.exists(ScreenShot.record_dir):
-                            os.makedirs(ScreenShot.record_dir, exist_ok=True)
+                        record_dir = os.path.join(LOGS_FOLDER_NAME, "record")
+                        os.makedirs(record_dir, exist_ok=True)
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        filename = os.path.join(ScreenShot.record_dir, f"unusual_{timestamp}.png")
+                        filename = os.path.join(record_dir, f"unusual_{timestamp}.png")
                         cv2.imwrite(filename, screen)
                         logger.info(f"[異常截圖] 已保存異常狀態截圖: {filename}")
                     except Exception as e:
@@ -2796,16 +2798,22 @@ def Factory():
                     # 點擊 4 個目標位置（覆蓋更多可能的敵人位置）
                     target_x1 = next_pos[0] - 15  # X 軸偏移 -15
                     target_x2 = next_pos[0]       # X 軸不偏移
+                    target_x3 = next_pos[0]       # X 軸不偏移
                     target_y1 = next_pos[1] + 100
                     target_y2 = next_pos[1] + 170
+                    target_y3= next_pos[1] + 260
                     logger.info(f"[順序 {caster_type}] 點擊 4 個目標位置")
                     Press([target_x1, target_y1])
                     Sleep(0.1)
                     Press([target_x1, target_y2])
                     Sleep(0.1)
+                    Press([target_x1, target_y3])
+                    Sleep(0.1)
                     Press([target_x2, target_y1])
                     Sleep(0.1)
                     Press([target_x2, target_y2])
+                    Sleep(0.1)
+                    Press([target_x2, target_y3])
                 else:
                     # 如果找不到 next，使用固定座標
                     logger.info(f"[順序 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
@@ -3274,9 +3282,11 @@ def Factory():
 
             # 取得角色技能配置
             if current_char == "未找到":
-                # 識別失敗：使用普攻
-                logger.warning(f"[技能施放] 角色識別失敗，使用普攻")
-                skill, level = "attack", "關閉"
+                # 識別失敗：使用單體技能
+                logger.warning(f"[技能施放] 角色識別失敗，使用單體技能")
+                # 使用第一個可用的單體技能
+                skill = PHYSICAL_SKILLS[0] if PHYSICAL_SKILLS else "attack"
+                level = "關閉"
             else:
                 # 從配置取得技能
                 skill, level = setting.get_skill_for_character(current_char, battle_num)

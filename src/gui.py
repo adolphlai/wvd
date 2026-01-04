@@ -68,7 +68,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.character_skill_rows = []  # 會在 _create_skills_tab 中填充
 
         self.create_widgets()
-        self.update_organize_backpack_state()  # 初始化整理揹包狀態
+        self.update_organize_backpack_state()  # 初始化整理背包狀態
 
         
 
@@ -551,7 +551,7 @@ class ConfigPanelApp(tk.Toplevel):
 
         # Row 1: 說明文字
         ttk.Label(frame_char_skill,
-                  text="※ 未識別角色時使用普攻。新增角色請將頭像放入 resources/images/character/ 並重啟",
+                  text="※ 未識別角色時使用單體技能。新增角色請將頭像放入 resources/images/character/ 並重啟",
                   foreground="gray").grid(row=1, column=0, columnspan=8, sticky=tk.W, pady=(2, 8))
 
         # 類別選項與等級選項
@@ -577,16 +577,17 @@ class ConfigPanelApp(tk.Toplevel):
                 category = category_var.get()
                 if category == "":
                     skill_options = [""]
+                    skill_var.set("")
                 elif category == "普攻":
                     skill_options = ["", "attack"]
+                    skill_var.set("attack")  # 自動選擇普攻
                 else:
                     skills_from_folder = SKILLS_BY_CATEGORY.get(category, [])
-                    skill_options = ["", "attack"] + skills_from_folder
+                    skill_options = [""] + skills_from_folder
+                    if skill_var.get() not in skill_options:
+                        skill_var.set("")
 
                 skill_combo['values'] = skill_options
-                if skill_var.get() not in skill_options:
-                    skill_var.set("")
-
                 self._save_skill_config()
             return callback
 
@@ -734,7 +735,7 @@ class ConfigPanelApp(tk.Toplevel):
                 for cat, skills in SKILLS_BY_CATEGORY.items():
                     if saved_skill in skills:
                         category_var.set(cat)
-                        skill_combo['values'] = ["", "attack"] + skills
+                        skill_combo['values'] = [""] + skills
                         break
                 else:
                     skill_combo['values'] = [""]
@@ -920,10 +921,10 @@ class ConfigPanelApp(tk.Toplevel):
         frame_test = ttk.LabelFrame(tab, text="Inn 流程測試", padding=5)
         frame_test.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
 
-        # 測試整理揹包按鈕
+        # 測試整理背包按鈕
         self.test_organize_btn = ttk.Button(
             frame_test,
-            text="測試整理揹包",
+            text="測試整理背包",
             command=self._test_organize_backpack_standalone
         )
         self.test_organize_btn.grid(row=0, column=0, padx=5, pady=5)
@@ -999,22 +1000,22 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_screenshot, textvariable=self.screenshot_status_var, foreground="green").grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=2)
 
         # ROI 設定區域 (讓你自定義裁切範圍)
-        frame_roi = ttk.LabelFrame(frame_screenshot, text="ROI 設定 (x,y,w,h)", padding=2)
-        frame_roi.grid(row=2, column=0, columnspan=6, sticky=tk.W, pady=2)
+        # frame_roi = ttk.LabelFrame(frame_screenshot, text="ROI 設定 (x,y,w,h)", padding=2)
+        # frame_roi.grid(row=2, column=0, columnspan=6, sticky=tk.W, pady=2)
         
         self.roi_x = tk.IntVar(value=89)
         self.roi_y = tk.IntVar(value=53)
         self.roi_w = tk.IntVar(value=106)
         self.roi_h = tk.IntVar(value=47)
         
-        ttk.Label(frame_roi, text="X:").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(frame_roi, textvariable=self.roi_x, width=5).pack(side=tk.LEFT)
-        ttk.Label(frame_roi, text="Y:").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(frame_roi, textvariable=self.roi_y, width=5).pack(side=tk.LEFT)
-        ttk.Label(frame_roi, text="W:").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(frame_roi, textvariable=self.roi_w, width=5).pack(side=tk.LEFT)
-        ttk.Label(frame_roi, text="H:").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(frame_roi, textvariable=self.roi_h, width=5).pack(side=tk.LEFT)
+        # ttk.Label(frame_roi, text="X:").pack(side=tk.LEFT, padx=2)
+        # ttk.Entry(frame_roi, textvariable=self.roi_x, width=5).pack(side=tk.LEFT)
+        # ttk.Label(frame_roi, text="Y:").pack(side=tk.LEFT, padx=2)
+        # ttk.Entry(frame_roi, textvariable=self.roi_y, width=5).pack(side=tk.LEFT)
+        # ttk.Label(frame_roi, text="W:").pack(side=tk.LEFT, padx=2)
+        # ttk.Entry(frame_roi, textvariable=self.roi_w, width=5).pack(side=tk.LEFT)
+        # ttk.Label(frame_roi, text="H:").pack(side=tk.LEFT, padx=2)
+        # ttk.Entry(frame_roi, textvariable=self.roi_h, width=5).pack(side=tk.LEFT)
         
         ttk.Label(frame_screenshot, text="※ 使用串流方式截圖，儲存至 resources/images/character/", foreground="gray").grid(row=3, column=0, columnspan=5, sticky=tk.W, pady=2)
 
@@ -1023,7 +1024,7 @@ class ConfigPanelApp(tk.Toplevel):
                   foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
 
     def _test_organize_backpack_standalone(self):
-        """測試整理揹包功能（完全獨立運行）"""
+        """測試整理背包功能（完全獨立運行）"""
         import threading
         
         # 禁用按鈕防止重複點擊
@@ -1032,7 +1033,7 @@ class ConfigPanelApp(tk.Toplevel):
         
         def run_test():
             try:
-                logger.info("=== 開始獨立測試整理揹包 ===")
+                logger.info("=== 開始獨立測試整理背包 ===")
                 
                 # 初始化設定
                 setting = FarmConfig()
@@ -1056,7 +1057,7 @@ class ConfigPanelApp(tk.Toplevel):
                 test_func(setting, "organize_backpack", count=count)
                 
                 self.test_adb_status.set("測試完成")
-                logger.info("=== 測試整理揹包完成 ===")
+                logger.info("=== 測試整理背包完成 ===")
                 
             except Exception as e:
                 logger.error(f"測試失敗: {e}")
@@ -1069,7 +1070,7 @@ class ConfigPanelApp(tk.Toplevel):
         thread.start()
 
     def _test_state_inn_standalone(self):
-        """測試完整住宿流程（住宿 → 補給 → 整理揹包）"""
+        """測試完整住宿流程（住宿 → 補給 → 整理背包）"""
         import threading
 
         # 禁用按鈕防止重複點擊
