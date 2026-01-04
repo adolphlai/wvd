@@ -932,7 +932,7 @@ def Factory():
                 raise
     
     def Sleep(t=1):
-        """可響應停止信號的 sleep 函數"""
+        """可響應停止信號和遊戲崩潰的 sleep 函數"""
         # 將長時間 sleep 分割成小段，每段檢查停止標誌
         interval = 0.5  # 每 0.5 秒檢查一次
         elapsed = 0
@@ -940,6 +940,12 @@ def Factory():
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 logger.debug(f"Sleep 中檢測到停止信號，提前退出")
                 return
+            # 檢查遊戲進程是否崩潰
+            if hasattr(setting, '_GAME_CRASHED') and setting._GAME_CRASHED.is_set():
+                logger.warning("[Sleep] 檢測到遊戲崩潰，觸發重啟")
+                setting._GAME_CRASHED.clear()
+                restartGame(skipScreenShot=True)
+                return  # restartGame 會拋出 RestartSignal
             sleep_time = min(interval, t - elapsed)
             time.sleep(sleep_time)
             elapsed += sleep_time
@@ -1643,6 +1649,43 @@ def Factory():
             Sleep()
             restartGame()
             return None # restartGame會拋出異常 所以直接返回none就行了
+
+    # 遊戲進程監控
+    _game_monitor_thread = None
+
+    def _monitor_game_process():
+        """守護線程：監控遊戲進程是否存活"""
+        package_name = "jp.co.drecom.wizardry.daphne"
+        while not setting._FORCESTOPING.is_set():
+            try:
+                result = setting._ADBDEVICE.shell(f"pidof {package_name}", timeout=3)
+                if not result.strip():
+                    logger.warning("[GameMonitor] 遊戲進程已死亡，設置崩潰標記")
+                    setting._GAME_CRASHED.set()
+                    return
+            except Exception as e:
+                # ADB 異常時不誤判（可能是暫時斷線）
+                logger.debug(f"[GameMonitor] ADB 檢查異常: {e}")
+            time.sleep(2)
+        logger.debug("[GameMonitor] 監控線程結束（收到停止信號）")
+
+    def _start_game_monitor():
+        """啟動遊戲進程監控線程"""
+        nonlocal _game_monitor_thread
+        # 確保 Event 存在
+        if not hasattr(setting, '_GAME_CRASHED'):
+            setting._GAME_CRASHED = Event()
+        setting._GAME_CRASHED.clear()
+
+        # 停止舊的監控線程（如果存在）
+        if _game_monitor_thread and _game_monitor_thread.is_alive():
+            logger.debug("[GameMonitor] 舊監控線程仍在運行，等待其結束...")
+
+        # 啟動新的監控線程
+        _game_monitor_thread = Thread(target=_monitor_game_process, daemon=True, name="GameMonitor")
+        _game_monitor_thread.start()
+        logger.info("[GameMonitor] 遊戲進程監控已啟動")
+
     def restartGame(skipScreenShot = False):
         nonlocal runtimeContext
         runtimeContext._COMBATSPD = False # 重啓會重置2倍速, 所以重置標識符以便重新打開.
@@ -1676,11 +1719,15 @@ def Factory():
         logger.info("巫術, 啓動!")
         logger.debug(DeviceShell(f"am start -n {mainAct}"))
         Sleep(10)
+        _start_game_monitor()  # 啟動遊戲進程監控
         raise RestartSignal()
     class RestartSignal(Exception):
         pass
     def RestartableSequenceExecution(*operations):
         MonitorState.current_state = "Starting"
+        # 確保遊戲進程監控已啟動
+        if not hasattr(setting, '_GAME_CRASHED') or not (_game_monitor_thread and _game_monitor_thread.is_alive()):
+            _start_game_monitor()
         MAX_RESTART_RETRIES = 10  # 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
