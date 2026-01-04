@@ -3252,6 +3252,20 @@ def Factory():
                 Sleep(1)
                 return IdentifyState()
 
+            # [新增] 檢查是否已經脫離戰鬥 (例如瞬殺或過場過快)
+            # 如果出現 寶箱/地城/地圖 標誌，代表戰鬥已結束
+            if CheckIf(screen, 'chestFlag'):
+                logger.info("[戰鬥] 等待 flee 時發現 chestFlag，判定戰鬥已結束")
+                return DungeonState.Chest
+            if CheckIf(screen, 'dungFlag') or CheckIf(screen, 'mapFlag'):
+                logger.info("[戰鬥] 等待 flee 時發現 dungFlag/mapFlag，判定戰鬥已結束")
+                return DungeonState.Dungeon
+            
+            # [新增] 避免誤判：如果已經進入戰鬥介面 (combatActive) 就不用等 flee 了
+            if CheckIf(screen, 'combatActive', threshold=0.75):
+                 # logger.debug("[戰鬥] 發現 combatActive，標記戰鬥進行中")
+                 pass
+
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
