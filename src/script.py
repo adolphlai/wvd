@@ -2602,6 +2602,7 @@ def Factory():
                 pos = FindCoordsOrElseExecuteFallbackAndWait(info[1],info[2],info[3])
                 if info[0]=="press":
                     Press(pos)
+            Sleep(1)  # 每個操作後等待遊戲響應
         Sleep(1)
         Press(CheckIf(ScreenShot(), 'GotoDung'))
     def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
