@@ -4556,6 +4556,8 @@ def Factory():
                         Press([1,1])
                         counter_trychar = -1
                         while 1:
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return
                             counter_trychar += 1
                             dunflag_result = CheckIf(ScreenShot(),'dungflag')
                             logger.debug(f"[圖片偵測] dungflag: {dunflag_result}")
@@ -4817,6 +4819,8 @@ def Factory():
                             Press(FindCoordsOrElseExecuteFallbackAndWait('FortressArrival','input swipe 50 1200 50 1300',1))
 
                         while pos:= CheckIf(ScreenShot(), 'leap'):
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return
                             Press(pos)
                             Sleep(2)
                             Press(CheckIf(ScreenShot(),'FortressArrival'))
@@ -4984,11 +4988,15 @@ def Factory():
                         combat_loop_start = time.time()
                         MAX_COMBAT_LOOP_TIME = 300  # 單輪最多 5 分鐘
                         while time.time() - combat_loop_start < MAX_COMBAT_LOOP_TIME:
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return
                             Press(FindCoordsOrElseExecuteFallbackAndWait(['icanstillgo','combatActive','combatActive_2'],['input swipe 400 400 400 100',[1,1]],1))
                             Sleep(1)
                             inner_loop_count = 0
                             MAX_INNER_LOOP = 200  # 內層循環最多 200 次
                             while inner_loop_count < MAX_INNER_LOOP:
+                                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                    return
                                 scn=ScreenShot()
                                 if TryPressRetry(scn):
                                     inner_loop_count += 1
@@ -5034,6 +5042,8 @@ def Factory():
                 needRecoverBecauseCombat = False
                 needRecoverBecauseChest = False
                 while 1:
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        break
                     _, dungState,_ = IdentifyState()
                     logger.info(dungState)
                     match dungState:
@@ -5227,6 +5237,8 @@ def Factory():
                         MAX_SSC_SWIPES = 20  # 最大滑動次數
                         ssc_swipe_count = 0
                         while ssc_swipe_count < MAX_SSC_SWIPES:
+                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                                return
                             pos = CheckIf(ScreenShot(),'SSC/Request')
                             if not pos:
                                 DeviceShell(f"input swipe 150 200 150 250")
@@ -5720,6 +5732,8 @@ def TestFactory():
     def DeviceShell(cmdStr):
         logger.debug(f"DeviceShell {cmdStr}")
         while True:
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return ""
             try:
                 result = setting._ADBDEVICE.shell(cmdStr, timeout=5)
                 return result
