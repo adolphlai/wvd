@@ -3720,22 +3720,22 @@ def Factory():
                     Sleep(0.5)
                     pre_screen = ScreenShot() # 重新抓圖確認是否還有 AUTO
 
-                # 2. 檢查 AUTO (改為持續點擊直到消失)
+                # 2. 檢查 AUTO (脈衝式連點直到消失)
                 auto_break_count = 0
-                while auto_break_count < 15: # 最高持續點擊 15 次
+                while auto_break_count < 20: 
                     pre_screen = ScreenShot()
-                    resume_pre_pos = CheckIf(pre_screen, 'resume', threshold=0.7)
-                    if resume_pre_pos:
-                        logger.info(f"[DungeonMover] 破障清理中 (嘗試 {auto_break_count+1}/15): {resume_pre_pos}")
-                        for _ in range(3):
-                            Press(resume_pre_pos)
-                            Sleep(0.05)
+                    # 必須確實看到 AUTO 圖標才執行點擊
+                    if CheckIf(pre_screen, 'AUTO'):
+                        logger.info(f"[DungeonMover] 偵測到 AUTO 遮擋，執行破障點擊 ({auto_break_count+1}/20)...")
+                        # 點擊對話/彈窗確認區域 [515, 934]
+                        Press([515, 934])
+                        Sleep(0.1) 
                         auto_break_count += 1
                     else:
-                        if auto_break_count > 0:
-                            logger.info("[DungeonMover] 彈窗障礙已清除")
+                        # 看不見圖標了，立即停止清理
                         break
-                Sleep(0.5)
+                if auto_break_count > 0:
+                    Sleep(0.3)
 
             if not targetInfoList:
                 logger.info("[DungeonMover] 無待執行目標，執行 GoHome 流程以退出地城")
@@ -3990,14 +3990,12 @@ def Factory():
                         return DungeonState.Dungeon
 
                     auto_retry_count = 0
-                    while auto_retry_count < 10:
+                    while auto_retry_count < 15:
                         screen_retry = ScreenShot()
-                        resume_stray_pos = CheckIf(screen_retry, 'resume', threshold=0.7)
-                        if resume_stray_pos:
-                            logger.info(f"[DungeonMover] 偵測到 AUTO 殘留，持續清理 (嘗試 {auto_retry_count+1}/10): {resume_stray_pos}")
-                            for _ in range(3):
-                                Press(resume_stray_pos)
-                                Sleep(0.05)
+                        if CheckIf(screen_retry, 'AUTO'):
+                            logger.info(f"[DungeonMover] 地圖重試中偵測到 AUTO，持續清理 (嘗試 {auto_retry_count+1}/15)...")
+                            Press([515, 934])
+                            Sleep(0.1)
                             auto_retry_count += 1
                         else:
                             break
