@@ -3745,6 +3745,8 @@ def Factory():
             try:
                 if self.current_target == 'chest_auto':
                     return self.chest_search(targetInfoList, ctx)
+                elif self.current_target == 'chest':
+                    return self.chest_navigation(targetInfoList, ctx)
                 elif self.current_target == 'gohome':
                     self.is_gohome_mode = True
                     return self._fallback_gohome(targetInfoList, ctx)
@@ -3814,6 +3816,54 @@ def Factory():
                     Press([800, 360])  # 常見的 gohome 位置
             
             return self._monitor_move(targetInfoList, ctx)
+        
+        def chest_navigation(self, targetInfoList, ctx):
+            """啟動 chest 類型移動（開地圖搜尋寶箱圖示）"""
+            target_info = targetInfoList[0]
+            
+            # 檢查戰鬥/寶箱狀態（避免在錯誤狀態下開地圖）
+            screen = ScreenShot()
+            if detected_state := self._check_combat_or_chest(screen):
+                return detected_state
+            
+            # 確保地圖開啟
+            if not CheckIf(screen, 'mapFlag'):
+                logger.info("[DungeonMover] chest: 打開地圖")
+                Press([777, 150])
+                Sleep(1)
+                screen = ScreenShot()
+                
+                if detected_state := self._check_combat_or_chest(screen):
+                    return detected_state
+                
+                if not CheckIf(screen, 'mapFlag'):
+                    logger.warning("[DungeonMover] chest: 無法開啟地圖")
+                    self.consecutive_map_open_failures += 1
+                    
+                    if self.consecutive_map_open_failures >= 3:
+                        logger.error(f"[DungeonMover] chest: 連續 {self.consecutive_map_open_failures} 次無法打開地圖，觸發 GoHome")
+                        self.consecutive_map_open_failures = 0
+                        self.is_gohome_mode = True
+                        return self._fallback_gohome(targetInfoList, ctx)
+                    
+                    return DungeonState.Dungeon
+            
+            # 使用 StateMap_FindSwipeClick 搜索寶箱
+            try:
+                chest_pos = StateMap_FindSwipeClick(target_info)
+                if chest_pos:
+                    logger.info(f"[DungeonMover] chest: 找到寶箱位置 {chest_pos}")
+                    self.consecutive_map_open_failures = 0
+                    Press(chest_pos)
+                    Press([138, 1432])  # automove
+                    return self._monitor_move(targetInfoList, ctx)
+                else:
+                    logger.info("[DungeonMover] chest: ROI 內找不到寶箱，跳過此目標")
+                    targetInfoList.pop(0)
+                    return self._cleanup_exit(DungeonState.Map)
+            except KeyError as e:
+                logger.error(f"[DungeonMover] chest: 地圖操作錯誤 {e}")
+                return self._cleanup_exit(DungeonState.Dungeon)
         
         def resume_navigation(self, targetInfoList, ctx):
             """啟動一般移動 (position, harken, stair)"""
