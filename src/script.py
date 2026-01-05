@@ -1393,12 +1393,13 @@ def Factory():
                                 is_valid = True
 
                         elif check_type == 4: # 恐懼 (Fear)
-                            # Hue: 80-110 (Cyanish), Sat > 50
-                            hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
-                            avg_hue = np.mean(hsv[:,:,0])
-                            avg_sat = np.mean(hsv[:,:,1])
-                            if 80 < avg_hue < 110 and avg_sat > 50:
-                                is_valid = True
+                            # 使用像素差異比對 (避免與劇毒/詛咒混淆)
+                            # 由於形狀極度相似，HSV 無法區分，改用像素差異平均值
+                            if matched_area.shape == template.shape:
+                                diff_img = cv2.absdiff(matched_area, template)
+                                diff_val = np.mean(diff_img)
+                                if diff_val < 7.0: # 嚴格閾值，確保完全一致
+                                    is_valid = True
                         
                         if is_valid:
                             logger.info(f"[異常恢復] 偵測到異常狀態 {tmpl_name} 於角色 {idx} (val={max_val:.2f})")
