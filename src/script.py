@@ -3720,16 +3720,16 @@ def Factory():
                     Sleep(0.5)
                     pre_screen = ScreenShot() # 重新抓圖確認是否還有 AUTO
 
-                # 2. 檢查 AUTO (脈衝式連點直到消失)
+                # 2. 檢查 AUTO (瘋狂連點直到消失)
                 auto_break_count = 0
                 while auto_break_count < 20: 
                     pre_screen = ScreenShot()
                     # 必須確實看到 AUTO 圖標才執行點擊
                     if CheckIf(pre_screen, 'AUTO'):
-                        logger.info(f"[DungeonMover] 偵測到 AUTO 遮擋，執行破障點擊 ({auto_break_count+1}/20)...")
+                        logger.info(f"[DungeonMover] 偵測到 AUTO 遮擋，執行瘋狂連點 ({auto_break_count+1}/20)...")
                         # 點擊對話/彈窗確認區域 [515, 934]
                         Press([515, 934])
-                        Sleep(0.1) 
+                        Sleep(0.3) # 降低頻率至 0.3s，防止遊戲崩潰
                         auto_break_count += 1
                     else:
                         # 看不見圖標了，立即停止清理
@@ -3993,9 +3993,9 @@ def Factory():
                     while auto_retry_count < 15:
                         screen_retry = ScreenShot()
                         if CheckIf(screen_retry, 'AUTO'):
-                            logger.info(f"[DungeonMover] 地圖重試中偵測到 AUTO，持續清理 (嘗試 {auto_retry_count+1}/15)...")
+                            logger.info(f"[DungeonMover] 地圖重試中偵測到 AUTO，瘋狂連點清理中 (嘗試 {auto_retry_count+1}/15)...")
                             Press([515, 934])
-                            Sleep(0.1)
+                            Sleep(0.3)
                             auto_retry_count += 1
                         else:
                             break
