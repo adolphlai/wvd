@@ -3705,15 +3705,37 @@ def Factory():
             # ==================== 1. 預檢與清理遺留彈窗 ====================
             TryPressRetry(ScreenShot())
             
-            # [優化] 解決戰利品視窗殘留問題：啟動前若看到 AUTO/Resume，先點一下關掉它
-            # 這能防止結算視窗擋住地圖按鈕導致的連續失敗
+            # [深度優化] 解決戰利品/對話/屬性視窗殘留問題
+            # 啟動前若看到 AUTO/Resume 或 returnText 箭頭，先執行清理連點
             pre_screen = ScreenShot()
             if CheckIf(pre_screen, 'dungFlag') and not CheckIf(pre_screen, 'mapFlag'):
-                resume_pre_pos = CheckIf(pre_screen, 'resume')
-                if resume_pre_pos:
-                    logger.info(f"[DungeonMover] 啟動前偵測到彈窗殘留 (AUTO)，執行清理點擊: {resume_pre_pos}")
-                    Press(resume_pre_pos)
+                # 1. 檢查返回按鈕 (許多結算窗附帶這個)
+                return_pos = CheckIf(pre_screen, 'returnText', threshold=0.7)
+                if not return_pos:
+                    return_pos = CheckIf(pre_screen, 'ReturnText', threshold=0.7)
+                
+                if return_pos:
+                    logger.info(f"[DungeonMover] 啟動前偵測到返回視窗 (returnText)，清理點擊: {return_pos}")
+                    Press(return_pos)
                     Sleep(0.5)
+                    pre_screen = ScreenShot() # 重新抓圖確認是否還有 AUTO
+
+                # 2. 檢查 AUTO (改為持續點擊直到消失)
+                auto_break_count = 0
+                while auto_break_count < 15: # 最高持續點擊 15 次
+                    pre_screen = ScreenShot()
+                    resume_pre_pos = CheckIf(pre_screen, 'resume', threshold=0.7)
+                    if resume_pre_pos:
+                        logger.info(f"[DungeonMover] 破障清理中 (嘗試 {auto_break_count+1}/15): {resume_pre_pos}")
+                        for _ in range(3):
+                            Press(resume_pre_pos)
+                            Sleep(0.05)
+                        auto_break_count += 1
+                    else:
+                        if auto_break_count > 0:
+                            logger.info("[DungeonMover] 彈窗障礙已清除")
+                        break
+                Sleep(0.5)
 
             if not targetInfoList:
                 logger.info("[DungeonMover] 無待執行目標，執行 GoHome 流程以退出地城")
@@ -3953,16 +3975,35 @@ def Factory():
                             self.consecutive_map_open_failures = 0
                             return detected_state
                     
-                    logger.warning("[DungeonMover] 無法打開地圖")
+                    # [自癒優化] 檢查是否被遺留的結算窗口 (AUTO/Resume) 或返回鈕擋住了
+                    # 門檻放寬至 0.7 以應對各種 UI 變體
+                    screen_retry = ScreenShot()
                     
-                    # [自癒優化] 檢查是否被遺留的結算窗口 (AUTO/Resume) 擋住了
-                    # 這能解決「開地圖失敗但畫面上其實有 AUTO」的視覺死角
-                    resume_stray_pos = CheckIf(screen, 'resume')
-                    if resume_stray_pos:
-                        logger.info(f"[DungeonMover] 偵測到 AUTO (Resume) 殘留，嘗試點擊清理: {resume_stray_pos}")
-                        Press(resume_stray_pos)
+                    # 優先檢查返回鈕
+                    return_stray = CheckIf(screen_retry, 'returnText', threshold=0.7)
+                    if not return_stray: return_stray = CheckIf(screen_retry, 'ReturnText', threshold=0.7)
+                    
+                    if return_stray:
+                        logger.info(f"[DungeonMover] 地圖開啟失敗，偵測到返回鈕殘留，點擊清理: {return_stray}")
+                        Press(return_stray)
                         Sleep(0.5)
-                        # 點擊後直接重新嘗試判定 Dungeon 分發
+                        return DungeonState.Dungeon
+
+                    auto_retry_count = 0
+                    while auto_retry_count < 10:
+                        screen_retry = ScreenShot()
+                        resume_stray_pos = CheckIf(screen_retry, 'resume', threshold=0.7)
+                        if resume_stray_pos:
+                            logger.info(f"[DungeonMover] 偵測到 AUTO 殘留，持續清理 (嘗試 {auto_retry_count+1}/10): {resume_stray_pos}")
+                            for _ in range(3):
+                                Press(resume_stray_pos)
+                                Sleep(0.05)
+                            auto_retry_count += 1
+                        else:
+                            break
+                    
+                    if auto_retry_count > 0:
+                        # 清理完畢後重啟地城分發
                         return DungeonState.Dungeon
                     
                     self.consecutive_map_open_failures += 1
