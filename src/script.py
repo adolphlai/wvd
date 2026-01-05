@@ -3703,8 +3703,10 @@ def Factory():
                 DungeonState: 下一個狀態
             """
             if not targetInfoList:
-                logger.info("[DungeonMover] 無目標，返回 Map 狀態")
-                return DungeonState.Map
+                logger.info("[DungeonMover] 無待執行目標，執行 GoHome 流程以退出地城")
+                self.is_gohome_mode = True
+                MonitorState.is_gohome_mode = True
+                return self._fallback_gohome(targetInfoList, ctx)
             
             self.reset()
             target_info = targetInfoList[0]
@@ -3858,8 +3860,10 @@ def Factory():
                     Press([138, 1432])  # automove
                     return self._monitor_move(targetInfoList, ctx)
                 else:
-                    logger.info("[DungeonMover] chest: ROI 內找不到寶箱，跳過此目標")
+                    logger.info(f"[DungeonMover] 找不到寶箱圖示")
                     targetInfoList.pop(0)
+                    logger.info(f"[DungeonMover] 已移除未發現之 chest 目標, 剩餘目標數: {len(targetInfoList)}")
+                    ctx._RESTART_OPEN_MAP_PENDING = True
                     return self._cleanup_exit(DungeonState.Map)
             except KeyError as e:
                 logger.error(f"[DungeonMover] chest: 地圖操作錯誤 {e}")
@@ -3893,14 +3897,10 @@ def Factory():
                         Press(resume_pos)
                         Sleep(1)
                         
-                        # 檢查點擊後效果 (Resume 是否消失)
-                        screen_after = ScreenShot()
-                        if not CheckIf(screen_after, 'resume'):
-                            logger.info("[DungeonMover] Resume 點擊成功，進入監控")
-                            self.consecutive_map_open_failures = 0
-                            return self._monitor_move(targetInfoList, ctx)
-                        else:
-                            logger.warning(f"[DungeonMover] Resume 點擊後無效 (嘗試 {retry+1}/3)")
+                        # Resume 按鈕點擊後不會消失，直接進入監控
+                        logger.info("[DungeonMover] Resume 點擊完成，進入監控循環")
+                        self.consecutive_map_open_failures = 0
+                        return self._monitor_move(targetInfoList, ctx)
                     else:
                         logger.debug(f"[DungeonMover] 未找到 Resume 按鈕 (嘗試 {retry+1}/3)")
                     
@@ -3984,10 +3984,14 @@ def Factory():
                     Press(search_result)
                     Press([138, 1432])  # automove
                     logger.info(f"[DungeonMover] 點擊目標並開始移動")
+                    # 成功開啟地圖並點擊目標後，才允許 Resume 優化
+                    ctx._RESTART_OPEN_MAP_PENDING = False
                 else:
                     logger.info(f"[DungeonMover] 找不到目標 {target_info.target}")
                     if target_info.target in ['position', 'minimap_stair'] or target_info.target.startswith('stair'):
                         targetInfoList.pop(0)
+                        logger.info(f"[DungeonMover] 已移除未發現之目標 {target_info.target}, 剩餘目標數: {len(targetInfoList)}")
+                        ctx._RESTART_OPEN_MAP_PENDING = True
                     return self._cleanup_exit(DungeonState.Map)
             except KeyError as e:
                 logger.error(f"[DungeonMover] 地圖操作錯誤: {e}")
@@ -4151,7 +4155,10 @@ def Factory():
                         logger.info("[DungeonMover] Harken 傳送完成")
                         ctx._HARKEN_TELEPORT_JUST_COMPLETED = False
                         if target == 'harken':
-                            targetInfoList.pop(0)
+                            if targetInfoList:
+                                targetInfoList.pop(0)
+                                logger.info(f"[DungeonMover] 已移除已完成目標 {target}, 剩餘目標數: {len(targetInfoList)}")
+                                ctx._RESTART_OPEN_MAP_PENDING = True
                         return self._cleanup_exit(DungeonState.Map)
                 
 
@@ -4216,6 +4223,9 @@ def Factory():
                                     if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
                                         if targetInfoList:
                                             targetInfoList.pop(0)
+                                            logger.info(f"[DungeonMover] 已移除已完成目標 {target}, 剩餘目標數: {len(targetInfoList)}")
+                                            # 強制下一個目標必須重新開啟地圖（防止對新目標執行無效的 Resume）
+                                            ctx._RESTART_OPEN_MAP_PENDING = True
                                     return self._cleanup_exit(DungeonState.Map)
                                 Sleep(0.2)
                         self.last_resume_click_time = time.time()
@@ -4229,6 +4239,8 @@ def Factory():
                         # 確保彈出的是 minimap_stair 目標
                         if targetInfoList and targetInfoList[0].target == 'minimap_stair':
                             targetInfoList.pop(0)
+                            logger.info(f"[DungeonMover] 已移除已完成目標 minimap_stair, 剩餘目標數: {len(targetInfoList)}")
+                            ctx._RESTART_OPEN_MAP_PENDING = True
                         return self._cleanup_exit(DungeonState.Map)
 
                 # ========== F. 靜止與 Resume 偵測 ==========
@@ -4254,6 +4266,8 @@ def Factory():
                                 Press([1, 1])
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
+                                    logger.info(f"[DungeonMover] 已移除已完成(無寶箱)目標 chest_auto, 剩餘目標數: {len(targetInfoList)}")
+                                    ctx._RESTART_OPEN_MAP_PENDING = True
                                 return self._cleanup_exit(DungeonState.Map)
                             elif CheckIf(screen, 'mapFlag'):
                                 # 已在地圖狀態
@@ -4262,6 +4276,8 @@ def Factory():
                                 Sleep(0.5)
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
+                                    logger.info(f"[DungeonMover] 已移除已完成(在地圖)目標 chest_auto, 剩餘目標數: {len(targetInfoList)}")
+                                    ctx._RESTART_OPEN_MAP_PENDING = True
                                 return self._cleanup_exit(DungeonState.Map)
                             else:
                                 # === 在地城中 (dungflag)，未檢測到 notresure，不 pop，打開地圖 ===
@@ -4965,9 +4981,9 @@ def Factory():
                     
                     if runtimeContext._MID_DUNGEON_START:
                         runtimeContext._MID_DUNGEON_START = False
-                        
-                    if runtimeContext._RESTART_OPEN_MAP_PENDING:
-                        runtimeContext._RESTART_OPEN_MAP_PENDING = False
+                    
+                    # [註: _RESTART_OPEN_MAP_PENDING 的重置已移至 DungeonMover 內部處理]
+                    # 確保只有在成功於地圖點選新目標後才允許 Resume 優化
 
                     # 無論是 Resume 還是 Open Map，都統一轉交給 Map 狀態
                     # DungeonMover.initiate_move -> resume_navigation 會處理 Resume 和開地圖
@@ -5029,6 +5045,7 @@ def Factory():
 
         state = None
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
+        targetInfoList = None     # 地城目標列表，應在單次地城運作中保持狀態
         while 1:
             logger.info("======================")
             Sleep(1)
@@ -5100,6 +5117,7 @@ def Factory():
                         runtimeContext._MEET_CHEST_OR_COMBAT = False
                         # 重置連續刷地城計數器（在執行完 StateInn 之後）
                         runtimeContext._DUNGEON_REPEAT_COUNT = 0
+                        targetInfoList = None  # 進入村莊時清除目標列表，確保下回合重新加載
                         RestartableSequenceExecution(
                         lambda:StateInn()
                         )
@@ -5118,8 +5136,11 @@ def Factory():
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
                     else:
                         logger.debug("[地城內啟動] 跳過 flag 重置")
-                    # 注意：不重置 _STEPAFTERRESTART，只有 restartGame 才會設為 False
-                    targetInfoList = quest._TARGETINFOLIST.copy()
+
+                    # 只有在列表為空或正式進入地城時才初始化
+                    if targetInfoList is None:
+                        logger.info("[DungeonFarm] 初始化地城目標列表")
+                        targetInfoList = quest._TARGETINFOLIST.copy()
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
                     _initial = initial_dungState
                     RestartableSequenceExecution(
