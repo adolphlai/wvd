@@ -293,6 +293,7 @@ CONFIG_VAR_LIST = [
             ["recover_stone_var",           tk.BooleanVar, "_RECOVER_STONE",             False],
             ["recover_paralysis_var",       tk.BooleanVar, "_RECOVER_PARALYSIS",         False],
             ["recover_cursed_var",          tk.BooleanVar, "_RECOVER_CURSED",            False],
+            ["recover_fear_var",            tk.BooleanVar, "_RECOVER_FEAR",              False],
             # 角色技能施放設定
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             # 自動戰鬥模式設定
@@ -1320,7 +1321,7 @@ def Factory():
         # 如果所有開關都關閉，提早返回
         if not (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
                 setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
-                setting._RECOVER_CURSED):
+                setting._RECOVER_CURSED or setting._RECOVER_FEAR):
             return False
 
         # ROI 定義
@@ -1330,13 +1331,14 @@ def Factory():
         ]
         
         # 狀態定義：(設定開關, 模板名稱, 偵測類型)
-        # 類型: 0=普通, 1=劇毒(紫+高飽和), 2=中毒(淺紫), 3=石化(梯度)
+        # 類型: 0=普通, 1=劇毒(紫+高飽和), 2=中毒(淺紫), 3=石化(梯度), 4=恐懼(青綠+高飽和)
         check_list = []
         if setting._RECOVER_POISON:    check_list.append((1, "Poison_icon", 2))
         if setting._RECOVER_VENOM:     check_list.append((1, "poisonous_icon", 1))
         if setting._RECOVER_STONE:     check_list.append((1, "stone_icon", 3))
         if setting._RECOVER_PARALYSIS: check_list.append((1, "paralysis_icon", 0))
         if setting._RECOVER_CURSED:    check_list.append((1, "cursed_icon", 0))
+        if setting._RECOVER_FEAR:      check_list.append((1, "fear_icon", 4))
 
         detected = False
         
@@ -1388,6 +1390,14 @@ def Factory():
                             upper_half = gray[0:20, :]
                             white_pixels = cv2.countNonZero(cv2.inRange(upper_half, 180, 255))
                             if 50 < white_pixels < 130:
+                                is_valid = True
+
+                        elif check_type == 4: # 恐懼 (Fear)
+                            # Hue: 80-110 (Cyanish), Sat > 50
+                            hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
+                            avg_hue = np.mean(hsv[:,:,0])
+                            avg_sat = np.mean(hsv[:,:,1])
+                            if 80 < avg_hue < 110 and avg_sat > 50:
                                 is_valid = True
                         
                         if is_valid:

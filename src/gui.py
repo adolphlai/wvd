@@ -1034,7 +1034,8 @@ class ConfigPanelApp(tk.Toplevel):
             ("劇毒", self.recover_venom_var),
             ("石化", self.recover_stone_var),
             ("麻痺", self.recover_paralysis_var),
-            ("詛咒", self.recover_cursed_var)
+            ("詛咒", self.recover_cursed_var),
+            ("恐懼", self.recover_fear_var)
         ]
         
         self.status_recover_checks = []
