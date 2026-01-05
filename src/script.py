@@ -1733,7 +1733,7 @@ def Factory():
         # 確保遊戲進程監控已啟動
         if not hasattr(setting, '_GAME_CRASHED') or not (_game_monitor_thread and _game_monitor_thread.is_alive()):
             _start_game_monitor()
-        MAX_RESTART_RETRIES = 10  # 最大重啟次數
+        MAX_RESTART_RETRIES = 50# 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
             try:
