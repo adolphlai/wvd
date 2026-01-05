@@ -3702,6 +3702,19 @@ def Factory():
             Returns:
                 DungeonState: 下一個狀態
             """
+            # ==================== 1. 預檢與清理遺留彈窗 ====================
+            TryPressRetry(ScreenShot())
+            
+            # [優化] 解決戰利品視窗殘留問題：啟動前若看到 AUTO/Resume，先點一下關掉它
+            # 這能防止結算視窗擋住地圖按鈕導致的連續失敗
+            pre_screen = ScreenShot()
+            if CheckIf(pre_screen, 'dungFlag') and not CheckIf(pre_screen, 'mapFlag'):
+                resume_pre_pos = CheckIf(pre_screen, 'resume')
+                if resume_pre_pos:
+                    logger.info(f"[DungeonMover] 啟動前偵測到彈窗殘留 (AUTO)，執行清理點擊: {resume_pre_pos}")
+                    Press(resume_pre_pos)
+                    Sleep(0.5)
+
             if not targetInfoList:
                 logger.info("[DungeonMover] 無待執行目標，執行 GoHome 流程以退出地城")
                 self.is_gohome_mode = True
@@ -3941,6 +3954,17 @@ def Factory():
                             return detected_state
                     
                     logger.warning("[DungeonMover] 無法打開地圖")
+                    
+                    # [自癒優化] 檢查是否被遺留的結算窗口 (AUTO/Resume) 擋住了
+                    # 這能解決「開地圖失敗但畫面上其實有 AUTO」的視覺死角
+                    resume_stray_pos = CheckIf(screen, 'resume')
+                    if resume_stray_pos:
+                        logger.info(f"[DungeonMover] 偵測到 AUTO (Resume) 殘留，嘗試點擊清理: {resume_stray_pos}")
+                        Press(resume_stray_pos)
+                        Sleep(0.5)
+                        # 點擊後直接重新嘗試判定 Dungeon 分發
+                        return DungeonState.Dungeon
+                    
                     self.consecutive_map_open_failures += 1
                     Sleep(1)  # 等待遊戲畫面穩定
                     
@@ -5599,10 +5623,10 @@ def Factory():
                             pos = CheckIf(ScreenShot(),'SSC/Request')
                             if not pos:
                                 DeviceShell(f"input swipe 150 200 150 250")
-                                Sleep(1)
                                 ssc_swipe_count += 1
+                                Sleep(1)
                             else:
-                                Press([pos[0]+300,pos[1]+150])
+                                Press(pos)
                                 break
                         if ssc_swipe_count >= MAX_SSC_SWIPES:
                             logger.warning(f"SSC 任務搜索超過 {MAX_SSC_SWIPES} 次，未找到任務")
@@ -6264,6 +6288,7 @@ def TestFactory():
                     return
                 
                 item_path = f'Organize/{item}'
+                Sleep(5)
                 
                 while True:
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
