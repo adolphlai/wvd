@@ -55,7 +55,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onedir --noconsole --add-data "resources;resources/" src/main.py -n wvd
+        pyinstaller --onedir --noconsole --add-data "resources;resources/" --collect-all pyscrcpy --collect-all av src/main.py -n wvd
         Write-Host "Build completed successfully."
 
     - name: Compress build artifact to ZIP

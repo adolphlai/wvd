@@ -8,4 +8,5 @@ adbutils
 loguru
 deprecation
 retry2
-# pyscrcpy and av - install locally for streaming: pip install pyscrcpy av
+pyscrcpy
+av
