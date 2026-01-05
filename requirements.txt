@@ -9,4 +9,3 @@ loguru
 deprecation
 retry2
 pyscrcpy
-av
