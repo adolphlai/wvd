@@ -3869,11 +3869,15 @@ def Factory():
             """啟動一般移動 (position, harken, stair)"""
             target_info = targetInfoList[0]
             
-            # [Resume 優化] 條件：
-            # 1. 非重啟後待開地圖狀態 (not _RESTART_OPEN_MAP_PENDING) 
-            # 2. 或者，曾經遇到過戰鬥/寶箱 (_MEET_CHEST_OR_COMBAT)，說明正在移動過程中
-            # 這樣確保：重啟後第一次跳過，開箱/戰鬥後啟用
-            if (not ctx._RESTART_OPEN_MAP_PENDING) or ctx._MEET_CHEST_OR_COMBAT:
+            # [Resume 優化] 條件（所有條件需同時滿足）：
+            # 1. 已完成防轉圈或不需要 (ctx._STEPAFTERRESTART = True)
+            # 2. 非重啟後待開地圖狀態 (not ctx._RESTART_OPEN_MAP_PENDING)
+            # 3. 曾經遇到過戰鬥/寶箱 (ctx._MEET_CHEST_OR_COMBAT)
+            # 這樣確保：
+            # - 重啟後第一次：不執行（需要防轉圈）
+            # - 地城內啟動：不執行（沒遇到過戰鬥/寶箱）
+            # - 開箱/戰鬥後：執行（正常恢復移動）
+            if ctx._STEPAFTERRESTART and (not ctx._RESTART_OPEN_MAP_PENDING) and ctx._MEET_CHEST_OR_COMBAT:
                 logger.info("[DungeonMover] 嘗試 Resume 優化...")
                 # 嘗試檢測 Resume 按鈕 (最多 3 次)
                 for retry in range(3):
