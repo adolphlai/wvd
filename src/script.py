@@ -3966,6 +3966,7 @@ def Factory():
                                     targetInfoList.pop(0)
                                 return self._cleanup_exit(DungeonState.Map)
                             elif CheckIf(screen, 'mapFlag'):
+                                # 已在地圖狀態
                                 logger.info(f"[DungeonMover] chest_auto: 靜止且在地圖狀態，PressReturn 退出")
                                 PressReturn()
                                 Sleep(0.5)
@@ -3973,12 +3974,42 @@ def Factory():
                                     targetInfoList.pop(0)
                                 return self._cleanup_exit(DungeonState.Map)
                             else:
-                                # 非地圖狀態，且沒有 notresure，可能只是暫時停下 (例如剛開完箱，或正在移動中被卡住)
-                                # [Fix] 不 pop 目標，而是返回 Dungeon 狀態讓主流程重新判斷 (可能進入 StateChest 或重新嘗試)
-                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次但無 notresure，保留目標並返回 DungeonState.Dungeon")
-                                # if targetInfoList and targetInfoList[0].target == 'chest_auto':
-                                #    targetInfoList.pop(0)  <-- Removed pop
-                                return self._cleanup_exit(DungeonState.Dungeon)
+                                # === 在地城中 (dungflag)，未檢測到 notresure，不 pop，打開地圖 ===
+                                logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次但無 notresure，不 pop，打開地圖檢查")
+                                Press([777, 150])  # 打開地圖
+                                Sleep(1)
+                                map_screen = ScreenShot()
+                                
+                                if CheckIf(map_screen, 'mapFlag'):
+                                    # 偵測到 mapflag (同 STEP1)
+                                    logger.info("[DungeonMover] chest_auto: 地圖已打開，再找 chest_auto")
+                                    pos = CheckIf(map_screen, "chest_auto", [[710,250,180,180]])
+                                    if pos:
+                                        Press(pos)
+                                    else:
+                                        # 盲點座標
+                                        logger.info("[DungeonMover] chest_auto: 再次找不到，點擊盲點座標 [459, 1248]")
+                                        Press([459, 1248])
+                                    # 重置靜止計數，繼續監控
+                                    self.still_count = 0
+                                    continue
+                                else:
+                                    # 沒偵測到 mapflag - 檢查 visibility
+                                    if CheckIf(map_screen, 'visibliityistoopoor'):
+                                        logger.warning("[DungeonMover] chest_auto: 無法打開地圖，偵測到能見度過低")
+                                        resume_pos = CheckIf(map_screen, 'resume')
+                                        if resume_pos:
+                                            logger.info(f"[DungeonMover] 點擊 Resume 嘗試脫困: {resume_pos}")
+                                            Press(resume_pos)
+                                            Sleep(1)
+                                            # 進入臨時導航監控
+                                            logger.info("[DungeonMover] chest_search 觸發 Resume，進入臨時導航等待模式")
+                                            self.waiting_for_arrival_after_resume = True
+                                            self.still_count = 0
+                                            continue
+                                    # 未檢測到 visibility，返回 Dungeon
+                                    logger.info("[DungeonMover] chest_auto: 無法打開地圖且無 visibility，返回 Dungeon")
+                                    return self._cleanup_exit(DungeonState.Dungeon)
 
                         if self.still_count >= self.STILL_REQUIRED:
                             logger.info(f"[DungeonMover] 連續靜止 {self.STILL_REQUIRED} 次")

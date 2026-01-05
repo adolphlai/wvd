@@ -36,12 +36,21 @@ chest_search（開始找 = 中斷恢復，遊戲機制決定）
     │   │       ├─ 檢測到 `routenotfound` → break (視為臨時導航完成)
     │   │       └─ 繼續執行戰鬥/異常/靜止檢測
     │   │           └─ break 後回到 Step 1 (重新找寶箱/開地圖)
-    │   ├─ 每 5 秒點擊寶箱按鈕 → 檢測 notresure
-    │   └─ 靜止判定（連續 3 次）
-    │       ├─ 在地城中 (dungflag)
-    │       │   ├─ 檢測到 notresure → pop（無寶箱），返回 DungeonState.Map
-    │       │   └─ 未檢測到 notresure → 不 pop，返回 DungeonState.Dungeon (交回主流程判斷)
-    │       └─ 在地圖中 (mapflag) → PressReturn → pop → _fallback_gohome()（防卡死）
+    │   │   └─ 靜止判定（連續 3 次）
+    │   │       ├─ 在地城中 (dungflag)
+    │   │       │   ├─ 檢測到 notresure → pop（無寶箱），返回 DungeonState.Map
+    │   │       │   └─ 未檢測到 notresure → 不 pop → 打開地圖
+    │   │       │       ├─ 偵測到 mapflag (同 STEP1)
+    │   │       │       │   └─ 再找 → 盲點座標 [459,1248]
+    │   │       │       └─ 沒偵測到 mapflag
+    │   │       │           ├─ 檢測到 `visibilityistoopoor` → 點擊 Resume
+    │   │       │           │   └─ 進入臨時導航監控 (Flag: waiting_for_arrival)
+    │   │       │           │       ├─ 檢測到 `routenotfound` → break (視為臨時導航完成)
+    │   │       │           │       └─ 繼續執行戰鬥/異常/靜止檢測
+    │   │       │           │           └─ break 後回到 Step 1 (重新找寶箱/開地圖)
+    │   │       │           └─ 未檢測到 `visibilityistoopoor` → 返回 DungeonState.Dungeon
+    │   │       └─ 在地圖中 (mapflag) → PressReturn → pop → _fallback_gohome()（防卡死）
+    │   └─ 每 5 秒點擊寶箱按鈕 → 檢測 notresure
     │
     └─ 3. 主流程整合：戰鬥/寶箱後 StateDungeon 再次呼叫 → 回到 Step 1（開始找 = 中斷恢復）
 ```
