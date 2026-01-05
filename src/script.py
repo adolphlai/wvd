@@ -3216,10 +3216,17 @@ def Factory():
             cast_type = get_skill_cast_type(category)
             
             if cast_type == "ok":
-                # AOE 類技能：點擊 OK 確認
-                ok_pos = CheckIf(scn, 'OK')
+                # AOE 類技能：等待並點擊 OK 確認
+                ok_pos = None
+                for wait_ok in range(6):  # 最多等待 3 秒 (6 × 0.5s)
+                    ok_pos = CheckIf(scn, 'OK')
+                    if ok_pos:
+                        break
+                    Sleep(0.5)
+                    scn = ScreenShot()
+
                 if ok_pos:
-                    logger.info(f"[技能施放] 點擊 OK 確認")
+                    logger.info(f"[技能施放] 點擊 OK 確認 (等待 {wait_ok} 次)")
                     Press(ok_pos)
                     Sleep(1)
                     # 檢查 MP/SP 不足
@@ -3229,6 +3236,8 @@ def Factory():
                         Press(CheckIf(scn, 'notenough_close'))
                         Sleep(0.5)
                         return use_normal_attack()
+                else:
+                    logger.warning(f"[技能施放] OK 按鈕等待超時，可能技能施放失敗")
             else:
                 # 單體/橫排/群控技能：點擊敵人
                 next_pos = CheckIf(scn, 'next', threshold=0.70)
@@ -3271,10 +3280,19 @@ def Factory():
                 MonitorState.flag_combatActive = max(GetMatchValue(scn, t) for t in combat_templates)
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
-            Sleep(1)
+            Sleep(0.5)
             scn = ScreenShot()
             update_combat_flag(scn)
-            ok_pos = CheckIf(scn,'OK')
+
+            # 等待 OK 按鈕出現 (最多 3 秒)
+            ok_pos = None
+            for wait_ok in range(6):
+                ok_pos = CheckIf(scn, 'OK')
+                if ok_pos:
+                    break
+                Sleep(0.5)
+                scn = ScreenShot()
+
             if ok_pos:
                 logger.info(f"[戰鬥] 找到 OK 按鈕，點擊確認")
                 Press(ok_pos)

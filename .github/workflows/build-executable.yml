@@ -51,7 +51,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install av --only-binary=:all:
+        pip install "av>=11.0.0" --only-binary=:all:
         pip install -r requirements.txt pyinstaller
 
     - name: Build with PyInstaller
