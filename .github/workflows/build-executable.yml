@@ -52,11 +52,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install "av>=11.0.0" --only-binary=:all:
+        pip install pyscrcpy --no-deps
+        pip install adbutils loguru deprecation retry2
         pip install -r requirements.txt pyinstaller
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onedir --noconsole --add-data "resources;resources/" --collect-all pyscrcpy --collect-all av src/main.py -n wvd
+        pyinstaller --onedir --noconsole --noconfirm --add-data "resources;resources/" --hidden-import=pyscrcpy --hidden-import=pyscrcpy.core --hidden-import=av --hidden-import=adbutils --hidden-import=deprecation --hidden-import=retry2 --hidden-import=loguru --collect-all=pyscrcpy --collect-all=adbutils --collect-all=av src/main.py -n wvd
         Write-Host "Build completed successfully."
 
     - name: Compress build artifact to ZIP
