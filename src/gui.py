@@ -531,6 +531,24 @@ class ConfigPanelApp(tk.Toplevel):
         tab = self.tab_skills
         row = 0
 
+        # --- 自動戰鬥模式 ---
+        frame_auto = ttk.LabelFrame(tab, text="自動戰鬥模式", padding=5)
+        frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
+
+        ttk.Label(frame_auto, text="模式:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        auto_combat_options = ["完全自動", "1 場後自動", "2 場後自動", "3 場後自動", "完全手動"]
+        self.auto_combat_mode_combo = ttk.Combobox(
+            frame_auto, textvariable=self.auto_combat_mode_var,
+            values=auto_combat_options, state="readonly", width=12
+        )
+        self.auto_combat_mode_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
+        self.auto_combat_mode_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
+
+        ttk.Label(frame_auto, text="※ 完全自動=進入戰鬥即開自動，2場後自動=前2場手動施法", foreground="gray").grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
+
+        row += 1
+
         # --- 配置預設管理 ---
         frame_presets = ttk.LabelFrame(tab, text="配置預設管理", padding=5)
         frame_presets.grid(row=row, column=0, sticky="ew", pady=5)
@@ -613,22 +631,6 @@ class ConfigPanelApp(tk.Toplevel):
         btn_save.grid(row=0, column=4, padx=5)
 
         row += 1
-
-        # --- 自動戰鬥模式 ---
-        frame_auto = ttk.LabelFrame(tab, text="自動戰鬥模式", padding=5)
-        frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
-
-        ttk.Label(frame_auto, text="模式:").grid(row=0, column=0, padx=5, sticky=tk.W)
-        auto_combat_options = ["完全自動", "1 場後自動", "2 場後自動", "3 場後自動", "完全手動"]
-        self.auto_combat_mode_combo = ttk.Combobox(
-            frame_auto, textvariable=self.auto_combat_mode_var,
-            values=auto_combat_options, state="readonly", width=12
-        )
-        self.auto_combat_mode_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
-        self.auto_combat_mode_combo.bind("<<ComboboxSelected>>", lambda e: self.save_config())
-
-        ttk.Label(frame_auto, text="※ 完全自動=進入戰鬥即開自動，2場後自動=前2場手動施法", foreground="gray").grid(
-            row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
         # --- 角色技能設定 ---
         row += 1
@@ -1020,7 +1022,30 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.lowhp_recover_check.grid(row=0, column=2, padx=5)
 
-        # --- 其他進階選項 ---
+
+        # --- 狀態自動恢復 ---
+        row += 1
+        frame_status_recover = ttk.LabelFrame(tab, text="狀態自動恢復", padding=5)
+        frame_status_recover.grid(row=row, column=0, sticky="ew", pady=5)
+        
+        # 定義狀態列表和對應變數
+        statuses = [
+            ("中毒", self.recover_poison_var),
+            ("劇毒", self.recover_venom_var),
+            ("石化", self.recover_stone_var),
+            ("麻痺", self.recover_paralysis_var),
+            ("詛咒", self.recover_cursed_var)
+        ]
+        
+        self.status_recover_checks = []
+        for i, (text, var) in enumerate(statuses):
+            cb = ttk.Checkbutton(
+                frame_status_recover, text=text,
+                variable=var, command=self.save_config,
+                style="Custom.TCheckbutton"
+            )
+            cb.grid(row=0, column=i, padx=5, sticky=tk.W)
+            self.status_recover_checks.append(cb)
         row += 1
         frame_other = ttk.LabelFrame(tab, text="其他", padding=5)
         frame_other.grid(row=row, column=0, sticky="ew", pady=5)
@@ -1702,7 +1727,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.dungeon_repeat_limit_spinbox,
             # 技能施放設定
             self.ae_caster_interval_entry,
-            ] + self.skill_combos_all
+            ] + self.skill_combos_all + getattr(self, 'status_recover_checks', [])
 
         if state == tk.DISABLED:
             self.farm_target_combo.configure(state="disabled")

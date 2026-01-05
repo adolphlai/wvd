@@ -287,6 +287,12 @@ CONFIG_VAR_LIST = [
             ["skip_recover_var",            tk.BooleanVar, "_SKIPCOMBATRECOVER",         False],
             ["skip_chest_recover_var",      tk.BooleanVar, "_SKIPCHESTRECOVER",          False],
             ["lowhp_recover_var",           tk.BooleanVar, "_LOWHP_RECOVER",             False],
+            # 異常狀態自動恢復
+            ["recover_poison_var",          tk.BooleanVar, "_RECOVER_POISON",            False],
+            ["recover_venom_var",           tk.BooleanVar, "_RECOVER_VENOM",             False],
+            ["recover_stone_var",           tk.BooleanVar, "_RECOVER_STONE",             False],
+            ["recover_paralysis_var",       tk.BooleanVar, "_RECOVER_PARALYSIS",         False],
+            ["recover_cursed_var",          tk.BooleanVar, "_RECOVER_CURSED",            False],
             # 角色技能施放設定
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             # 自動戰鬥模式設定
@@ -1302,6 +1308,97 @@ def Factory():
                 logger.debug(f"[血量偵測] 偵測到低血量，紅色比例: {red_pct:.1f}%")
                 return True
         
+        return False
+
+
+    def CheckAbnormalStatus(screenImage, setting):
+        """檢查是否偵測到需要恢復的異常狀態
+        
+        根據使用者設定的開關，檢測 6 個角色 ROI 區域。
+        偵測邏輯包含顏色 (HSV) 與垂直梯度過濾，確保高準確率。
+        """
+        # 如果所有開關都關閉，提早返回
+        if not (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
+                setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
+                setting._RECOVER_CURSED):
+            return False
+
+        # ROI 定義
+        rois = [
+            (137, 1230, 162, 60), (420, 1230, 165, 60), (704, 1230, 167, 60),
+            (137, 1405, 162, 60), (420, 1405, 165, 60), (704, 1405, 167, 60)
+        ]
+        
+        # 狀態定義：(設定開關, 模板名稱, 偵測類型)
+        # 類型: 0=普通, 1=劇毒(紫+高飽和), 2=中毒(淺紫), 3=石化(梯度)
+        check_list = []
+        if setting._RECOVER_POISON:    check_list.append((1, "Poison_icon", 2))
+        if setting._RECOVER_VENOM:     check_list.append((1, "poisonous_icon", 1))
+        if setting._RECOVER_STONE:     check_list.append((1, "stone_icon", 3))
+        if setting._RECOVER_PARALYSIS: check_list.append((1, "paralysis_icon", 0))
+        if setting._RECOVER_CURSED:    check_list.append((1, "cursed_icon", 0))
+
+        detected = False
+        
+        for idx, (x, y, w, h) in enumerate(rois):
+            # 確保 ROI 合法
+            if y+h > screenImage.shape[0] or x+w > screenImage.shape[1]: continue
+            roi_img = screenImage[y:y+h, x:x+w]
+            
+            for _, tmpl_name, check_type in check_list:
+                # 載入模板 (嘗試從 detect 資料夾載入)
+                template = LoadTemplateImage(f"detect/{tmpl_name}")
+                if template is None: continue
+
+                try:
+                    res = cv2.matchTemplate(roi_img, template, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                    
+                    if max_val >= 0.75:
+                        # 基礎匹配成功，進入進階驗證
+                        
+                        # 取得匹配區域
+                        top_left = max_loc
+                        h_t, w_t = template.shape[:2]
+                        matched_area = roi_img[top_left[1]:top_left[1]+h_t, top_left[0]:top_left[0]+w_t]
+                        
+                        is_valid = False
+                        
+                        if check_type == 0: # 普通 (麻痺/詛咒)
+                            is_valid = True
+                            
+                        elif check_type == 1: # 劇毒 (Venom)
+                            # Hue: 110-150, Sat > 50
+                            hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
+                            avg_hue = np.mean(hsv[:,:,0])
+                            avg_sat = np.mean(hsv[:,:,1])
+                            if 110 < avg_hue < 150 and avg_sat > 50:
+                                is_valid = True
+                                
+                        elif check_type == 2: # 中毒 (Poison)
+                            # Hue: 127±15 (112-142)
+                            hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
+                            avg_hue = np.mean(hsv[:,:,0])
+                            if 112 < avg_hue < 142:
+                                is_valid = True
+                                
+                        elif check_type == 3: # 石化 (Stone)
+                            # 垂直梯度: 上半部亮點數量 50-130
+                            gray = cv2.cvtColor(matched_area, cv2.COLOR_BGR2GRAY)
+                            upper_half = gray[0:20, :]
+                            white_pixels = cv2.countNonZero(cv2.inRange(upper_half, 180, 255))
+                            if 50 < white_pixels < 130:
+                                is_valid = True
+                        
+                        if is_valid:
+                            logger.info(f"[異常恢復] 偵測到異常狀態 {tmpl_name} 於角色 {idx} (val={max_val:.2f})")
+                            detected = True
+                            return True # 只要偵測到任一，立即返回 True
+
+                except Exception as e:
+                    logger.debug(f"[異常恢復] 偵測錯誤: {e}")
+                    continue
+                    
         return False
 
 
@@ -4532,6 +4629,19 @@ def Factory():
                     logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                     break
                 case DungeonState.Dungeon:
+                    shouldRecover = False
+
+                    # --- 新增：異常狀態偵測 ---
+                    if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
+                        setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
+                        setting._RECOVER_CURSED):
+                         # 為了避免頻繁截圖，可以考慮只在某些條件下檢查，但這裡為了即時性先每次檢查
+                         # 如果 CheckAbnormalStatus 效能允許 (已優化 ROI)
+                         scn_status = ScreenShot()
+                         if CheckAbnormalStatus(scn_status, setting):
+                             logger.info("[StateDungeon] 偵測到異常狀態，觸發恢復")
+                             shouldRecover = True
+
                     # --- 新增：低血量強制恢復邏輯 ---
                     if runtimeContext._FORCE_LOWHP_RECOVER:
                         logger.info("[StateDungeon] 檢測到低血量強制恢復標誌")
