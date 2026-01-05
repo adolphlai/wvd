@@ -3825,6 +3825,21 @@ def Factory():
                     return detected_state
 
                 if not CheckIf(screen, 'mapFlag'):
+                    # 檢查是否為黑屏/過場動畫（戰鬥轉場的典型特徵）
+                    gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
+                    avg_brightness = np.mean(gray)
+                    
+                    if avg_brightness < 30:  # 黑屏閾值
+                        logger.info("[DungeonMover] 檢測到黑屏（可能是戰鬥過場），等待狀態穩定...")
+                        Sleep(2)  # 等待過場動畫完成
+                        screen = ScreenShot()
+                        
+                        # 重新檢測戰鬥/寶箱
+                        if detected_state := self._check_combat_or_chest(screen):
+                            logger.info("[DungeonMover] 黑屏後確認進入戰鬥/寶箱")
+                            self.consecutive_map_open_failures = 0
+                            return detected_state
+                    
                     logger.warning("[DungeonMover] 無法打開地圖")
                     self.consecutive_map_open_failures += 1
                     if self.consecutive_map_open_failures >= 3:
