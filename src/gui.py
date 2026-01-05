@@ -48,23 +48,36 @@ class ConfigPanelApp(tk.Toplevel):
             else:
                 setattr(self, attr_name, var_type(self.config.get(var_config_name,var_default_value)))
 
-        # === 角色技能配置（動態生成）===
-        # 從 config.json 載入角色配置（列表格式，共6組）
-        saved_config = self.config.get("_CHARACTER_SKILL_CONFIG", [])
-        # 相容舊版 dict 格式，轉換為新版 list 格式
-        if isinstance(saved_config, dict):
-            # 遷移舊格式
-            self.character_skill_config = self._migrate_old_skill_config(saved_config)
-        elif isinstance(saved_config, list):
-            self.character_skill_config = saved_config
-        else:
-            self.character_skill_config = []
-        # 確保有 6 組配置
-        while len(self.character_skill_config) < 6:
-            self.character_skill_config.append({
-                "character": "", "skill_first": "", "level_first": "關閉",
-                "skill_after": "", "level_after": "關閉"
-            })
+        # === 技能分組預設配置 ===
+        self.character_skill_presets = self.config.get("_SKILL_PRESETS", [])
+        # 如果預設列表為空，嘗試從當前配置遷移
+        if not self.character_skill_presets:
+            current_cfg = self.config.get("_CHARACTER_SKILL_CONFIG", [])
+            if isinstance(current_cfg, list) and any(c.get("character") for c in current_cfg):
+                self.character_skill_presets.append(current_cfg)
+                # 設定第一個名字為 "預設配置"
+                names = list(self.skill_preset_names_var.get())
+                if names:
+                    names[0] = "預設配置"
+                    self.skill_preset_names_var.set(names)
+            
+        # 確保有 10 組預設
+        while len(self.character_skill_presets) < 10:
+            empty_preset = []
+            for _ in range(6):
+                empty_preset.append({
+                    "character": "", "skill_first": "", "level_first": "關閉",
+                    "skill_after": "", "level_after": "關閉"
+                })
+            self.character_skill_presets.append(empty_preset)
+
+        # 當前活躍的配置（從當前預設索引載入）
+        idx = self.current_skill_preset_index_var.get()
+        if idx < 0 or idx >= 10:
+            idx = 0
+            self.current_skill_preset_index_var.set(0)
+        
+        self.character_skill_config = self.character_skill_presets[idx]
         self.character_skill_rows = []  # 會在 _create_skills_tab 中填充
 
         self.create_widgets()
@@ -103,6 +116,8 @@ class ConfigPanelApp(tk.Toplevel):
 
         # 儲存角色技能配置
         self.config["_CHARACTER_SKILL_CONFIG"] = self.character_skill_config
+        self.config["_SKILL_PRESETS"] = self.character_skill_presets
+        self.config["_SKILL_PRESET_NAMES"] = list(self.skill_preset_names_var.get())
 
         SaveConfigToFile(self.config)
 
@@ -516,6 +531,89 @@ class ConfigPanelApp(tk.Toplevel):
         tab = self.tab_skills
         row = 0
 
+        # --- 配置預設管理 ---
+        frame_presets = ttk.LabelFrame(tab, text="配置預設管理", padding=5)
+        frame_presets.grid(row=row, column=0, sticky="ew", pady=5)
+
+        ttk.Label(frame_presets, text="選擇預設:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        
+        self.preset_combo = ttk.Combobox(
+            frame_presets, 
+            textvariable=tk.StringVar(value=""), # 暫時的值，稍後初始化
+            values=list(self.skill_preset_names_var.get()),
+            state="readonly", 
+            width=20
+        )
+        self.preset_combo.current(self.current_skill_preset_index_var.get())
+        self.preset_combo.grid(row=0, column=1, padx=5, sticky=tk.W)
+
+        def on_preset_change(event=None):
+            idx = self.preset_combo.current()
+            if idx != -1:
+                # 切換前先保存當前配置到原來的位置
+                self._save_skill_config()
+                
+                # 更新索引並載入新預設
+                self.current_skill_preset_index_var.set(idx)
+                self.character_skill_config = self.character_skill_presets[idx]
+                
+                # 更新介面上的變數
+                self._load_preset_to_ui()
+                self.save_config()
+                logger.info(f"已切換至預設: {self.preset_combo.get()}")
+
+        self.preset_combo.bind("<<ComboboxSelected>>", on_preset_change)
+
+        def rename_preset():
+            idx = self.preset_combo.current()
+            if idx == -1: return
+            
+            from tkinter import simpledialog
+            old_name = self.preset_combo.get()
+            new_name = simpledialog.askstring("重新命名預設", f"請輸入預設 '{old_name}' 的新名稱:", initialvalue=old_name)
+            
+            if new_name:
+                names = list(self.skill_preset_names_var.get())
+                names[idx] = new_name
+                self.skill_preset_names_var.set(names)
+                self.preset_combo['values'] = names
+                self.preset_combo.current(idx)
+                self.save_config()
+                logger.info(f"預設已重新命名為: {new_name}")
+
+        btn_rename = ttk.Button(frame_presets, text="重新命名", command=rename_preset, width=10)
+        btn_rename.grid(row=0, column=2, padx=5)
+
+        def clear_preset():
+            idx = self.preset_combo.current()
+            if idx == -1: return
+            
+            if messagebox.askyesno("清空預設", f"確定要清空預設 '{self.preset_combo.get()}' 嗎？"):
+                empty_preset = []
+                for _ in range(6):
+                    empty_preset.append({
+                        "character": "", "skill_first": "", "level_first": "關閉",
+                        "skill_after": "", "level_after": "關閉"
+                    })
+                self.character_skill_presets[idx] = empty_preset
+                self.character_skill_config = empty_preset
+                self._load_preset_to_ui()
+                self.save_config()
+                logger.info(f"預設 '{self.preset_combo.get()}' 已清空")
+
+        btn_clear = ttk.Button(frame_presets, text="清空預設", command=clear_preset, width=10)
+        btn_clear.grid(row=0, column=3, padx=5)
+
+        def save_preset():
+            self._save_skill_config()
+            logger.info(f"已手動儲存預設: {self.preset_combo.get()}")
+            messagebox.showinfo("儲存成功", f"預設 '{self.preset_combo.get()}' 已儲存")
+
+        btn_save = ttk.Button(frame_presets, text="儲存配置", command=save_preset, width=10)
+        btn_save.grid(row=0, column=4, padx=5)
+
+        row += 1
+
         # --- 自動戰鬥模式 ---
         frame_auto = ttk.LabelFrame(tab, text="自動戰鬥模式", padding=5)
         frame_auto.grid(row=row, column=0, sticky="ew", pady=5)
@@ -753,7 +851,40 @@ class ConfigPanelApp(tk.Toplevel):
                 "skill_after": group_data['skill_after_var'].get(),
                 "level_after": group_data['level_after_var'].get(),
             })
+        # 更新預設列表中的對應項
+        idx = self.current_skill_preset_index_var.get()
+        if 0 <= idx < len(self.character_skill_presets):
+            self.character_skill_presets[idx] = self.character_skill_config
+            
         self.save_config()
+
+    def _load_preset_to_ui(self):
+        """將 character_skill_config 的數據載入到 UI 控件中"""
+        for i, group_data in enumerate(self.character_skill_groups):
+            if i < len(self.character_skill_config):
+                cfg = self.character_skill_config[i]
+                group_data['char_var'].set(cfg.get("character", ""))
+                group_data['skill_first_var'].set(cfg.get("skill_first", ""))
+                group_data['level_first_var'].set(cfg.get("level_first", "關閉"))
+                group_data['skill_after_var'].set(cfg.get("skill_after", ""))
+                group_data['level_after_var'].set(cfg.get("level_after", "關閉"))
+                
+                # 初始化類別反推
+                self._init_skill_combo_from_saved(
+                    cfg.get("skill_first", ""),
+                    group_data['category_first_var'], group_data['skill_first_combo'])
+                self._init_skill_combo_from_saved(
+                    cfg.get("skill_after", ""),
+                    group_data['category_after_var'], group_data['skill_after_combo'])
+            else:
+                # 預設清空
+                group_data['char_var'].set("")
+                group_data['skill_first_var'].set("")
+                group_data['level_first_var'].set("關閉")
+                group_data['skill_after_var'].set("")
+                group_data['level_after_var'].set("關閉")
+                group_data['category_first_var'].set("")
+                group_data['category_after_var'].set("")
 
 
     def _create_advanced_tab(self, vcmd_non_neg, checkcommand):

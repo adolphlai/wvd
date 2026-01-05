@@ -67,14 +67,22 @@ class AppController(tk.Tk):
                 # 3. 我們會立即調用 os._exit(0) 強制終止
                 logger.info('跳過等待線程，daemon 線程會隨主程序退出')
 
-            # 2. 停止日誌監聽器
-            logger.info('正在停止日誌監聽器...')
+            # 2. 停止 pyscrcpy 串流（關鍵：避免卡死）
+            logger.info('正在停止 pyscrcpy 串流...')
+            try:
+                from script import cleanup_scrcpy_stream
+                cleanup_scrcpy_stream()
+            except Exception as e:
+                print(f"停止 pyscrcpy 串流失敗: {e}")
+
+            # 3. 停止日誌監聽器
+            logger.info('正在停止日誌監聯器...')
             try:
                 StopLogListener()
             except Exception as e:
                 print(f"停止日誌監聽器失敗: {e}")
 
-            # 3. 清理消息隊列
+            # 4. 清理消息隊列
             try:
                 while not self.msg_queue.empty():
                     self.msg_queue.get_nowait()
@@ -86,13 +94,13 @@ class AppController(tk.Tk):
         except Exception as e:
             print(f"清理過程中發生錯誤: {e}")
         finally:
-            # 4. 銷毀 GUI
+            # 5. 銷毀 GUI
             try:
                 self.destroy()
             except:
                 pass
 
-            # 5. 強制退出（確保進程完全終止）
+            # 6. 強制退出（確保進程完全終止）
             # 使用 os._exit() 而不是 sys.exit()，因為它會立即終止進程
             # 包括所有 daemon 線程，不會等待任何清理
             print('強制終止進程')  # 使用 print 因為 logger 可能已關閉
@@ -120,6 +128,12 @@ class AppController(tk.Tk):
                     if hasattr(self, 'quest_threading') and self.quest_threading.is_alive():
                         if hasattr(self.quest_setting, '_FORCESTOPING'):
                             self.quest_setting._FORCESTOPING.set()
+                    # 停止 pyscrcpy 串流以釋放資源
+                    try:
+                        from script import cleanup_scrcpy_stream
+                        cleanup_scrcpy_stream()
+                    except Exception as e:
+                        logger.warning(f"停止 pyscrcpy 串流失敗: {e}")
 
                 case 'task_finished':
                     # 從主線程調用 finishingcallback，避免 Tkinter 線程安全問題

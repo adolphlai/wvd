@@ -131,6 +131,23 @@ def get_scrcpy_stream():
         _scrcpy_stream = ScrcpyStreamManager()
     return _scrcpy_stream
 
+def cleanup_scrcpy_stream():
+    """清理 pyscrcpy 串流資源
+    
+    在程序關閉時調用，確保視頻串流正確停止，
+    避免因為 pyscrcpy 內部線程阻塞導致程序卡死。
+    """
+    global _scrcpy_stream
+    if _scrcpy_stream is not None:
+        try:
+            logger.info("正在停止 pyscrcpy 串流...")
+            _scrcpy_stream.stop()
+            logger.info("pyscrcpy 串流已清理")
+        except Exception as e:
+            logger.warning(f"清理 pyscrcpy 串流時發生異常: {e}")
+        finally:
+            _scrcpy_stream = None
+
 
 # ==================== 技能分類與載入 ====================
 
@@ -287,6 +304,8 @@ CONFIG_VAR_LIST = [
             ["organize_backpack_enabled_var", tk.BooleanVar, "_ORGANIZE_BACKPACK_ENABLED", False],
             ["organize_backpack_count_var",  tk.IntVar,     "_ORGANIZE_BACKPACK_COUNT",   0],
             ["auto_refill_var",              tk.BooleanVar, "_AUTO_REFILL",               True],  # 自動補給
+            ["current_skill_preset_index_var", tk.IntVar,    "_CURRENT_SKILL_PRESET_INDEX", 0],
+            ["skill_preset_names_var",       tk.Variable,   "_SKILL_PRESET_NAMES",        ["配置 " + str(i+1) for i in range(10)]],
             ]
 
 
@@ -297,6 +316,11 @@ class FarmConfig:
     # 角色技能配置列表（動態載入）
     # 格式: [{character, skill_first, level_first, skill_after, level_after}, ...]
     _CHARACTER_SKILL_CONFIG = []
+
+    # 技能配置預設列表（10 組）
+    _SKILL_PRESETS = []
+    _SKILL_PRESET_NAMES = []
+    _CURRENT_SKILL_PRESET_INDEX = 0
 
     def __init__(self):
         #### 面板配置其他
