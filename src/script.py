@@ -294,6 +294,7 @@ CONFIG_VAR_LIST = [
             ["recover_paralysis_var",       tk.BooleanVar, "_RECOVER_PARALYSIS",         False],
             ["recover_cursed_var",          tk.BooleanVar, "_RECOVER_CURSED",            False],
             ["recover_fear_var",            tk.BooleanVar, "_RECOVER_FEAR",              False],
+            ["recover_skilllock_var",       tk.BooleanVar, "_RECOVER_SKILLLOCK",         False],
             # 角色技能施放設定
             ["ae_caster_interval_var", tk.IntVar, "_AE_CASTER_INTERVAL", 0],  # 觸發間隔：0=每場觸發
             # 自動戰鬥模式設定
@@ -1322,24 +1323,26 @@ def Factory():
         # 如果所有開關都關閉，提早返回
         if not (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
                 setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
-                setting._RECOVER_CURSED or setting._RECOVER_FEAR):
+                setting._RECOVER_CURSED or setting._RECOVER_FEAR or
+                setting._RECOVER_SKILLLOCK):
             return False
 
-        # ROI 定義
+        # ROI 定義：更新為寬域偵測 (x, y, w, h)
         rois = [
-            (137, 1230, 162, 60), (420, 1230, 165, 60), (704, 1230, 167, 60),
-            (137, 1405, 162, 60), (420, 1405, 165, 60), (704, 1405, 167, 60)
+            (120, 1210, 250, 80), (380, 1210, 250, 80), (640, 1210, 250, 80),
+            (120, 1390, 250, 80), (380, 1390, 250, 80), (640, 1390, 250, 80)
         ]
         
-        # 狀態定義：(設定開關, 模板名稱, 偵測類型)
-        # 類型: 0=普通, 1=劇毒(紫+高飽和), 2=中毒(淺紫), 3=石化(梯度), 4=恐懼(青綠+高飽和)
+        # 狀態定義：(設定開關, 模板名稱, 偵測類型, 顯示名稱)
+        # 類型: 0=普通, 1=劇毒, 2=中毒, 3=石化, 4=恐懼, 5=封技
         check_list = []
-        if setting._RECOVER_POISON:    check_list.append((1, "Poison_icon", 2))
-        if setting._RECOVER_VENOM:     check_list.append((1, "poisonous_icon", 1))
-        if setting._RECOVER_STONE:     check_list.append((1, "stone_icon", 3))
-        if setting._RECOVER_PARALYSIS: check_list.append((1, "paralysis_icon", 0))
-        if setting._RECOVER_CURSED:    check_list.append((1, "cursed_icon", 0))
-        if setting._RECOVER_FEAR:      check_list.append((1, "fear_icon", 4))
+        if setting._RECOVER_POISON:    check_list.append((1, "Poison_icon", 2, "中毒"))
+        if setting._RECOVER_VENOM:     check_list.append((1, "poisonous_icon", 1, "劇毒"))
+        if setting._RECOVER_STONE:     check_list.append((1, "stone_icon", 3, "石化"))
+        if setting._RECOVER_PARALYSIS: check_list.append((1, "paralysis_icon", 0, "麻痺"))
+        if setting._RECOVER_CURSED:    check_list.append((1, "cursed_icon", 0, "詛咒"))
+        if setting._RECOVER_FEAR:      check_list.append((1, "fear_icon", 4, "寶箱恐懼"))
+        if setting._RECOVER_SKILLLOCK: check_list.append((1, "skilllock_icon", 5, "封技"))
 
         detected = False
         
@@ -1348,7 +1351,7 @@ def Factory():
             if y+h > screenImage.shape[0] or x+w > screenImage.shape[1]: continue
             roi_img = screenImage[y:y+h, x:x+w]
             
-            for _, tmpl_name, check_type in check_list:
+            for _, tmpl_name, check_type, display_name in check_list:
                 # 載入模板 (嘗試從 detect 資料夾載入)
                 template = LoadTemplateImage(f"detect/{tmpl_name}")
                 if template is None: continue
@@ -1402,8 +1405,12 @@ def Factory():
                                 if diff_val < 7.0: # 嚴格閾值，確保完全一致
                                     is_valid = True
                         
+                        elif check_type == 5: # 封技 (SkillLock)
+                            # 基於高匹配率即可
+                            is_valid = True
+                        
                         if is_valid:
-                            logger.info(f"[異常恢復] 偵測到異常狀態 {tmpl_name} 於角色 {idx} (val={max_val:.2f})")
+                            logger.info(f"[異常恢復] 偵測到異常狀態 {display_name} 於角色 {idx} (val={max_val:.2f})")
                             detected = True
                             return True # 只要偵測到任一，立即返回 True
 
@@ -3843,26 +3850,30 @@ def Factory():
                     logger.warning("[DungeonMover] 無法打開地圖")
                     self.consecutive_map_open_failures += 1
                     Sleep(1)  # 等待遊戲畫面穩定
-                    if self.consecutive_map_open_failures >= 3:
-                        logger.error(f"[DungeonMover] 連續 {self.consecutive_map_open_failures} 次無法打開地圖，判定為卡死，觸發重啟 protection")
-                        self.consecutive_map_open_failures = 0
-                        restartGame()
-                        return None
                     
-                    # [Fallback] 如果是因為暴風雪/能見度低，觸發 GoHome
+                    if self.consecutive_map_open_failures >= 3:
+                        logger.warning(f"[DungeonMover] 連續 {self.consecutive_map_open_failures} 次無法打開地圖，觸發 GoHome 脫困")
+                        self.consecutive_map_open_failures = 0
+                        self.is_gohome_mode = True
+                        return self._fallback_gohome(targetInfoList, ctx)
+                    
+                    # [重要] 優先檢查是否是因為暴風雪/能見度低，觸發 Resume
                     if CheckIf(screen, 'visibliityistoopoor'):
                          logger.warning("[DungeonMover] 能見度過低，嘗試點擊 Resume 恢復")
                          resume_pos = CheckIf(screen, 'resume')
                          if resume_pos:
                              Press(resume_pos)
                              Sleep(1)
+                             self.consecutive_map_open_failures = 0 # 恢復成功，重置計數
                              # 點擊後直接進入監控
                              return self._monitor_move(targetInfoList, ctx)
                          else:
                              # 找不到 resume 才 GoHome
                              logger.warning("[DungeonMover] 能見度過低且無 Resume，觸發 GoHome")
+                             self.consecutive_map_open_failures = 0
                              self.is_gohome_mode = True
                              return self._fallback_gohome(targetInfoList, ctx)
+                    
                     return DungeonState.Dungeon
             
             # 搜索並點擊目標
@@ -4699,7 +4710,8 @@ def Factory():
                     # --- 新增：異常狀態偵測 ---
                     if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
                         setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
-                        setting._RECOVER_CURSED):
+                        setting._RECOVER_CURSED or setting._RECOVER_FEAR or
+                        setting._RECOVER_SKILLLOCK):
                          # 為了避免頻繁截圖，可以考慮只在某些條件下檢查，但這裡為了即時性先每次檢查
                          # 如果 CheckAbnormalStatus 效能允許 (已優化 ROI)
                          scn_status = ScreenShot()

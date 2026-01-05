@@ -1035,7 +1035,8 @@ class ConfigPanelApp(tk.Toplevel):
             ("石化", self.recover_stone_var),
             ("麻痺", self.recover_paralysis_var),
             ("詛咒", self.recover_cursed_var),
-            ("恐懼", self.recover_fear_var)
+            ("寶箱恐懼", self.recover_fear_var),
+            ("封技", self.recover_skilllock_var)
         ]
         
         self.status_recover_checks = []
@@ -1045,7 +1046,8 @@ class ConfigPanelApp(tk.Toplevel):
                 variable=var, command=self.save_config,
                 style="Custom.TCheckbutton"
             )
-            cb.grid(row=0, column=i, padx=5, sticky=tk.W)
+            # 每行最多 5 個，超過換行
+            cb.grid(row=i // 5, column=i % 5, padx=5, sticky=tk.W)
             self.status_recover_checks.append(cb)
         row += 1
         frame_other = ttk.LabelFrame(tab, text="其他", padding=5)
