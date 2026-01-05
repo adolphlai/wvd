@@ -3034,6 +3034,8 @@ def Factory():
                     Press([450, 750])
                     Sleep(0.2)
                     Press([450, 800])
+                    Sleep(0.2)
+                    Press([450, 900])
                 logger.info(f"[順序 {caster_type}] 等待技能動畫完成...")
                 Sleep(2)  # 增加等待時間，讓遊戲完成動畫並切換角色
             else:
@@ -3247,20 +3249,27 @@ def Factory():
                     target_x2 = next_pos[0]
                     target_y1 = next_pos[1] + 100
                     target_y2 = next_pos[1] + 170
+                    target_y3 = next_pos[1] + 260
                     logger.info(f"[技能施放] 點擊目標敵人")
                     Press([target_x1, target_y1])
                     Sleep(0.1)
                     Press([target_x1, target_y2])
                     Sleep(0.1)
+                    Press([target_x1, target_y3])
+                    Sleep(0.1)
                     Press([target_x2, target_y1])
                     Sleep(0.1)
                     Press([target_x2, target_y2])
+                    Sleep(0.1)
+                    Press([target_x2, target_y3])
                 else:
                     # 使用固定座標
                     logger.info(f"[技能施放] 找不到 next，使用固定座標點擊敵人")
                     Press([450, 750])
                     Sleep(0.2)
                     Press([450, 800])
+                    Sleep(0.2)
+                    Press([450, 900])
                 
             Sleep(0.5)
             # scn = ScreenShot() # 移除多餘截圖
@@ -3325,7 +3334,9 @@ def Factory():
                 # 多點幾個位置，覆蓋不同大小的敵人
                 Press([pos[0]-15+random.randint(0,30),pos[1]+100+random.randint(0,20)])
                 Sleep(0.2)
-                Press([pos[0]-15+random.randint(0,30),pos[1]+150+random.randint(0,30)])
+                Press([pos[0]-15+random.randint(0,30),pos[1]+170+random.randint(0,30)])
+                Sleep(0.2)
+                Press([pos[0]-15+random.randint(0,30),pos[1]+260+random.randint(0,30)])
                 Sleep(1)
                 scn = ScreenShot()
                 if CheckIf(scn,'notenoughsp') or CheckIf(scn,'notenoughmp'):
