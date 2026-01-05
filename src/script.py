@@ -517,6 +517,7 @@ class RuntimeContext:
     _MINIMAP_STAIR_FLOOR_TARGET = None  # minimap_stair 目標樓層圖片名稱
     _MINIMAP_STAIR_IN_PROGRESS = False  # minimap_stair 移動中標記
     _RESTART_OPEN_MAP_PENDING = False  # 重啓後待打開地圖標誌，跳過Resume優化
+    _RESTART_PENDING_BATTLE_RESET = False  # 重啓後待重置戰鬥計數器標誌
     _MID_DUNGEON_START = False  # 地城內啟動標記，用於跳過黑屏打斷（因為不知道已打幾戰）
     _DUNGEON_REPEAT_COUNT = 0  # 連續刷地城次數計數器，達到設定值後回村
     _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
@@ -1833,6 +1834,7 @@ def Factory():
         runtimeContext._STEPAFTERRESTART = False  # 重啓後重置防止轉圈標誌，確保會執行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重啓後待打開地圖，跳過Resume優化
         runtimeContext._DUNGEON_CONFIRMED = False  # 重啓後重置地城確認標記
+        runtimeContext._RESTART_PENDING_BATTLE_RESET = True  # 重啓後待重置戰鬥計數器
         reset_ae_caster_flags()  # 重啓後重置 AE 手旗標
 
         if not skipScreenShot:
@@ -3379,6 +3381,13 @@ def Factory():
             return (is_success_aoe)
 
         nonlocal runtimeContext
+
+        # [重啟後重置] 如果是重啟後的第一場戰鬥，強制重置計數器
+        if runtimeContext._RESTART_PENDING_BATTLE_RESET:
+            logger.info("[戰鬥] 重啟後首次進入戰鬥，重置計數器")
+            runtimeContext._COMBAT_ACTION_COUNT = 0
+            runtimeContext._COMBAT_BATTLE_COUNT = 0
+            runtimeContext._RESTART_PENDING_BATTLE_RESET = False
 
         # 新戰鬥開始時，增加戰鬥計數器並重置首次普攻標誌
         if runtimeContext._COMBAT_ACTION_COUNT == 0:
