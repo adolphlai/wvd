@@ -2736,13 +2736,49 @@ def Factory():
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
                 pass
-        for info in quest._EOT:
+        for idx, info in enumerate(quest._EOT):
+            logger.info(f"[StateEoT] 執行 EOT 步驟 {idx+1}/{len(quest._EOT)}: {info[1]}")
+            
             if info[1]=="intoWorldMap":
                 TeleportFromCityToWorldLocation(info[2][0],info[2][1])
             else:
                 pos = FindCoordsOrElseExecuteFallbackAndWait(info[1],info[2],info[3])
                 if info[0]=="press":
-                    Press(pos)
+                    # 連續嘗試最多 3 次點擊
+                    MAX_CLICK_ATTEMPTS = 3
+                    click_success = False
+                    
+                    for attempt in range(MAX_CLICK_ATTEMPTS):
+                        Press(pos)
+                        logger.info(f"[StateEoT] 點擊了 {info[1]} (嘗試 {attempt+1}/{MAX_CLICK_ATTEMPTS})")
+                        Sleep(2)  # 等待過渡動畫
+                        
+                        # 檢查是否還能找到剛才點擊的圖（如果還在，說明點擊沒生效）
+                        scn = ScreenShot()
+                        still_there = CheckIf(scn, info[1])
+                        
+                        if not still_there:
+                            # 成功跳轉
+                            logger.info(f"[StateEoT] ✓ 成功跳轉，{info[1]} 已消失")
+                            click_success = True
+                            break
+                        else:
+                            logger.warning(f"[StateEoT] 點擊 {info[1]} 後畫面沒有跳轉 (嘗試 {attempt+1}/{MAX_CLICK_ATTEMPTS})")
+                            # 重新獲取位置，準備下次點擊
+                            if attempt < MAX_CLICK_ATTEMPTS - 1:
+                                pos = CheckIf(scn, info[1])
+                                if not pos:
+                                    logger.error(f"[StateEoT] 無法再次找到 {info[1]}，終止重試")
+                                    break
+                    
+                    if not click_success:
+                        # 3 次都失敗，返回村莊
+                        logger.error(f"[StateEoT] 點擊 {info[1]} 失敗 {MAX_CLICK_ATTEMPTS} 次，返回村莊")
+                        PressReturn()
+                        Sleep(1)
+                        # 由村莊邏輯接手，直接返回讓 IdentifyState 重新識別
+                        return
+                        
             Sleep(1)  # 每個操作後等待遊戲響應
         Sleep(1)
         Press(CheckIf(ScreenShot(), 'GotoDung'))
