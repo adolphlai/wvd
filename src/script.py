@@ -3842,6 +3842,7 @@ def Factory():
                     
                     logger.warning("[DungeonMover] 無法打開地圖")
                     self.consecutive_map_open_failures += 1
+                    Sleep(1)  # 等待遊戲畫面穩定
                     if self.consecutive_map_open_failures >= 3:
                         logger.error(f"[DungeonMover] 連續 {self.consecutive_map_open_failures} 次無法打開地圖，判定為卡死，觸發重啟 protection")
                         self.consecutive_map_open_failures = 0
