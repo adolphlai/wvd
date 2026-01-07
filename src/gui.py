@@ -1338,14 +1338,14 @@ class ConfigPanelApp(tk.Toplevel):
 
         self.screenshot_btn = ttk.Button(
             btn_frame,
-            text="擷取截圖",
+            text="畫面截圖",
             command=self._capture_streaming_screenshot
         )
         self.screenshot_btn.pack(side=tk.LEFT, padx=5)
 
         self.capture_char_btn = ttk.Button(
             btn_frame,
-            text="擷取角色(ROI)",
+            text="頭像截圖",
             command=self._capture_character_roi
         )
         self.capture_char_btn.pack(side=tk.LEFT, padx=5)
@@ -1664,8 +1664,10 @@ class ConfigPanelApp(tk.Toplevel):
                 os.makedirs(save_dir, exist_ok=True)
                 save_path = os.path.join(save_dir, f"{filename}.png")
                 
-                # 儲存 (frame 是 BGR 格式)
-                cv2.imwrite(save_path, frame)
+                # 使用 PIL 儲存以支援中文檔名 (cv2.imwrite 在 Windows 不支援中文路徑)
+                from PIL import Image
+                img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                img_pil.save(save_path)
                 
                 abs_path = os.path.abspath(save_path)
                 self.screenshot_status_var.set(f"✓ 已儲存: {filename}.png")
