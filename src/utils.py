@@ -27,8 +27,8 @@ for filename in os.listdir(LOGS_FOLDER_NAME):
     # 獲取最後修改時間
     creation_time = os.path.getmtime(file_path)
     
-    # 如果文件創建時間早於3天前，則刪除
-    if creation_time < THREE_DAYS_AGO:
+    # 如果文件創建時間早於3天前，且是文件，則刪除
+    if os.path.isfile(file_path) and creation_time < THREE_DAYS_AGO:
         os.remove(file_path)
 ############################################
 LOG_FILE_PREFIX = LOGS_FOLDER_NAME + "/log"
@@ -491,3 +491,7 @@ class Tooltip:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
+
+def CreateToolTip(widget, text):
+    toolTip = Tooltip(widget, text)
+    return toolTip

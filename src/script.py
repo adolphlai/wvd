@@ -1,4 +1,4 @@
-﻿from ppadb.client import Client as AdbClient
+from ppadb.client import Client as AdbClient
 from win10toast import ToastNotifier
 
 from enum import Enum
@@ -159,6 +159,7 @@ SKILL_CATEGORIES = {
     "全體": {"cast_type": "ok", "folder": "全體"},
     "秘術": {"cast_type": "ok", "folder": "秘術"},
     "群控": {"cast_type": "target", "folder": "群控"},
+    "防禦": {"cast_type": "none", "folder": "防禦"},
 }
 
 def load_skills_from_folder():
@@ -204,7 +205,7 @@ def get_skill_cast_type(category):
         category: 技能類別名稱
         
     Returns:
-        str: "target" (需選目標) 或 "ok" (OK 確認)
+        str: "target" (需選目標), "ok" (OK 確認), 或 "none" (直接施放)
     """
     return SKILL_CATEGORIES.get(category, {}).get("cast_type", "target")
 
@@ -522,6 +523,8 @@ class RuntimeContext:
     _MID_DUNGEON_START = False  # 地城內啟動標記，用於跳過黑屏打斷（因為不知道已打幾戰）
     _DUNGEON_REPEAT_COUNT = 0  # 連續刷地城次數計數器，達到設定值後回村
     _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
+    _FORCE_ABNORMAL_RECOVER = False # 強制異常狀態恢復標誌
+    _FORCE_LOWHP_RECOVER = False # 強制低血量恢復標誌
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -1374,35 +1377,38 @@ def Factory():
                             is_valid = True
                             
                         elif check_type == 1: # 劇毒 (Venom)
-                            # Hue: 110-150, Sat > 50
+                        # Hue ~130 紫色, Sat > 50
                             hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
                             avg_hue = np.mean(hsv[:,:,0])
                             avg_sat = np.mean(hsv[:,:,1])
-                            if 110 < avg_hue < 150 and avg_sat > 50:
+                            if abs(avg_hue - 130) < 20 and avg_sat > 50:
                                 is_valid = True
                                 
                         elif check_type == 2: # 中毒 (Poison)
-                            # Hue: 127±15 (112-142)
+                        # Hue: 118±20, Sat > 30 (Center 127 -> 118 for better coverage)
                             hsv = cv2.cvtColor(matched_area, cv2.COLOR_BGR2HSV)
                             avg_hue = np.mean(hsv[:,:,0])
-                            if 112 < avg_hue < 142:
+                            avg_sat = np.mean(hsv[:,:,1])
+                            if abs(avg_hue - 118) < 20 and avg_sat > 30:
                                 is_valid = True
                                 
                         elif check_type == 3: # 石化 (Stone)
-                            # 垂直梯度: 上半部亮點數量 50-130
-                            gray = cv2.cvtColor(matched_area, cv2.COLOR_BGR2GRAY)
-                            upper_half = gray[0:20, :]
-                            white_pixels = cv2.countNonZero(cv2.inRange(upper_half, 180, 255))
-                            if 50 < white_pixels < 130:
+                        # 使用 HSV 檢測上半部白色像素 (50 < n < 130)
+                            top_half = matched_area[:h_t//2, :]
+                            top_hsv = cv2.cvtColor(top_half, cv2.COLOR_BGR2HSV)
+                            white_mask = cv2.inRange(top_hsv, np.array([0, 0, 180]), np.array([180, 40, 255]))
+                            white_count = cv2.countNonZero(white_mask)
+                            if 50 < white_count < 130:
                                 is_valid = True
 
                         elif check_type == 4: # 恐懼 (Fear)
-                            # 使用像素差異比對 (避免與劇毒/詛咒混淆)
-                            # 由於形狀極度相似，HSV 無法區分，改用像素差異平均值
+                        # 使用像素差異比對 (避免與劇毒/詛咒混淆)
+                        # 由於形狀極度相似，HSV 無法區分，改用像素差異平均值
                             if matched_area.shape == template.shape:
                                 diff_img = cv2.absdiff(matched_area, template)
                                 diff_val = np.mean(diff_img)
-                                if diff_val < 7.0: # 嚴格閾值，確保完全一致
+                                # 寶箱恐懼等變體差異值可能較大 (實測約 33)，放寬門檻
+                                if diff_val < 40.0:
                                     is_valid = True
                         
                         elif check_type == 5: # 封技 (SkillLock)
@@ -1410,7 +1416,26 @@ def Factory():
                             is_valid = True
                         
                         if is_valid:
-                            logger.info(f"[異常恢復] 偵測到異常狀態 {display_name} 於角色 {idx} (val={max_val:.2f})")
+                            logger.info(f"[異常恢復] 偵測到異常狀態 {display_name} (匹配度 {max_val:.2f})")
+
+                            # [Debug] 偵測到異常狀態時，保存截圖證據
+                            try:
+                                debug_dir = "debug_screens"
+                                if not os.path.exists(debug_dir):
+                                    os.makedirs(debug_dir)
+                                ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                                save_path = f"{debug_dir}/abnormal_detected_{tmpl_name}_{idx}_{ts}.png"
+                                abs_path = os.path.abspath(save_path)
+                                success, n = cv2.imencode('.png', screenImage)
+                                if success:
+                                    with open(save_path, mode='wb') as f:
+                                        n.tofile(f)
+                                else:
+                                    logger.error(f"編碼圖片失敗")
+                                logger.debug(f"[異常恢復] 已保存異常狀態截圖: {abs_path}")
+                            except Exception as e:
+                                logger.error(f"[異常恢復] 保存截圖失敗: {e}")
+
                             detected = True
                             return True # 只要偵測到任一，立即返回 True
 
@@ -2137,7 +2162,8 @@ def Factory():
                         continue
             
             MonitorState.flag_combatActive = int(max_combat_val * 100)
-            
+            MonitorState.flag_updates['combatActive'] = time.time()
+
             # 如果預先計算發現是戰鬥狀態 (>0.7)，直接返回，不用再跑後面的迴圈
             if max_combat_val >= 0.70:
                  elapsed_ms = (time.time() - state_check_start) * 1000
@@ -2153,7 +2179,8 @@ def Factory():
 
             # 偵測到 AUTO 時，持續點擊直到消失
             MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
-            if MonitorState.flag_auto_text >= 80:
+            MonitorState.flag_updates['AUTO'] = time.time()
+            if MonitorState.flag_auto_text >= 70: # 門檻降低至 70
                 logger.info("[AUTO] 偵測到 AUTO，開始連續點擊")
                 click_count = 0
                 while click_count < 5:
@@ -2180,13 +2207,77 @@ def Factory():
                         return IdentifyState()
 
                     MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
+                    MonitorState.flag_updates['AUTO'] = time.time()
                     if MonitorState.flag_auto_text < 80:
                         logger.info("[AUTO] AUTO 已消失，停止點擊")
+
+                        # [恢復判斷] AUTO 消失後，檢查是否需要恢復（只設置標誌，不執行動作）
+                        logger.debug("[AUTO] 執行恢復條件判斷...")
+                        scn_recover = ScreenShot()
+                        
+                        # [Debug] 進入檢查即刻拍照
+                        try:
+                            debug_dir = "debug_screens"
+                            if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                            ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                            save_path = f"{debug_dir}/auto_vanish_check_{ts}.png"
+                            cv2.imwrite(save_path, scn_recover)
+                            logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
+                        except Exception as e: logger.error(f"截圖失敗: {e}")
+                        
+                        # 1. 異常狀態
+                        if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
+                            setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
+                            setting._RECOVER_CURSED or setting._RECOVER_FEAR or
+                            setting._RECOVER_SKILLLOCK):
+                            if CheckAbnormalStatus(scn_recover, setting):
+                                logger.info("[AUTO] 偵測到異常狀態，標記強制恢復")
+                                runtimeContext._FORCE_ABNORMAL_RECOVER = True
+
+                        # 2. 低血量恢復
+                        if setting._LOWHP_RECOVER:
+                            if CheckLowHP(scn_recover):
+                                logger.debug("[AUTO] 偵測到低血量，啟用低血量恢復檢查標誌")
+                                runtimeContext._FORCE_LOWHP_RECOVER = True
+                            else:
+                                logger.debug("[AUTO] 低血量檢查: 未偵測到低血量")
+
                         break
                     click_count += 1
                 else:
                     # AUTO 循環 5 次後仍存在，直接進入異常處理
                     logger.warning("[AUTO] 5 次點擊後 AUTO 仍在，執行異常處理")
+
+                    # [恢復判斷] AUTO 持續存在（可能卡住或消失失敗），同樣執行一次檢查
+                    logger.debug("[AUTO] 執行恢復條件判斷 (Timeout)...")
+                    scn_recover = ScreenShot()
+                    
+                    # [Debug] 進入檢查即刻拍照
+                    try:
+                        debug_dir = "debug_screens"
+                        if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                        ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                        save_path = f"{debug_dir}/auto_timeout_check_{ts}.png"
+                        cv2.imwrite(save_path, scn_recover)
+                        logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
+                    except Exception as e: logger.error(f"截圖失敗: {e}")
+                    
+                    # 1. 異常狀態
+                    if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
+                        setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
+                        setting._RECOVER_CURSED or setting._RECOVER_FEAR or
+                        setting._RECOVER_SKILLLOCK):
+                        if CheckAbnormalStatus(scn_recover, setting):
+                            logger.info("[AUTO-Timeout] 偵測到異常狀態，標記強制恢復")
+                            runtimeContext._FORCE_ABNORMAL_RECOVER = True
+
+                    # 2. 低血量恢復
+                    if setting._LOWHP_RECOVER:
+                        if CheckLowHP(scn_recover):
+                            logger.debug("[AUTO-Timeout] 偵測到低血量，啟用低血量恢復檢查標誌")
+                            runtimeContext._FORCE_LOWHP_RECOVER = True
+                        else:
+                            logger.debug("[AUTO-Timeout] 低血量檢查: 未偵測到低血量")
                     # 檢測各種對話框選項
                     dialogOption = [
                         'adventurersbones', 'halfBone', 'nothanks', 'strange_things',
@@ -2934,7 +3025,7 @@ def Factory():
         return 0
 
     def use_normal_attack():
-        """使用普攻"""
+        """使用普攻（動態目標判定）"""
         scn = ScreenShot()
         # 使用新的資料夾結構取得普攻路徑
         full_path = get_skill_image_path("普攻", "attack")
@@ -2947,19 +3038,37 @@ def Factory():
         if Press(CheckIf(scn, attack_path)):
             logger.info("[順序] 使用普攻")
             Sleep(0.5)
-            # 點擊六個點位選擇敵人
-            Press([150,750])
-            Sleep(0.1)
-            Press([300,750])
-            Sleep(0.1)
-            Press([450,750])
-            Sleep(0.1)
-            Press([550,750])
-            Sleep(0.1)
-            Press([650,750])
-            Sleep(0.1)
-            Press([750,750])
-            Sleep(0.1)
+            scn = ScreenShot()
+            # 採用與單體技能相同的目標判定邏輯
+            next_pos = CheckIf(scn, 'next', threshold=0.70)
+            if next_pos:
+                # 點擊多個位置覆蓋不同大小敵人
+                target_x1 = next_pos[0] - 15
+                target_x2 = next_pos[0]
+                target_y1 = next_pos[1] + 100
+                target_y2 = next_pos[1] + 170
+                target_y3 = next_pos[1] + 260
+                logger.info("[普攻] 根據 next 座標點擊敵人")
+                Press([target_x1, target_y1])
+                Sleep(0.1)
+                Press([target_x1, target_y2])
+                Sleep(0.1)
+                Press([target_x1, target_y3])
+                Sleep(0.1)
+                Press([target_x2, target_y1])
+                Sleep(0.1)
+                Press([target_x2, target_y2])
+                Sleep(0.1)
+                Press([target_x2, target_y3])
+            else:
+                # 找不到 next 時的固定座標保底
+                logger.info("[普攻] 找不到 next，使用固定座標保底")
+                Press([450, 750])
+                Sleep(0.2)
+                Press([450, 800])
+                Sleep(0.2)
+                Press([450, 900])
+            
             Sleep(0.5)
             return True
         return False
@@ -3262,7 +3371,11 @@ def Factory():
             # 根據施放方式確認技能
             cast_type = get_skill_cast_type(category)
             
-            if cast_type == "ok":
+            if cast_type == "none":
+                # 直接施放技能 (如：防禦)
+                logger.info(f"[技能施放] {skill_name} 為直接施放技能，完成行動")
+                return True
+            elif cast_type == "ok":
                 # AOE 類技能：等待並點擊 OK 確認
                 ok_pos = None
                 for wait_ok in range(6):  # 最多等待 3 秒 (6 × 0.5s)
@@ -3332,6 +3445,7 @@ def Factory():
             combat_templates = get_combat_active_templates()
             if combat_templates:
                 MonitorState.flag_combatActive = max(GetMatchValue(scn, t) for t in combat_templates)
+                MonitorState.flag_updates['combatActive'] = time.time()
         def doubleConfirmCastSpell(skill_name=None):
             is_success_aoe = False
             Sleep(0.5)
@@ -3720,23 +3834,6 @@ def Factory():
                     Sleep(0.5)
                     pre_screen = ScreenShot() # 重新抓圖確認是否還有 AUTO
 
-                # 2. 檢查 AUTO (瘋狂連點直到消失)
-                auto_break_count = 0
-                while auto_break_count < 20: 
-                    pre_screen = ScreenShot()
-                    # 必須確實看到 AUTO 圖標才執行點擊
-                    if CheckIf(pre_screen, 'AUTO'):
-                        logger.info(f"[DungeonMover] 偵測到 AUTO 遮擋，執行瘋狂連點 ({auto_break_count+1}/20)...")
-                        # 點擊對話/彈窗確認區域 [515, 934]
-                        Press([515, 934])
-                        Sleep(0.3) # 降低頻率至 0.3s，防止遊戲崩潰
-                        auto_break_count += 1
-                    else:
-                        # 看不見圖標了，立即停止清理
-                        break
-                if auto_break_count > 0:
-                    Sleep(0.3)
-
             if not targetInfoList:
                 logger.info("[DungeonMover] 無待執行目標，執行 GoHome 流程以退出地城")
                 self.is_gohome_mode = True
@@ -4000,8 +4097,12 @@ def Factory():
                         else:
                             break
                     
-                    if auto_retry_count > 0:
-                        # 清理完畢後重啟地城分發
+                    if auto_retry_count >= 15:
+                        # 失敗：連點 15 次後 AUTO 還在，交給 IdentifyState 處理
+                        logger.warning("[DungeonMover] AUTO 連點清理失敗，交還 IdentifyState 處理")
+                        return None
+                    elif auto_retry_count > 0:
+                        # 成功：AUTO 已消失
                         return DungeonState.Dungeon
                     
                     self.consecutive_map_open_failures += 1
@@ -4093,15 +4194,9 @@ def Factory():
                         # 返回 None 或特定狀態讓 chest_search 重啟 (這裡返回 None 會導致 initiate_move 結束)
                         # 但 chest_search 是一個 loop，我們需要讓 _monitor_move 結束，這樣 chest_search 內部的 return 會觸發
                         # 根據 script.py 邏輯，chest_search 直接 return _monitor_move
-                        # 所以我們需要返回一個信號讓 StateDungeon 知道並非真正的結束?
-                        # 不，User 說 "繼續跳回 chest_search 流程"。
-                        # 如果我們返回 None，StateDungeon 會認為目標完成並 pop (如果我們不 pop 的話)。
-                        # 但 chest_search 沒有 pop。
-                        # 讓我們看看 initiate_move -> chest_search -> _monitor_move
-                        # 如果 _monitor_move 返回 None:
-                        # initiate_move 返回 None -> StateDungeon(L4580) -> dungState = None -> IdentifyState
-                        # 如果 IdentifyState 還是 Dungeon，那就會再次進入 StateDungeon -> initiate_move -> chest_search
-                        # 這符合 "重啟流程" 的定義 (重新找按鈕/開地圖)
+                        # 如果 _monitor_move 返回 None，initiate_move 返回 None，StateDungeon 會重新 IdentifyState
+                        # IdentifyState 再次進入 StateDungeon，StateDungeon 再次調用 initiate_move，
+                        # initiate_move 再次調用 chest_search，這符合 "重啟流程" 的定義 (重新找按鈕/開地圖)
                         return None
                     
                     # 2. 檢測再次靜止 (稍後在靜止判定區塊處理)
@@ -4133,6 +4228,13 @@ def Factory():
                     MonitorState.flag_worldMap = GetMatchValue(screen_pre, 'worldmapflag')
                     MonitorState.flag_chest_auto = GetMatchValue(screen_pre, 'chest_auto')
                     MonitorState.flag_auto_text = GetMatchValue(screen_pre, 'AUTO')
+                    # 同步更新時間戳 (讓 GUI 過期檢測正常運作)
+                    MonitorState.flag_updates['dungFlag'] = now
+                    MonitorState.flag_updates['mapFlag'] = now
+                    MonitorState.flag_updates['chestFlag'] = now
+                    MonitorState.flag_updates['worldMap'] = now
+                    MonitorState.flag_updates['chest_auto'] = now
+                    MonitorState.flag_updates['AUTO'] = now
                     # 血量偵測 (只在地城移動時更新)
                     MonitorState.flag_low_hp = CheckLowHP(screen_pre)
                     self.last_monitor_update_time = now
@@ -4329,8 +4431,6 @@ def Factory():
                                 Press([1, 1])
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
-                                    logger.info(f"[DungeonMover] 已移除已完成(無寶箱)目標 chest_auto, 剩餘目標數: {len(targetInfoList)}")
-                                    ctx._RESTART_OPEN_MAP_PENDING = True
                                 return self._cleanup_exit(DungeonState.Map)
                             elif CheckIf(screen, 'mapFlag'):
                                 # 已在地圖狀態
@@ -4339,8 +4439,6 @@ def Factory():
                                 Sleep(0.5)
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
-                                    logger.info(f"[DungeonMover] 已移除已完成(在地圖)目標 chest_auto, 剩餘目標數: {len(targetInfoList)}")
-                                    ctx._RESTART_OPEN_MAP_PENDING = True
                                 return self._cleanup_exit(DungeonState.Map)
                             else:
                                 # === 在地城中 (dungflag)，未檢測到 notresure，不 pop，打開地圖 ===
@@ -4821,6 +4919,38 @@ def Factory():
                     auto_match = GetMatchValue(scn, 'AUTO')
                     if auto_match < 80:
                         logger.info("[StateChest] AUTO 已消失，停止點擊")
+                        
+                        # [恢復判斷] AUTO 消失後，檢查是否需要恢復（只設置標誌，不執行動作）
+                        logger.debug("[StateChest] 執行恢復條件判斷...")
+                        scn_recover = ScreenShot()
+                        
+                        # [Debug] 進入檢查即刻拍照
+                        try:
+                            debug_dir = "debug_screens"
+                            if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                            ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                            save_path = f"{debug_dir}/chest_auto_check_{ts}.png"
+                            cv2.imwrite(save_path, scn_recover)
+                            logger.debug(f"[StateChest] 恢復檢查前截圖: {save_path}")
+                        except Exception as e: logger.error(f"截圖失敗: {e}")
+                        
+                        # 1. 異常狀態
+                        if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
+                            setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
+                            setting._RECOVER_CURSED or setting._RECOVER_FEAR or
+                            setting._RECOVER_SKILLLOCK):
+                            if CheckAbnormalStatus(scn_recover, setting):
+                                logger.info("[StateChest] 偵測到異常狀態，標記強制恢復")
+                                runtimeContext._FORCE_ABNORMAL_RECOVER = True
+                                
+                        # 2. 低血量恢復
+                        if setting._LOWHP_RECOVER:
+                            if CheckLowHP(scn_recover):
+                                logger.debug("[StateChest] 偵測到低血量，啟用低血量恢復檢查標誌")
+                                runtimeContext._FORCE_LOWHP_RECOVER = True
+                            else:
+                                logger.debug("[StateChest] 低血量檢查: 未偵測到低血量")
+
                         break
                     auto_click_count += 1
 
@@ -4890,6 +5020,11 @@ def Factory():
                          if CheckAbnormalStatus(scn_status, setting):
                              logger.info("[StateDungeon] 偵測到異常狀態，觸發恢復")
                              shouldRecover = True
+
+                    if runtimeContext._FORCE_ABNORMAL_RECOVER:
+                        logger.info("[StateDungeon] 檢測到異常狀態強制恢復標誌")
+                        shouldRecover = True
+                        runtimeContext._FORCE_ABNORMAL_RECOVER = False
 
                     # --- 新增：低血量強制恢復邏輯 ---
                     if runtimeContext._FORCE_LOWHP_RECOVER:

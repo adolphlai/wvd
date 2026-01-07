@@ -5,13 +5,112 @@ import logging
 from script import *
 from auto_updater import *
 from utils import *
+import collections
+import threading
+
+
+# ==========================================
+#  Log Handler (Buffered)
+# ==========================================
+class BufferedScrolledTextHandler(logging.Handler):
+    """
+    支援緩衝區 (Buffer) 與即時過濾的 Log Handler。
+    - 緩衝區: 保留最近 2000 筆紀錄。
+    - 過濾: 支援 Level 過濾 (DEBUG vs NORMAL) 與 文字搜尋。
+    """
+    def __init__(self, text_widget, maxlen=2000):
+        super().__init__()
+        self.text_widget = text_widget
+        self.buffer = collections.deque(maxlen=maxlen)
+        self.maxlen = maxlen
+        
+        # Filters
+        self.show_debug = False
+        self.show_normal = True # New: Show Normal (Info/Warn/Error)
+        self.search_text = ""
+        
+        # UI Thread Safety
+        self.lock = threading.Lock()
+        
+    def set_filters(self, show_debug, show_normal, search_text):
+        """更新過濾條件並刷新顯示"""
+        with self.lock:
+            changed = (self.show_debug != show_debug) or \
+                      (self.show_normal != show_normal) or \
+                      (self.search_text != search_text)
+            self.show_debug = show_debug
+            self.show_normal = show_normal
+            self.search_text = search_text.lower()
+            
+            if changed:
+                self.refresh_display()
+
+    def check_filter(self, record):
+        """檢查單條紀錄是否符合當前過濾條件"""
+        # 1. Level Filter
+        if record.levelno == logging.DEBUG:
+            if not self.show_debug:
+                return False
+        else: # INFO, WARN, ERROR, etc.
+            if not self.show_normal:
+                return False
+                
+        # 2. Text Filter
+        if self.search_text:
+            msg = self.format(record).lower()
+            if self.search_text not in msg:
+                return False
+                
+        return True
+
+    def emit(self, record):
+        """接收新的 Log 紀錄"""
+        try:
+            msg = self.format(record)
+            
+            # 1. 存入 Buffer
+            self.buffer.append(record)
+            
+            # 2. 若符合當前過濾條件，則輸出到 UI
+            if self.check_filter(record):
+                self._append_to_widget(msg + '\n', record.levelname)
+                
+        except Exception:
+            self.handleError(record)
+
+    def refresh_display(self):
+        """清空並重新繪製所有 Log (耗時操作，應注意頻率)"""
+        self.text_widget.configure(state='normal')
+        self.text_widget.delete('1.0', tk.END)
+        
+        for record in self.buffer:
+            if self.check_filter(record):
+                msg = self.format(record)
+                self._append_to_widget_no_lock(msg + '\n', record.levelname)
+                
+        self.text_widget.configure(state='disabled')
+        self.text_widget.see(tk.END)
+
+    def _append_to_widget(self, msg, levelname):
+        def _update():
+            self.text_widget.configure(state='normal')
+            self.text_widget.insert(tk.END, msg, levelname)
+            self.text_widget.configure(state='disabled')
+            self.text_widget.see(tk.END)
+        
+        # 確保在主執行緒執行
+        self.text_widget.after(0, _update)
+
+    def _append_to_widget_no_lock(self, msg, levelname):
+        """僅供 refresh_display 內部使用 (假設已在主執行緒且已開啟 state=normal)"""
+        self.text_widget.insert(tk.END, msg, levelname)
 
 ############################################
 class ConfigPanelApp(tk.Toplevel):
     def __init__(self, master_controller, version, msg_queue):
         self.URL = "https://github.com/arnold2957/wvd"
-        self.TITLE = f"WvDAS 巫術daphne自動刷怪 v{version} @德德Dellyla(B站)"
-        self.INTRODUCTION = f"遇到問題? 請訪問:\n{self.URL} \n或加入Q羣: 922497356."
+        self.TITLE = f"WvDAS 巫術daphne自動刷怪 v{version} "
+        self.INTRODUCTION = f"遇到問題請訪問\n https://github.com/adolphlai/wvd/issues"
 
         RegisterQueueHandler()
         StartLogListener()
@@ -19,7 +118,9 @@ class ConfigPanelApp(tk.Toplevel):
         super().__init__(master_controller)
         self.controller = master_controller
         self.msg_queue = msg_queue
-        self.geometry('880x640')  # 調整視窗大小以配合縮小的日誌區域
+        # Default size: 880x640. If log panel is hidden, we might want to resize?
+        # For now, let's keep the user's ability to resize.
+        self.geometry('880x640')  # Widen default to accommodate log panel comfortably
         
         self.title(self.TITLE)
 
@@ -38,7 +139,11 @@ class ConfigPanelApp(tk.Toplevel):
         self.style.map("Custom.TCheckbutton",
             foreground=[("disabled selected", "#8CB7DF"),("disabled", "#A0A0A0"), ("selected", "#196FBF")])
         self.style.configure("BoldFont.TCheckbutton", font=("微軟雅黑", 9,"bold"))
+        self.style.configure("BoldFont.TCheckbutton", font=("微軟雅黑", 9,"bold"))
         self.style.configure("LargeFont.TCheckbutton", font=("微軟雅黑", 12,"bold"))
+        
+        # --- UI State ---
+        self.is_log_visible = True
 
         # --- UI 變量 ---
         self.config = LoadConfigFromFile()
@@ -131,53 +236,96 @@ class ConfigPanelApp(tk.Toplevel):
         self.columnconfigure(1, weight=1)  # column 1 (日誌區) 自動擴展
         self.rowconfigure(0, weight=1)     # row 0 自動擴展
         
-        # === 右側容器 (包含過濾器 + LOG 顯示區域) ===
-        right_frame = ttk.Frame(self)
-        right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=5, pady=5)
+        # === 日誌控制與顯示 (右側) ===
+        # 使用 grid_forget/grid 來切換顯示
+        self.is_log_visible = True
+        self.right_frame = ttk.Frame(self)
+        self.right_frame.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=5, pady=5)
         
-        # === 日誌過濾器 checkbox ===
-        log_filter_frame = ttk.Frame(right_frame)
-        log_filter_frame.pack(fill=tk.X, pady=(0, 5))
+        # --- Log Control Bar (Top) ---
+        log_ctrl_frame = ttk.Frame(self.right_frame)
+        log_ctrl_frame.pack(fill=tk.X, pady=(0, 5))
         
-        ttk.Label(log_filter_frame, text="日誌過濾:").pack(side=tk.LEFT, padx=(5, 2))
-        
-        # 創建 filter 實例（用於動態過濾）
-        self.log_level_filter = LogLevelFilter()
-        
-        # checkbox 變數
-        self.show_debug_var = tk.BooleanVar(value=False)
-        self.show_info_var = tk.BooleanVar(value=True)
-        self.show_warning_var = tk.BooleanVar(value=True)
-        self.show_error_var = tk.BooleanVar(value=True)
-        
-        def update_log_filter():
-            """更新 filter 的顯示狀態"""
-            self.log_level_filter.show_debug = self.show_debug_var.get()
-            self.log_level_filter.show_info = self.show_info_var.get()
-            self.log_level_filter.show_warning = self.show_warning_var.get()
-            self.log_level_filter.show_error = self.show_error_var.get()
-        
-        ttk.Checkbutton(log_filter_frame, text="DEBUG", variable=self.show_debug_var,
-                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
-        ttk.Checkbutton(log_filter_frame, text="INFO", variable=self.show_info_var,
-                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
-        ttk.Checkbutton(log_filter_frame, text="WARN", variable=self.show_warning_var,
-                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
-        ttk.Checkbutton(log_filter_frame, text="ERROR", variable=self.show_error_var,
-                        command=update_log_filter).pack(side=tk.LEFT, padx=2)
+        # 1. Toggle Button (Top-Left)
+        # Note: We define the function later but need button here
+        self.toggle_log_btn = ttk.Button(log_ctrl_frame, text="�", width=3)
 
-        # === 日誌顯示區域 ===
+
+        # 2. Tools Container (Search + Checkboxes) - to be hidden when collapsed
+        self.log_tools_frame = ttk.Frame(log_ctrl_frame)
+        self.log_tools_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Search Box
+        self.log_search_var = tk.StringVar()
+        self.log_search_entry = ttk.Entry(self.log_tools_frame, textvariable=self.log_search_var)
+        self.log_search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        # Placeholder functionality
+        def on_entry_click(event):
+            if self.log_search_entry.get() == '搜尋日誌...':
+               self.log_search_entry.delete(0, "end")
+               self.log_search_entry.config(foreground='black')
+        def on_focusout(event):
+            if self.log_search_entry.get() == '':
+                self.log_search_entry.insert(0, '搜尋日誌...')
+                self.log_search_entry.config(foreground='grey')
+                
+        self.log_search_entry.insert(0, '搜尋日誌...')
+        self.log_search_entry.bind('<FocusIn>', on_entry_click)
+        self.log_search_entry.bind('<FocusOut>', on_focusout)
+        self.log_search_entry.config(foreground='grey')
+
+        # Checkboxes
+        self.show_debug_var = tk.BooleanVar(value=False)
+        self.show_normal_var = tk.BooleanVar(value=True) # INFO/WARN/ERROR
+        
+        debug_chk = ttk.Checkbutton(self.log_tools_frame, text="除錯", variable=self.show_debug_var, style="Custom.TCheckbutton")
+        debug_chk.pack(side=tk.LEFT, padx=2)
+        
+        normal_chk = ttk.Checkbutton(self.log_tools_frame, text="一般", variable=self.show_normal_var, style="Custom.TCheckbutton")
+        normal_chk.pack(side=tk.LEFT, padx=2)
+
+        # Log Display Area
         scrolled_text_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%H:%M:%S')
-        self.log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#ffffff', bd=2, relief=tk.FLAT, width=55, height=28)
+        self.log_display = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, state=tk.DISABLED, bg='#2b2b2b', fg='#f0f0f0', bd=2, relief=tk.FLAT, width=50, height=28, font=("Consolas", 9))
         self.log_display.pack(fill=tk.BOTH, expand=True)
-        self.scrolled_text_handler = ScrolledTextHandler(self.log_display)
-        self.scrolled_text_handler.setLevel(logging.DEBUG)  # 降低 level 讓 DEBUG 訊息能通過
-        self.scrolled_text_handler.setFormatter(scrolled_text_formatter)
-        self.scrolled_text_handler.addFilter(self.log_level_filter)  # 添加動態過濾器
-        logger.addHandler(self.scrolled_text_handler)
+        
+        # Configure Tags for colors
+        self.log_display.tag_config('DEBUG', foreground='#808080')
+        self.log_display.tag_config('INFO', foreground='#cccccc')
+        self.log_display.tag_config('WARNING', foreground='#e6db74')
+        self.log_display.tag_config('ERROR', foreground='#f92672')
+        self.log_display.tag_config('CRITICAL', foreground='#fd971f', background='#2b2b2b')
+
+        # Handler
+        self.buffered_log_handler = BufferedScrolledTextHandler(self.log_display)
+        self.buffered_log_handler.setLevel(logging.DEBUG) # Allow all, filter internally
+        self.buffered_log_handler.setFormatter(scrolled_text_formatter)
+        logger.addHandler(self.buffered_log_handler)
+        
+        # Bind interactions
+        def update_log_filters(*args):
+             search_text = self.log_search_var.get()
+             if search_text == '搜尋日誌...':
+                 search_text = ""
+             self.buffered_log_handler.set_filters(
+                 show_debug=self.show_debug_var.get(),
+                 show_normal=self.show_normal_var.get(),
+                 search_text=search_text
+             )
+
+        self.log_search_var.trace_add("write", update_log_filters)
+        self.show_debug_var.trace_add("write", update_log_filters)
+        self.show_normal_var.trace_add("write", update_log_filters)
+        
+        # Initial filter set
+        update_log_filters()
+
+
 
         # === 摘要顯示區域 ===
-        self.summary_log_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4", bd=2, width=55)
+        # === 摘要顯示區域 ===
+        self.summary_log_display = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, state=tk.DISABLED, bg="#C6DBF4", bd=2, width=50)
         self.summary_log_display.pack(fill=tk.X, pady=(5, 0))
         self.summary_text_handler = ScrolledTextHandler(self.summary_log_display)
         self.summary_text_handler.setLevel(logging.INFO)
@@ -191,6 +339,8 @@ class ConfigPanelApp(tk.Toplevel):
             original_emit(record)
         self.summary_text_handler.emit = new_emit
         logger.addHandler(self.summary_text_handler)
+
+
 
         # === 主框架（左側）===
         self.main_frame = ttk.Frame(self, padding="10")
@@ -279,6 +429,29 @@ class ConfigPanelApp(tk.Toplevel):
         self.update_text.grid_remove()
         self.button_auto_download.grid_remove()
         self.button_manual_download.grid_remove()
+
+        # === Toggle Button Logic (Moved here to ensure main_frame exists) ===
+        def toggle_log():
+            if self.is_log_visible:
+                # Fully hide right frame
+                self.right_frame.grid_remove()
+                
+                # Auto-shrink
+                self.update_idletasks() # Ensure sizes are calculated
+                target_w = self.main_frame.winfo_reqwidth() # +padding
+                self.geometry(f'{target_w}x640') 
+                
+                self.columnconfigure(1, weight=0)
+            else:
+                self.right_frame.grid()
+                self.geometry('880x640')
+                self.columnconfigure(1, weight=1)
+            self.is_log_visible = not self.is_log_visible
+            
+        self.toggle_log_btn = ttk.Button(self.main_frame, text="📝", width=3, command=toggle_log)
+        CreateToolTip(self.toggle_log_btn, "顯示/隱藏日誌")
+        # Place button at the top-right corner of the MAIN FRAME (Left Panel)
+        self.toggle_log_btn.place(relx=1.0, y=0, anchor='ne')
 
     def _create_general_tab(self, vcmd_non_neg):
         """一般設定分頁：模擬器連接、地下城目標、開箱人選"""
@@ -508,12 +681,6 @@ class ConfigPanelApp(tk.Toplevel):
         self.monitor_warning_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_warning_var, foreground="red")
         self.monitor_warning_label.grid(row=12, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
 
-        # 第十四行：角色比對
-        ttk.Label(self.monitor_frame, text="角色:", font=("微軟雅黑", 9, "bold")).grid(row=13, column=0, sticky=tk.W, padx=2)
-        self.monitor_character_var = tk.StringVar(value="未找到")
-        self.monitor_character_label = ttk.Label(self.monitor_frame, textvariable=self.monitor_character_var, width=20)
-        self.monitor_character_label.grid(row=13, column=1, columnspan=3, sticky=tk.W)
-
         # 保留未顯示但被引用的變數
         self.monitor_dungeon_state_var = tk.StringVar(value="-")
         self.monitor_karma_var = tk.StringVar(value="-")
@@ -599,36 +766,16 @@ class ConfigPanelApp(tk.Toplevel):
                 self.save_config()
                 logger.info(f"預設已重新命名為: {new_name}")
 
-        btn_rename = ttk.Button(frame_presets, text="重新命名", command=rename_preset, width=10)
-        btn_rename.grid(row=0, column=2, padx=5)
-
-        def clear_preset():
-            idx = self.preset_combo.current()
-            if idx == -1: return
-            
-            if messagebox.askyesno("清空預設", f"確定要清空預設 '{self.preset_combo.get()}' 嗎？"):
-                empty_preset = []
-                for _ in range(6):
-                    empty_preset.append({
-                        "character": "", "skill_first": "", "level_first": "關閉",
-                        "skill_after": "", "level_after": "關閉"
-                    })
-                self.character_skill_presets[idx] = empty_preset
-                self.character_skill_config = empty_preset
-                self._load_preset_to_ui()
-                self.save_config()
-                logger.info(f"預設 '{self.preset_combo.get()}' 已清空")
-
-        btn_clear = ttk.Button(frame_presets, text="清空預設", command=clear_preset, width=10)
-        btn_clear.grid(row=0, column=3, padx=5)
+        self.btn_rename_preset = ttk.Button(frame_presets, text="重新命名", command=rename_preset, width=10)
+        self.btn_rename_preset.grid(row=0, column=2, padx=5)
 
         def save_preset():
             self._save_skill_config()
             logger.info(f"已手動儲存預設: {self.preset_combo.get()}")
             messagebox.showinfo("儲存成功", f"預設 '{self.preset_combo.get()}' 已儲存")
 
-        btn_save = ttk.Button(frame_presets, text="儲存配置", command=save_preset, width=10)
-        btn_save.grid(row=0, column=4, padx=5)
+        self.btn_save_preset = ttk.Button(frame_presets, text="儲存配置", command=save_preset, width=10)
+        self.btn_save_preset.grid(row=0, column=3, padx=5)
 
         row += 1
 
@@ -650,11 +797,11 @@ class ConfigPanelApp(tk.Toplevel):
 
         # Row 1: 說明文字
         ttk.Label(frame_char_skill,
-                  text="※ 未識別角色時使用單體技能。新增角色請將頭像放入 resources/images/character/ 並重啟",
+                  text="※ 未識別角色時使用單體技能\n新增角色請將頭像放入 resources/images/character/ 並重啟",
                   foreground="gray").grid(row=1, column=0, columnspan=8, sticky=tk.W, pady=(2, 8))
 
         # 類別選項與等級選項
-        category_options = ["", "普攻", "單體", "橫排", "全體", "秘術", "群控"]
+        category_options = ["", "普攻", "防禦", "單體", "橫排", "全體", "秘術", "群控"]
         level_options = ["關閉", "LV2", "LV3", "LV4", "LV5", "LV6", "LV7", "LV8", "LV9"]
         char_options = [""] + AVAILABLE_CHARACTERS
 
@@ -680,6 +827,9 @@ class ConfigPanelApp(tk.Toplevel):
                 elif category == "普攻":
                     skill_options = ["", "attack"]
                     skill_var.set("attack")  # 自動選擇普攻
+                elif category == "防禦":
+                    skill_options = ["", "defend"]
+                    skill_var.set("defend")  # 自動選擇防禦
                 else:
                     skills_from_folder = SKILLS_BY_CATEGORY.get(category, [])
                     skill_options = [""] + skills_from_folder
@@ -830,6 +980,9 @@ class ConfigPanelApp(tk.Toplevel):
             if saved_skill == "attack":
                 category_var.set("普攻")
                 skill_combo['values'] = ["", "attack"]
+            elif saved_skill == "defend":
+                category_var.set("防禦")
+                skill_combo['values'] = ["", "defend"]
             else:
                 for cat, skills in SKILLS_BY_CATEGORY.items():
                     if saved_skill in skills:
@@ -1134,28 +1287,32 @@ class ConfigPanelApp(tk.Toplevel):
         frame_screenshot = ttk.LabelFrame(tab, text="串流截圖", padding=5)
         frame_screenshot.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
 
-        ttk.Label(frame_screenshot, text="檔名:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        ttk.Label(frame_screenshot, text="檔名:").grid(row=0, column=0, padx=(5, 0), sticky=tk.W)
         self.screenshot_filename_var = tk.StringVar(value="screenshot")
         self.screenshot_filename_entry = ttk.Entry(frame_screenshot, textvariable=self.screenshot_filename_var, width=20)
-        self.screenshot_filename_entry.grid(row=0, column=1, padx=5)
-        ttk.Label(frame_screenshot, text=".png").grid(row=0, column=2, sticky=tk.W)
+        self.screenshot_filename_entry.grid(row=0, column=1, padx=(0, 0), sticky=tk.W)
+        ttk.Label(frame_screenshot, text=".png").grid(row=0, column=2, padx=(0, 5), sticky=tk.W)
+
+        # Row 1: Buttons Frame (to avoid column width issues with filename row)
+        btn_frame = ttk.Frame(frame_screenshot)
+        btn_frame.grid(row=1, column=0, columnspan=3, sticky="w", pady=5)
 
         self.screenshot_btn = ttk.Button(
-            frame_screenshot,
+            btn_frame,
             text="擷取截圖",
             command=self._capture_streaming_screenshot
         )
-        self.screenshot_btn.grid(row=0, column=3, padx=10, pady=5)
+        self.screenshot_btn.pack(side=tk.LEFT, padx=5)
 
         self.capture_char_btn = ttk.Button(
-            frame_screenshot,
+            btn_frame,
             text="擷取角色(ROI)",
             command=self._capture_character_roi
         )
-        self.capture_char_btn.grid(row=0, column=4, padx=5, pady=5)
+        self.capture_char_btn.pack(side=tk.LEFT, padx=5)
 
         self.screenshot_status_var = tk.StringVar(value="")
-        ttk.Label(frame_screenshot, textvariable=self.screenshot_status_var, foreground="green").grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=2)
+        ttk.Label(frame_screenshot, textvariable=self.screenshot_status_var, foreground="green").grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=2)
 
         # ROI 設定區域 (讓你自定義裁切範圍)
         # frame_roi = ttk.LabelFrame(frame_screenshot, text="ROI 設定 (x,y,w,h)", padding=2)
@@ -1176,6 +1333,94 @@ class ConfigPanelApp(tk.Toplevel):
         # ttk.Entry(frame_roi, textvariable=self.roi_h, width=5).pack(side=tk.LEFT)
         
         ttk.Label(frame_screenshot, text="※ 使用串流方式截圖，儲存至 resources/images/character/", foreground="gray").grid(row=3, column=0, columnspan=5, sticky=tk.W, pady=2)
+
+        # --- Quest 編輯器伺服器 ---
+        row += 1
+        frame_editor = ttk.LabelFrame(tab, text="Quest 編輯器", padding=5)
+        frame_editor.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
+
+        self.editor_server_status_var = tk.StringVar(value="伺服器未啟動")
+        ttk.Label(frame_editor, text="狀態:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        ttk.Label(frame_editor, textvariable=self.editor_server_status_var, width=25).grid(row=0, column=1, padx=5, sticky=tk.W)
+
+        self._editor_server = None
+
+        def toggle_editor_server():
+            if self._editor_server is None:
+                self.editor_toggle_btn.config(state="disabled")
+                self.editor_server_status_var.set("正在連接 ADB...")
+                
+                def start_server():
+                    try:
+                        from editor_server import EditorWebSocketServer
+                        from script import CheckRestartConnectADB, FarmConfig, get_scrcpy_stream
+                        
+                        # 初始化設定並連接 ADB
+                        setting = FarmConfig()
+                        config = LoadConfigFromFile()
+                        for attr_name, var_type, var_config_name, var_default_value in CONFIG_VAR_LIST:
+                            setattr(setting, var_config_name, config.get(var_config_name, var_default_value))
+                        
+                        # 連接 ADB
+                        device = CheckRestartConnectADB(setting)
+                        if not device:
+                            self.editor_server_status_var.set("❌ ADB 連接失敗")
+                            self.editor_toggle_btn.config(state="normal")
+                            return
+                        
+                        setting._ADBDEVICE = device
+                        
+                        # 創建伺服器（傳入已連接的 device）
+                        self._editor_server = EditorWebSocketServer()
+                        self._editor_server._adb_device = device  # 使用已連接的設備
+                        
+                        # 嘗試使用 pyscrcpy 串流
+                        try:
+                            stream = get_scrcpy_stream()
+                            if stream:
+                                if not stream.is_available():
+                                    stream.start()
+                                if stream.is_available():
+                                    self._editor_server.set_stream_source(stream.get_frame)
+                                    logger.info("[EditorServer] 使用 pyscrcpy 串流")
+                        except Exception as e:
+                            logger.debug(f"pyscrcpy 不可用: {e}")
+                        
+                        # 跳過內部 ADB 初始化直接啟動
+                        self._editor_server._init_adb = lambda: True  # 已經連接了
+                        
+                        if self._editor_server.start():
+                            self.editor_server_status_var.set("✓ 運行中 ws://localhost:8765")
+                            self.editor_toggle_btn.config(text="停止伺服器", state="normal")
+                            logger.info("[EditorServer] 已啟動，在編輯器連接 ws://localhost:8765")
+                        else:
+                            self.editor_server_status_var.set("❌ 伺服器啟動失敗")
+                            self._editor_server = None
+                            self.editor_toggle_btn.config(state="normal")
+                            
+                    except ImportError as e:
+                        self.editor_server_status_var.set("❌ 缺少 websockets")
+                        logger.error(f"[EditorServer] 啟動失敗: {e}")
+                        self.editor_toggle_btn.config(state="normal")
+                    except Exception as e:
+                        self.editor_server_status_var.set("❌ 錯誤")
+                        logger.error(f"[EditorServer] 啟動失敗: {e}")
+                        self.editor_toggle_btn.config(state="normal")
+                
+                import threading
+                threading.Thread(target=start_server, daemon=True).start()
+            else:
+                self._editor_server.stop()
+                self._editor_server = None
+                self.editor_server_status_var.set("伺服器已停止")
+                self.editor_toggle_btn.config(text="啟動伺服器")
+                logger.info("[EditorServer] 已停止")
+
+        self.editor_toggle_btn = ttk.Button(frame_editor, text="啟動伺服器", command=toggle_editor_server)
+        self.editor_toggle_btn.grid(row=0, column=2, padx=10, pady=5)
+
+        ttk.Label(frame_editor, text="※ 先在 editor/ 目錄執行 npm run dev，然後連接 ws://localhost:8765", foreground="gray").grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
 
         row += 1
         ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試小地圖偵測：請確保遊戲在地城中\n3. 不需要啟動主任務",
@@ -1482,6 +1727,9 @@ class ConfigPanelApp(tk.Toplevel):
         thread = threading.Thread(target=run_capture, daemon=True)
         thread.start()
 
+
+
+
     def _start_monitor_update(self):
         """啟動監控面板定時更新"""
         self._update_monitor()
@@ -1692,9 +1940,6 @@ class ConfigPanelApp(tk.Toplevel):
                 self.monitor_warning_var.set(" | ".join(MonitorState.warnings))
             else:
                 self.monitor_warning_var.set("")
-
-            # 更新角色比對
-            self.monitor_character_var.set(MonitorState.current_character or "未找到")
         except Exception as e:
             logger.debug(f"監控更新異常: {e}")
 
@@ -1716,6 +1961,7 @@ class ConfigPanelApp(tk.Toplevel):
             self.who_will_open_combobox,
             self.skip_recover_check,
             self.skip_chest_recover_check,
+            self.lowhp_recover_check,
             self.karma_adjust_combobox,
             self.adb_port_entry,
             self.active_triumph,
@@ -1730,14 +1976,20 @@ class ConfigPanelApp(tk.Toplevel):
             self.dungeon_repeat_limit_spinbox,
             # 技能施放設定
             self.ae_caster_interval_entry,
+            # 配置預設管理
+            self.btn_rename_preset,
+
+            self.btn_save_preset,
             ] + self.skill_combos_all + getattr(self, 'status_recover_checks', [])
 
         if state == tk.DISABLED:
             self.farm_target_combo.configure(state="disabled")
+            self.preset_combo.configure(state="disabled")
             for widget in self.button_and_entry:
                 widget.configure(state="disabled")
         else:
             self.farm_target_combo.configure(state="readonly")
+            self.preset_combo.configure(state="readonly")
             for widget in self.button_and_entry:
                 widget.configure(state="normal")
             self.update_organize_backpack_state()
