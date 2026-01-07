@@ -1,3 +1,4 @@
+import functools
 from ppadb.client import Client as AdbClient
 from win10toast import ToastNotifier
 
@@ -864,6 +865,31 @@ def Factory():
     # [新增] 模板緩存字典，避免重複從磁碟讀取圖片
     _template_cache = {}
     
+    # ==================== 停止信號異常機制 ====================
+    class StopSignalException(Exception):
+        """用戶請求停止時拋出的異常，會自動向上冒泡到主循環"""
+        pass
+
+    def check_stop_signal():
+        """檢查停止信號，若已設置則拋出 StopSignalException"""
+        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            raise StopSignalException()
+
+    def stoppable(func):
+        """裝飾器：每次進入函數時自動檢查停止信號
+        
+        使用方式：
+            @stoppable
+            def IdentifyState():
+                ...
+        """
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            check_stop_signal()
+            return func(*args, **kwargs)
+        return wrapper
+    # ==================== 停止信號異常機制 END ====================
+    
     def _get_cached_template(template_name):
         """從緩存獲取模板，如果不存在則從磁碟讀取並緩存"""
         if template_name not in _template_cache:
@@ -973,7 +999,7 @@ def Factory():
     def Sleep(t=1):
         """可響應停止信號和遊戲崩潰的 sleep 函數"""
         # 將長時間 sleep 分割成小段，每段檢查停止標誌
-        interval = 0.5  # 每 0.5 秒檢查一次
+        interval = 0.1  # 每 0.1 秒檢查一次，確保快速響應停止信號
         elapsed = 0
         while elapsed < t:
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
@@ -1767,12 +1793,13 @@ def Factory():
         time_str = datetime.now().strftime("%Y%m%d-%H%M%S") 
         runtimeContext._IMPORTANTINFO = f"{time_str} {str}\n{runtimeContext._IMPORTANTINFO}"
     ##################################################################
+    @stoppable
     def FindCoordsOrElseExecuteFallbackAndWait(targetPattern, fallback,waitTime):
         # fallback可以是座標[x,y]或者字符串. 當爲字符串的時候, 視爲圖片地址
         while True:
+            check_stop_signal()  # 每次迭代開始時檢查停止信號
             for _ in range(runtimeContext._MAXRETRYLIMIT):
-                if setting._FORCESTOPING.is_set():
-                    return None
+                check_stop_signal()  # 每次重試前也檢查
                 scn = ScreenShot()
                 if isinstance(targetPattern, (list, tuple)):
                     for pattern in targetPattern:
@@ -1923,9 +1950,27 @@ def Factory():
         DeviceShell(f"am start -n {mainAct}")
         if hasattr(setting, '_GAME_CRASHED'):
             setting._GAME_CRASHED.clear() # 啟動後再次清除標記
-            
-        # 等待較長時間以確保遊戲啟動（改為 15s 以應對較慢設備）
-        Sleep(15) 
+        
+        # [修正] 等待遊戲進程啟動（使用 pidof，和 GameMonitor 相同方式）
+        # 僅固定等待 15 秒不足以應對模擬器冷啟動的情況
+        logger.info("等待遊戲載入...")
+        max_wait = 60  # 最多等待 60 秒
+        wait_interval = 3
+        waited = 0
+        while waited < max_wait:
+            Sleep(wait_interval)
+            waited += wait_interval
+            try:
+                result = DeviceShell(f"pidof {package_name}")
+                if result.strip():  # 有 PID 表示遊戲已啟動
+                    logger.info(f"遊戲進程已啟動 (等待了 {waited} 秒)")
+                    break
+            except:
+                pass  # ADB 錯誤時繼續等待
+        else:
+            logger.warning(f"等待遊戲超時 ({max_wait}s)，繼續執行...")
+
+        
         # [修正] 不在 restartGame 中啟動 GameMonitor
         # GameMonitor 應在主循環 (RestartableSequenceExecution) 開始時才啟動
         # 這樣可以避免遊戲尚未完全啟動時就被誤判為「進程已死亡」
@@ -1944,20 +1989,19 @@ def Factory():
             runtimeContext._IN_RESTART = False
             try:
                 for op in operations:
-                    # 在每個操作之前檢查停止信號
-                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        logger.info("RestartableSequenceExecution 檢測到停止信號")
-                        return
+                    # 在每個操作之前檢查停止信號（使用統一機制）
+                    check_stop_signal()
                     op()
                 return
             except RestartSignal:
                 restart_count += 1
                 logger.info(f"任務進度重置中... (第 {restart_count}/{MAX_RESTART_RETRIES} 次)")
                 # 重置前也檢查停止信號
-                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                    logger.info("重置過程中檢測到停止信號")
-                    return
+                check_stop_signal()
                 continue
+            except StopSignalException:
+                logger.info("RestartableSequenceExecution 收到停止信號，優雅退出")
+                return
         logger.error(f"RestartableSequenceExecution 連續重啟 {MAX_RESTART_RETRIES} 次，放棄執行")
         raise RuntimeError(f"任務序列執行失敗：連續重啟 {MAX_RESTART_RETRIES} 次")
     ##################################################################
@@ -2096,10 +2140,12 @@ def Factory():
         # logger.info("REZ.")
         Press([450,750])
         Sleep(10)
+    @stoppable
     def IdentifyState():
         nonlocal setting # 修改因果
         counter = 0
         while 1:
+            check_stop_signal()  # 每次迭代開始時檢查停止信號
             # [串流優化] 節流延遲，避免檢測太快導致遊戲來不及響應
             if PYSCRCPY_AVAILABLE:
                 Sleep(0.5)  # 串流模式下每次檢測間隔 500ms
@@ -2830,6 +2876,7 @@ def Factory():
 
         logger.info("背包整理完成")
 
+    @stoppable
     def StateInn():
         MonitorState.current_state = "Inn"
         MonitorState.current_target = ""
@@ -2861,6 +2908,7 @@ def Factory():
             logger.info("離開旅館")
             PressReturn()
             Sleep(2)
+    @stoppable
     def StateEoT():
         MonitorState.current_state = "EoT"
         MonitorState.current_target = ""
@@ -3478,6 +3526,7 @@ def Factory():
         logger.warning(f"[技能施放] 找不到技能: {skill_name}，改用普攻")
         return use_normal_attack()
 
+    @stoppable
     def StateCombat():
         MonitorState.current_state = "Combat"
         last_character_update = 0
@@ -4217,8 +4266,10 @@ def Factory():
             logger.info(f"[DungeonMover] 進入監控循環: target={target}, is_gohome={self.is_gohome_mode}")
             
             while True:
-                # 檢查停止信號
-                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                # 檢查停止信號（使用統一機制）
+                try:
+                    check_stop_signal()
+                except StopSignalException:
                     return self._cleanup_exit(DungeonState.Quit)
                 
                 Sleep(self.POLL_INTERVAL)
@@ -4789,6 +4840,7 @@ def Factory():
                             if CheckIf(ScreenShot(),'combatActive') or CheckIf(ScreenShot(),'combatActive_2'):
                                 return DungeonState.Combat,targetInfoList
         return DungeonState.Map,  targetInfoList
+    @stoppable
     def StateChest():
         nonlocal runtimeContext
         MonitorState.current_state = "Chest"
@@ -4995,7 +5047,7 @@ def Factory():
                         break
                     auto_click_count += 1
 
-
+    @stoppable
     def StateDungeon(targetInfoList : list[TargetInfo], initial_dungState = None):
         gameFrozen_none = []
         gameFrozen_map = 0
@@ -5012,6 +5064,7 @@ def Factory():
         MonitorState.current_state = "Dungeon"
         
         while 1:
+            check_stop_signal()  # 每次迭代開始時檢查停止信號
             state_handle_start = time.time()
             state_handle_name = dungState
             logger.info("----------------------")
@@ -5286,11 +5339,13 @@ def Factory():
         initial_dungState = None  # 用於傳遞給 StateDungeon 的初始狀態
         targetInfoList = None     # 地城目標列表，應在單次地城運作中保持狀態
         while 1:
+            try:
+                check_stop_signal()  # 每次迭代開始時檢查停止信號
+            except StopSignalException:
+                logger.info("DungeonFarm 收到停止信號，優雅退出")
+                break
             logger.info("======================")
             Sleep(1)
-            if setting._FORCESTOPING.is_set():
-                logger.info("即將停止腳本...")
-                break
             
             # 更新監控狀態
             MonitorState.current_state = str(state.value) if state else "識別中"
@@ -6299,6 +6354,14 @@ def Factory():
                     setting._MSGQUEUE.put(('task_finished', None))
                 elif setting._FINISHINGCALLBACK:
                     setting._FINISHINGCALLBACK()
+        except StopSignalException:
+            logger.info("Farm 收到停止信號，正在清理...")
+            MonitorState.reset()
+            # 通過消息隊列通知主線程
+            if setting._MSGQUEUE:
+                setting._MSGQUEUE.put(('task_finished', None))
+            elif setting._FINISHINGCALLBACK:
+                setting._FINISHINGCALLBACK()
         except Exception as e:
             logger.error(f"Farm 執行時發生錯誤: {e}")
             MonitorState.reset()
