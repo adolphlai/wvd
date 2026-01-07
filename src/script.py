@@ -525,6 +525,7 @@ class RuntimeContext:
     _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
     _FORCE_ABNORMAL_RECOVER = False # 強制異常狀態恢復標誌
     _FORCE_LOWHP_RECOVER = False # 強制低血量恢復標誌
+    _IN_RESTART = False # [新增] 標記是否正在執行重啟流程
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -978,11 +979,20 @@ def Factory():
             if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                 logger.debug(f"Sleep 中檢測到停止信號，提前退出")
                 return
-            # 檢查遊戲進程是否崩潰（但如果正在停止則忽略）
+            # 檢查遊戲進程是否崩潰（但如果正在停止或正在重啟則忽略）
             if hasattr(setting, '_GAME_CRASHED') and setting._GAME_CRASHED.is_set():
                 if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                     setting._GAME_CRASHED.clear()  # 停止時清除崩潰標記
                     return
+                
+                # 如果正處於重啟流程中，忽略崩潰標記，避免無限遞迴
+                if getattr(runtimeContext, '_IN_RESTART', False):
+                    logger.debug("[Sleep] 重啟流程中，忽略舊的崩潰標記")
+                    setting._GAME_CRASHED.clear()
+                    elapsed += interval # 繼續 sleep
+                    time.sleep(min(interval, t - (elapsed-interval)))
+                    continue
+
                 logger.warning("[Sleep] 檢測到遊戲崩潰，觸發重啟")
                 setting._GAME_CRASHED.clear()
                 restartGame(skipScreenShot=True)
@@ -1823,8 +1833,16 @@ def Factory():
     # 遊戲進程監控
     _game_monitor_thread = None
 
-    def _monitor_game_process():
-        """守護線程：監控遊戲進程是否存活"""
+    def _monitor_game_process(grace_period=15):
+        """守護線程：監控遊戲進程是否存活
+        
+        Args:
+            grace_period: 啟動後的寬限期（秒），期間不進行監控
+        """
+        if grace_period > 0:
+            logger.debug(f"[GameMonitor] 寬限期中 ({grace_period}s)...")
+            time.sleep(grace_period)
+            
         package_name = "jp.co.drecom.wizardry.daphne"
         while not (setting._FORCESTOPING and setting._FORCESTOPING.is_set()):
             try:
@@ -1858,6 +1876,10 @@ def Factory():
 
     def restartGame(skipScreenShot = False):
         nonlocal runtimeContext
+        runtimeContext._IN_RESTART = True # [關鍵] 標記開始重啟
+        if hasattr(setting, '_GAME_CRASHED'):
+            setting._GAME_CRASHED.clear() # 啟動前先清除
+
         runtimeContext._COMBATSPD = False # 重啓會重置2倍速, 所以重置標識符以便重新打開.
         runtimeContext._MAXRETRYLIMIT = min(50, runtimeContext._MAXRETRYLIMIT + 5) # 每次重啓後都會增加5次嘗試次數, 以避免不同電腦導致的反覆重啓問題.
         runtimeContext._TIME_CHEST = 0
@@ -1884,13 +1906,29 @@ def Factory():
                 CheckRestartConnectADB(setting)
 
         package_name = "jp.co.drecom.wizardry.daphne"
-        mainAct = DeviceShell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
+        # 再次檢查是否連接 ADB
+        if setting._ADBDEVICE is None:
+            CheckRestartConnectADB(setting)
+            
+        try:
+            mainAct = DeviceShell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
+        except:
+            mainAct = f"{package_name}/.MainActivity" # 回退
+            
         DeviceShell(f"am force-stop {package_name}")
+        if hasattr(setting, '_GAME_CRASHED'):
+            setting._GAME_CRASHED.clear() # 停止後再次清除標記
         Sleep(2)
         logger.info("巫術, 啓動!")
-        logger.debug(DeviceShell(f"am start -n {mainAct}"))
-        Sleep(10)
-        _start_game_monitor()  # 啟動遊戲進程監控
+        DeviceShell(f"am start -n {mainAct}")
+        if hasattr(setting, '_GAME_CRASHED'):
+            setting._GAME_CRASHED.clear() # 啟動後再次清除標記
+            
+        # 等待較長時間以確保遊戲啟動（改為 15s 以應對較慢設備）
+        Sleep(15) 
+        # [修正] 不在 restartGame 中啟動 GameMonitor
+        # GameMonitor 應在主循環 (RestartableSequenceExecution) 開始時才啟動
+        # 這樣可以避免遊戲尚未完全啟動時就被誤判為「進程已死亡」
         raise RestartSignal()
     class RestartSignal(Exception):
         pass
@@ -1902,6 +1940,8 @@ def Factory():
         MAX_RESTART_RETRIES = 50# 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
+            # 每一輪開始前，將重啟標記清空，表示已進入正式執行階段
+            runtimeContext._IN_RESTART = False
             try:
                 for op in operations:
                     # 在每個操作之前檢查停止信號
@@ -3817,6 +3857,8 @@ def Factory():
                 DungeonState: 下一個狀態
             """
             # ==================== 1. 預檢與清理遺留彈窗 ====================
+            self.reset() # [關鍵修正] 確保在任何分支前先重設計時器
+            
             TryPressRetry(ScreenShot())
             
             # [深度優化] 解決戰利品/對話/屬性視窗殘留問題
@@ -3840,13 +3882,12 @@ def Factory():
                 MonitorState.is_gohome_mode = True
                 return self._fallback_gohome(targetInfoList, ctx)
             
-            self.reset()
             target_info = targetInfoList[0]
             self.current_target = target_info.target
             
             # 更新監控狀態
             MonitorState.current_target = self.current_target
-            MonitorState.state_start_time = time.time()
+            MonitorState.state_start_time = self.move_start_time
             MonitorState.is_gohome_mode = False
             
             logger.info(f"[DungeonMover] 啟動移動: 目標={self.current_target}")
