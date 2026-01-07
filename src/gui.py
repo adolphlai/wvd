@@ -198,6 +198,45 @@ class ConfigPanelApp(tk.Toplevel):
         if self.last_version.get() != version:
             self.last_version.set(version)
             self.save_config()
+            self.show_changelog_dialog()
+
+    def show_changelog_dialog(self):
+        """顯示更新日誌彈窗"""
+        try:
+            changelog_path = ResourcePath("CHANGES_LOG.md")
+            if not os.path.exists(changelog_path):
+                # 嘗試上一層目錄 (打包後的路徑可能不同)
+                changelog_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "CHANGES_LOG.md")
+            
+            if os.path.exists(changelog_path):
+                with open(changelog_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # 建立彈窗
+                dialog = tk.Toplevel(self)
+                dialog.title(f"更新日誌 - v{self.last_version.get()}")
+                dialog.geometry("600x500")
+                dialog.transient(self)  # 設置為父窗口的臨時窗口
+                
+                # 使用 ScrolledText 顯示內容
+                text_area = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, font=("微軟雅黑", 10))
+                text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+                text_area.insert(tk.END, content)
+                text_area.configure(state=tk.DISABLED) # 唯讀
+                
+                # 關閉按鈕
+                btn_close = ttk.Button(dialog, text="我知道了", command=dialog.destroy)
+                btn_close.pack(pady=5)
+                
+                # 視窗置中
+                dialog.update_idletasks()
+                width = dialog.winfo_width()
+                height = dialog.winfo_height()
+                x = (dialog.winfo_screenwidth() // 2) - (width // 2)
+                y = (dialog.winfo_screenheight() // 2) - (height // 2)
+                dialog.geometry(f'+{x}+{y}')
+        except Exception as e:
+            logger.error(f"無法顯示更新日誌: {e}")
 
     def save_config(self):
         def standardize_karma_input():
