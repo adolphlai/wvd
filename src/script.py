@@ -2213,7 +2213,8 @@ def Factory():
                     runtimeContext._HARKEN_TELEPORT_JUST_COMPLETED = True  # 設置傳送完成標記
                     MonitorState.current_state = "Harken"
                     Sleep(2)
-                    return IdentifyState()
+                    counter += 1
+                    continue
                 
                 # 如果沒找到樓層按鈕，檢查 returnText（可能選擇界面還沒出現）
                 returntext_pos = CheckIf(screen, "returnText")
@@ -2222,7 +2223,8 @@ def Factory():
                     logger.info(f"哈肯樓層選擇: 發現 returnText，等待樓層 {floor_target} 出現...")
                     Press(returntext_pos)
                     Sleep(2)
-                    return IdentifyState()
+                    counter += 1
+                    continue
                 
                 # 如果都沒找到，看看是否在移動中（不應該立即返回 Dungeon 狀態）
                 logger.debug(f"哈肯樓層選擇: 未找到 {floor_target} 或 returnText，繼續等待...")
@@ -2286,11 +2288,13 @@ def Factory():
                     if Press(CheckIf(screen, "returnText")) or Press(CheckIf(screen, "ReturnText")):
                         logger.info("[AUTO] 偵測到 returnText，中斷並處理")
                         Sleep(1)
-                        return IdentifyState()
+                        counter += 1
+                        continue
                     if CheckIf(screen, 'RiseAgain'):
                         logger.info("[AUTO] 偵測到 RiseAgain，中斷並處理")
                         RiseAgainReset(reason='combat')
-                        return IdentifyState()
+                        counter += 1
+                        continue
 
                     MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
                     MonitorState.flag_updates['AUTO'] = time.time()
@@ -2370,16 +2374,24 @@ def Factory():
                         'blessing', 'DontBuyIt', 'donthelp', 'buyNothing', 'Nope',
                         'ignorethequest', 'dontGiveAntitoxin', 'pass',
                     ]
+                    found_any_option = False
                     for op in dialogOption:
                         if Press(CheckIf(screen, op)):
                             logger.info(f"[AUTO] 偵測到對話選項 {op}，點擊處理")
                             Sleep(2)
-                            return IdentifyState()
+                            counter += 1
+                            found_any_option = True
+                            break
+                    
+                    if found_any_option:
+                        continue
+
                     # 如果都沒匹配到，點擊螢幕中心嘗試關閉對話框
                     logger.info("[AUTO] 未匹配到已知對話框，點擊螢幕中心")
                     Press([450, 800])
                     Sleep(0.5)
-                    return IdentifyState()
+                    counter += 1
+                    continue
 
             # 移除 combatActive 相關的配置，因為上面已經檢查過了
             identifyConfig = [
@@ -2429,7 +2441,8 @@ def Factory():
             if runtimeContext._HARKEN_FLOOR_TARGET is None:
                 if Press(CheckIf(screen, "returnText")):
                     Sleep(2)
-                    return IdentifyState()
+                    counter += 1
+                    continue
 
                 if CheckIf(screen,"returntoTown"):
                     if not should_skip_return_to_town():
