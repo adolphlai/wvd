@@ -526,6 +526,8 @@ class RuntimeContext:
     _IS_FIRST_COMBAT_IN_DUNGEON = True  # 本次地城的首戰標記 (打斷邏輯使用)
     _FORCE_ABNORMAL_RECOVER = False # 強制異常狀態恢復標誌
     _FORCE_LOWHP_RECOVER = False # 強制低血量恢復標誌
+    _RESET_BATTLE_COUNT_AFTER_RECOVER = False # 麻痺/封技恢復後重置戰鬥計數器標誌
+    _RESTART_SKIP_INTERVAL_THIS_DUNGEON = False  # 重啟後跳過間隔判斷標誌，讓 _AUTO_COMBAT_MODE 正常運作
     _IN_RESTART = False # [新增] 標記是否正在執行重啟流程
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
@@ -1358,13 +1360,18 @@ def Factory():
         
         根據使用者設定的開關，檢測 6 個角色 ROI 區域。
         偵測邏輯包含顏色 (HSV) 與垂直梯度過濾，確保高準確率。
+        
+        Returns:
+            tuple: (detected: bool, status_types: list)
+                - detected: 是否偵測到任何異常狀態
+                - status_types: 偵測到的狀態類型列表 (e.g., ['麻痺', '封技'])
         """
         # 如果所有開關都關閉，提早返回
         if not (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
                 setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
                 setting._RECOVER_CURSED or setting._RECOVER_FEAR or
                 setting._RECOVER_SKILLLOCK):
-            return False
+            return (False, [])
 
         # ROI 定義：更新為寬域偵測 (x, y, w, h)
         rois = [
@@ -1383,7 +1390,7 @@ def Factory():
         if setting._RECOVER_FEAR:      check_list.append((1, "fear_icon", 4, "寶箱恐懼"))
         if setting._RECOVER_SKILLLOCK: check_list.append((1, "skilllock_icon", 5, "封技"))
 
-        detected = False
+        detected_types = []  # 記錄偵測到的狀態類型
         
         for idx, (x, y, w, h) in enumerate(rois):
             # 確保 ROI 合法
@@ -1472,14 +1479,17 @@ def Factory():
                             except Exception as e:
                                 logger.error(f"[異常恢復] 保存截圖失敗: {e}")
 
-                            detected = True
-                            return True # 只要偵測到任一，立即返回 True
+                            # 記錄偵測到的狀態類型（避免重複）
+                            if display_name not in detected_types:
+                                detected_types.append(display_name)
+                            # NOTE: 不再立即返回，繼續掃描以收集所有異常狀態
 
                 except Exception as e:
                     logger.debug(f"[異常恢復] 偵測錯誤: {e}")
                     continue
-                    
-        return False
+        
+        # 返回偵測結果與狀態類型列表
+        return (len(detected_types) > 0, detected_types)
 
 
     def DetectCharacter(screenImage):
@@ -1914,6 +1924,7 @@ def Factory():
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重啓後重置防止轉圈標誌，確保會執行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重啓後待打開地圖，跳過Resume優化
+        runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = True  # 重啟後跳過間隔判斷，走 _AUTO_COMBAT_MODE 邏輯
         runtimeContext._DUNGEON_CONFIRMED = False  # 重啓後重置地城確認標記
         runtimeContext._RESTART_PENDING_BATTLE_RESET = True  # 重啓後待重置戰鬥計數器
         reset_ae_caster_flags()  # 重啓後重置 AE 手旗標
@@ -2320,9 +2331,14 @@ def Factory():
                             setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
                             setting._RECOVER_CURSED or setting._RECOVER_FEAR or
                             setting._RECOVER_SKILLLOCK):
-                            if CheckAbnormalStatus(scn_recover, setting):
-                                logger.info("[AUTO] 偵測到異常狀態，標記強制恢復")
+                            detected, status_types = CheckAbnormalStatus(scn_recover, setting)
+                            if detected:
+                                logger.info(f"[AUTO] 偵測到異常狀態: {status_types}，標記強制恢復")
                                 runtimeContext._FORCE_ABNORMAL_RECOVER = True
+                                # 如果偵測到麻痺或封技，標記恢復後重置戰鬥計數
+                                if '麻痺' in status_types or '封技' in status_types:
+                                    runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER = True
+                                    logger.info("[AUTO] 偵測到麻痺/封技，將在恢復後重置戰鬥計數器")
 
                         # 2. 低血量恢復
                         if setting._LOWHP_RECOVER:
@@ -2357,9 +2373,14 @@ def Factory():
                         setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
                         setting._RECOVER_CURSED or setting._RECOVER_FEAR or
                         setting._RECOVER_SKILLLOCK):
-                        if CheckAbnormalStatus(scn_recover, setting):
-                            logger.info("[AUTO-Timeout] 偵測到異常狀態，標記強制恢復")
+                        detected, status_types = CheckAbnormalStatus(scn_recover, setting)
+                        if detected:
+                            logger.info(f"[AUTO-Timeout] 偵測到異常狀態: {status_types}，標記強制恢復")
                             runtimeContext._FORCE_ABNORMAL_RECOVER = True
+                            # 如果偵測到麻痺或封技，標記恢復後重置戰鬥計數
+                            if '麻痺' in status_types or '封技' in status_types:
+                                runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER = True
+                                logger.info("[AUTO-Timeout] 偵測到麻痺/封技，將在恢復後重置戰鬥計數器")
 
                     # 2. 低血量恢復
                     if setting._LOWHP_RECOVER:
@@ -3323,6 +3344,7 @@ def Factory():
         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標誌，避免返回時誤觸黑屏檢測
         runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
         runtimeContext._MID_DUNGEON_START = False  # 重置地城內啟動標記，讓新地城可觸發黑屏偵測
+        runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = False  # 新地城清除重啟跳過標誌
         logger.info("[技能施放] 重置旗標")
 
     def should_skip_return_to_town():
@@ -3778,8 +3800,8 @@ def Factory():
                      f"_COUNTERDUNG={runtimeContext._COUNTERDUNG}, _AE_CASTER_INTERVAL={setting._AE_CASTER_INTERVAL}")
 
         # === 間隔不匹配時的處理 ===
-        # 間隔不匹配時，直接開啟自動戰鬥
-        if has_skill_config and not ae_interval_match:
+        # 間隔不匹配時，直接開啟自動戰鬥（重啟後跳過此判斷）
+        if has_skill_config and not ae_interval_match and not runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON:
             logger.info(f"[技能施放] 觸發間隔不匹配（第 {runtimeContext._COUNTERDUNG} 次地城，間隔設定 {setting._AE_CASTER_INTERVAL}），開啟自動戰鬥")
             runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
             enable_auto_combat()
@@ -5045,9 +5067,14 @@ def Factory():
                             setting._RECOVER_STONE or setting._RECOVER_PARALYSIS or 
                             setting._RECOVER_CURSED or setting._RECOVER_FEAR or
                             setting._RECOVER_SKILLLOCK):
-                            if CheckAbnormalStatus(scn_recover, setting):
-                                logger.info("[StateChest] 偵測到異常狀態，標記強制恢復")
+                            detected, status_types = CheckAbnormalStatus(scn_recover, setting)
+                            if detected:
+                                logger.info(f"[StateChest] 偵測到異常狀態: {status_types}，標記強制恢復")
                                 runtimeContext._FORCE_ABNORMAL_RECOVER = True
+                                # 如果偵測到麻痺或封技，標記恢復後重置戰鬥計數
+                                if '麻痺' in status_types or '封技' in status_types:
+                                    runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER = True
+                                    logger.info("[StateChest] 偵測到麻痺/封技，將在恢復後重置戰鬥計數器")
                                 
                         # 2. 低血量恢復
                         if setting._LOWHP_RECOVER:
@@ -5124,9 +5151,14 @@ def Factory():
                          # 為了避免頻繁截圖，可以考慮只在某些條件下檢查，但這裡為了即時性先每次檢查
                          # 如果 CheckAbnormalStatus 效能允許 (已優化 ROI)
                          scn_status = ScreenShot()
-                         if CheckAbnormalStatus(scn_status, setting):
-                             logger.info("[StateDungeon] 偵測到異常狀態，觸發恢復")
+                         detected, status_types = CheckAbnormalStatus(scn_status, setting)
+                         if detected:
+                             logger.info(f"[StateDungeon] 偵測到異常狀態: {status_types}，觸發恢復")
                              shouldRecover = True
+                             # 如果偵測到麻痺或封技，標記恢復後重置戰鬥計數
+                             if '麻痺' in status_types or '封技' in status_types:
+                                 runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER = True
+                                 logger.info("[StateDungeon] 偵測到麻痺/封技，將在恢復後重置戰鬥計數器")
 
                     if runtimeContext._FORCE_ABNORMAL_RECOVER:
                         logger.info("[StateDungeon] 檢測到異常狀態強制恢復標誌")
@@ -5250,6 +5282,12 @@ def Factory():
                                         if time.time()-t<0.3:
                                             Sleep(0.3-(time.time()-t))
                                     shouldRecover = False
+                                    # 麻痺/封技恢復後重置戰鬥計數器
+                                    if runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER:
+                                        logger.info("[恢復] 麻痺/封技恢復完成，重置戰鬥計數器以重新執行技能施放")
+                                        runtimeContext._COMBAT_BATTLE_COUNT = 0
+                                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
+                                        runtimeContext._RESET_BATTLE_COUNT_AFTER_RECOVER = False
                                     break
                     ########### OPEN MAP
                     ########### 防止轉圈 (from upstream 1.9.27)
