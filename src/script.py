@@ -1924,10 +1924,10 @@ def Factory():
         runtimeContext._ZOOMWORLDMAP = False
         runtimeContext._STEPAFTERRESTART = False  # 重啓後重置防止轉圈標誌，確保會執行左右平移
         runtimeContext._RESTART_OPEN_MAP_PENDING = True  # 重啓後待打開地圖，跳過Resume優化
-        runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = True  # 重啟後跳過間隔判斷，走 _AUTO_COMBAT_MODE 邏輯
         runtimeContext._DUNGEON_CONFIRMED = False  # 重啓後重置地城確認標記
         runtimeContext._RESTART_PENDING_BATTLE_RESET = True  # 重啓後待重置戰鬥計數器
         reset_ae_caster_flags()  # 重啓後重置 AE 手旗標
+        runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = True  # [關鍵] 必須在重置後設置，否則會被 reset_ae_caster_flags 清除
 
         if not skipScreenShot:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # 格式：20230825_153045
