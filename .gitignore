@@ -56,3 +56,8 @@ detect/
 doc/
 src/*
 !src/*.py
+
+# Web UI & Editor (Local only)
+/editor/
+/web_prototype/
+
