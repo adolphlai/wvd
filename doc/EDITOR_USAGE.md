@@ -22,9 +22,13 @@
 2. 執行 **DungeonEditor.exe**。
 3. 程式會開啟一個控制台視窗（顯示 Port 3000），並自動打開瀏覽器進入編輯介面。
    * 若瀏覽器未自動彈出，可點擊視窗上的 **「開啟編輯器網頁」** 按鈕。
+<img width="527" height="348" alt="image" src="https://github.com/user-attachments/assets/ff73b987-183e-4d5d-8bdf-79e1e57a1766" />
+
 4. 若介面顯示 **"No Signal"** 且上方按鈕為 **紅色** <img src="../resources/assets/disconnected.png" height="20"/> (或類似圖示)，請點擊該紅色按鈕以連線。
-5. 確認上方按鈕轉為 **綠色**，且介面顯示 **🟢 已連線** (Connected)。
-6. 點擊右上角的 **「讀取」** 按鈕，載入 `quest.json` 任務檔。
+<img width="359" height="68" alt="image" src="https://github.com/user-attachments/assets/71cea558-6920-4e90-b3f3-acf836c32509" />
+
+6. 確認上方按鈕轉為 **綠色**，且介面顯示 **🟢 已連線** (Connected)。
+7. 點擊右上角的 **「讀取」** 按鈕，載入 `quest.json` 任務檔。
 
 ---
 
