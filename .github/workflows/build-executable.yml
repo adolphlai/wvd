@@ -79,11 +79,16 @@ jobs:
       shell: pwsh
       run: |
         cd editor-lite
-        # 從前端源碼複製最新編譯結果
-        Copy-Item -Path "../editor/release/DungeonScriptEditor-win32-x64/resources/app/dist/*" -Destination "./dist" -Recurse -Force
         # 打包成執行檔
         pyinstaller --onefile --name DungeonEditor --noconsole start_editor.py
         Move-Item -Path "dist/DungeonEditor.exe" -Destination "." -Force -ErrorAction SilentlyContinue
+        
+        # 準備 dist 資料夾並複製前端資源
+        # 注意：需確保 dist 存在且為資料夾，以防 Copy-Item 行為異常
+        if (Test-Path -Path "dist") { Remove-Item -Path "dist" -Recurse -Force }
+        New-Item -ItemType Directory -Path "dist" -Force
+        Copy-Item -Path "../editor/release/DungeonScriptEditor-win32-x64/resources/app/dist/*" -Destination "./dist" -Recurse -Force
+
         Remove-Item -Path "build", "DungeonEditor.spec" -Recurse -Force -ErrorAction SilentlyContinue
         Write-Host "DungeonEditor.exe build completed."
 
