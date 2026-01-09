@@ -14,6 +14,8 @@
 3. 找到下方的 **「Quest 編輯器」** 區塊。
 4. 點擊 **「啟動伺服器」** 按鈕。
    * 確認狀態轉變為 `✓ 運行中 ws://localhost:8765`。
+<img width="591" height="130" alt="image" src="https://github.com/user-attachments/assets/56ec3a73-ce7a-4836-b923-dc2159cf54db" />
+
 
 ### 第二步：開啟編輯器
 1. 進入 `editor-lite` 資料夾。
