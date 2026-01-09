@@ -27,12 +27,28 @@ try:
 except ImportError:
     CV2_AVAILABLE = False
 
+
+def _get_resource_base_dir():
+    """
+    智慧取得 resources 資料夾的根目錄。
+    - 打包環境 (PyInstaller): 使用 _internal 目錄 (sys._MEIPASS)
+    - 開發環境: 使用 src/../ (專案根目錄)
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包環境: _internal 目錄
+        # sys._MEIPASS 直接指向 _internal
+        return sys._MEIPASS
+    else:
+        # 開發環境: src 的上一層
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
 class EditorWebSocketServer:
     def __init__(self, host="localhost", port=8765, quest_json_path=None):
         self.host = host
         self.port = port
         self.quest_json_path = quest_json_path or os.path.join(
-            os.path.dirname(__file__), "..", "resources", "quest", "quest.json"
+            _get_resource_base_dir(), "resources", "quest", "quest.json"
         )
         self.clients = set()
         self.running = False
@@ -131,9 +147,13 @@ class EditorWebSocketServer:
             elif cmd == "save_quest":
                 await self._handle_save_quest(websocket, data.get("data"))
             elif cmd == "save_image":
-                await self._handle_save_image(websocket, data.get("filename"), data.get("data"))
+                await self._handle_save_image(websocket, data.get("filename"), data.get("data"), data.get("captureTarget"))
             elif cmd == "click_image":
                 await self._handle_click_image(websocket, data.get("filename"))
+            elif cmd == "list_images":
+                await self._handle_list_images(websocket)
+            elif cmd == "get_image":
+                await self._handle_get_image(websocket, data.get("filename"))
         except Exception as e:
             print(f"[EditorServer] 處理指令出錯: {e}")
 
@@ -156,8 +176,9 @@ class EditorWebSocketServer:
                 return
 
             # 2. 讀取目標圖片
-            base_dir = os.path.join(os.path.dirname(__file__), "..", "resources", "images", "character")
-            # 支援子目錄 (e.g. AWD/return)
+            # 從 images 根目錄開始搜尋，支援 userscript/XXX 或 character/XXX 等子目錄
+            base_dir = os.path.join(_get_resource_base_dir(), "resources", "images")
+            # 支援子目錄 (e.g. userscript/AWD 或 character/return)
             target_path = os.path.join(base_dir, filename)
             
             # 如果沒有副檔名，嘗試加上 .png
@@ -249,26 +270,134 @@ class EditorWebSocketServer:
 
     async def _handle_save_quest(self, websocket, data):
         try:
+            abs_path = os.path.abspath(self.quest_json_path)
+            
+            # --- DEBUG LOG START ---
+            logger.info(f"[EditorServer] 收到保存請求。包含 {len(data)} 個任務。")
+            debug_count = 0
+            for q_id, q_data in data.items():
+                if debug_count >= 3: break
+                eot_len = len(q_data.get('_EOT', []))
+                logger.info(f"[Debug] Quest: {q_id}, EOT長度: {eot_len}")
+                for item in q_data.get('_EOT', []):
+                    if isinstance(item, list) and len(item) > 1 and item[0] == 'press':
+                        logger.info(f"   -> Found Press Item: Pattern='{item[1]}', Fallback={item[2]}")
+                        break
+                debug_count += 1
+            # --- DEBUG LOG END ---
+
             with open(self.quest_json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
-            await websocket.send(json.dumps({"type": "saved", "success": True}))
-            logger.info("[EditorServer] quest.json 儲存成功")
+            await websocket.send(json.dumps({"type": "saved", "success": True, "path": abs_path}))
+            logger.info(f"[EditorServer] quest.json 儲存成功: {abs_path}")
         except Exception as e:
+            logger.error(f"[EditorServer] 儲存失敗 ERROR: {e}")
             await websocket.send(json.dumps({"type": "error", "message": f"儲存失敗: {e}"}))
 
-    async def _handle_save_image(self, websocket, filename, base64_data):
+    async def _handle_save_image(self, websocket, filename, base64_data, capture_target=None):
         try:
             import base64
             img_data = base64.b64decode(base64_data)
-            save_dir = os.path.join(os.path.dirname(__file__), "..", "resources", "images", "character")
-            os.makedirs(save_dir, exist_ok=True)
-            path = os.path.join(save_dir, filename)
-            with open(path, "wb") as f:
+            
+            # 決定儲存路徑
+            # images 根目錄
+            base_dir = os.path.join(_get_resource_base_dir(), "resources", "images")
+            
+            # 去除 .png
+            if filename.lower().endswith('.png'):
+                clean_name = filename[:-4]
+            else:
+                clean_name = filename
+                
+            # 檢查是否有目錄結構 (e.g. AWD/image)
+            if "/" in clean_name or "\\" in clean_name:
+                # 使用者指定了子目錄
+                rel_path = clean_name
+            else:
+                # 預設存到 userscript 子目錄
+                rel_path = f"userscript/{clean_name}"
+            
+            # 最終絕對路徑
+            final_path = os.path.join(base_dir, rel_path + ".png")
+            os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            
+            with open(final_path, "wb") as f:
                 f.write(img_data)
-            await websocket.send(json.dumps({"type": "image_saved", "success": True, "filename": filename}))
-            print(f"[EditorServer] 圖片已存至: {path}")
+                
+            # 回傳給前端的檔名應該包含相對路徑 (e.g. userscript/myimg.png)
+            final_rel_name = rel_path
+            
+            await websocket.send(json.dumps({
+                "type": "image_saved",
+                "success": True,
+                "filename": final_rel_name,
+                "captureTarget": capture_target
+            }))
+            print(f"[EditorServer] 圖片已存至: {final_path}")
         except Exception as e:
             await websocket.send(json.dumps({"type": "error", "message": f"存圖失敗: {e}"}))
+
+    async def _handle_list_images(self, websocket):
+        try:
+            base_dir = os.path.join(_get_resource_base_dir(), "resources", "images")
+            images = []
+            
+            for root, dirs, files in os.walk(base_dir):
+                for file in files:
+                    if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+                        # 取得相對路徑
+                        rel_path = os.path.relpath(os.path.join(root, file), base_dir)
+                        # 統一使用正斜線
+                        rel_path = rel_path.replace("\\", "/")
+                        
+                        # 忽略某些不需要顯示的系統圖片(Optional)
+                        # if "system" in rel_path: continue
+                        
+                        # 為了前端顯示方便，我們可以選擇是否去掉 .png，
+                        # 但如果要用於 input value，最好保持完整或與 save 邏輯一致。
+                        # 目前保留完整路徑 (e.g. "userscript/myimg.png")
+                        # 這樣前端拿到也可以直接做 check
+                        images.append(rel_path)
+            
+            # Sort
+            images.sort()
+            
+            await websocket.send(json.dumps({"type": "image_list", "images": images}))
+            print(f"[EditorServer] 已回傳 {len(images)} 張圖片")
+        except Exception as e:
+            await websocket.send(json.dumps({"type": "error", "message": f"列表失敗: {e}"}))
+
+    async def _handle_get_image(self, websocket, filename):
+        try:
+            import base64
+            # 圖片根目錄
+            base_dir = os.path.join(_get_resource_base_dir(), "resources", "images")
+            
+            # 組合路徑
+            # filename 可能包含子目錄 (e.g. userscript/myimg.png)
+            target_path = os.path.join(base_dir, filename)
+            
+            if not os.path.exists(target_path):
+                 # 嘗試加 .png
+                 if os.path.exists(target_path + ".png"):
+                     target_path += ".png"
+                 else:
+                     await websocket.send(json.dumps({"type": "error", "message": f"找不到圖片: {filename}"}))
+                     return
+            
+            with open(target_path, "rb") as f:
+                img_bytes = f.read()
+                b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                
+            await websocket.send(json.dumps({
+                "type": "image_data", 
+                "filename": filename,
+                "data": b64_str
+            }))
+            print(f"[EditorServer] 已傳送圖片預覽: {filename}")
+            
+        except Exception as e:
+            await websocket.send(json.dumps({"type": "error", "message": f"讀圖失敗: {e}"}))
 
     def set_stream_source(self, func):
         self._get_frame_func = func

@@ -1409,8 +1409,11 @@ class ConfigPanelApp(tk.Toplevel):
                         
                         setting._ADBDEVICE = device
                         
-                        # 創建伺服器（傳入已連接的 device）
-                        self._editor_server = EditorWebSocketServer()
+                        # 創建伺服器（傳入已連接的 device 和正確的任務文件路徑）
+                        quest_path = ResourcePath(QUEST_FILE)
+                        logger.info(f"[GUI] EditorServer quest.json 路徑: {quest_path}")
+                        
+                        self._editor_server = EditorWebSocketServer(quest_json_path=quest_path)
                         self._editor_server._adb_device = device  # 使用已連接的設備
                         
                         # 嘗試使用 pyscrcpy 串流
