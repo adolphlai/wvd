@@ -8,6 +8,14 @@ import {
   Box, AlignJustify, MapPin, Search, GripVertical, Scan, FilePlus, Edit, Check, FolderOpen, Copy
 } from 'lucide-react';
 
+// 滑動方向對應的 ADB 指令 (全域定義避免重新渲染)
+const DIRECTION_SWIPES: Record<string, string> = {
+  '左上': 'input swipe 100 250 700 1200',
+  '右上': 'input swipe 700 250 100 1200',
+  '左下': 'input swipe 100 1200 700 250',
+  '右下': 'input swipe 700 1200 100 250',
+};
+
 // --- Types ---
 
 type ScriptData = {
@@ -25,8 +33,9 @@ type ItemType = 'simple' | 'position' | 'press' | 'stair' | 'chest' | 'minimap_s
 // Identify which field we are currently capturing for
 type CaptureTarget = {
   index: number;
-  field: 'coord' | 'target_pattern' | 'fallback_value' | 'roi';
+  field: 'coord' | 'target_pattern' | 'fallback_value' | 'roi' | 'image' | 'coord_simple' | 'coord_fallback' | 'stair_image' | 'harken_image' | 'minimap_image';
   subIndex?: number; // For array based fields
+  listType?: string; // Which list (_TARGETINFOLIST vs _EOT)
 } | null;
 
 interface EditorState {
@@ -507,7 +516,7 @@ const App = () => {
     if (type === 'harken') newItem = ["harken", "右下", [null], null];
     if (type === 'stair') newItem = ["stair_name", "右下", [0, 0]];
     if (type === 'minimap_stair') newItem = ["minimap_stair", "右下", [0, 0], "floor_img"];
-    if (type === 'chest') newItem = ["chest", "name", [0, 0, 0, 0]]; // Chest uses ROI [x1, y1, x2, y2]
+    if (type === 'chest') newItem = ["chest", "name", []]; // Start with no ROI
 
     // Village Types
     if (type === 'press') {
@@ -1012,7 +1021,22 @@ const App = () => {
       />
       <div className="flex gap-1 mt-1 flex-wrap">
         {['右上', '右下', '左上', '左下'].map(dir => (
-          <button key={dir} onClick={() => onChange(dir)} className="px-2 py-0.5 bg-gray-800 text-[10px] rounded hover:bg-gray-700 border border-gray-600">
+          <button
+            key={dir}
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange(dir);
+              // 同步發送 ADB 指令讓模擬器移動
+              const cmd = DIRECTION_SWIPES[dir];
+              if (cmd) {
+                console.log(`Sending swipe move: ${dir} -> ${cmd}`);
+                sendWS(cmd);
+              } else {
+                setState(s => ({ ...s, logs: [...s.logs, `⚠ Unknown direction: ${dir}`] }));
+              }
+            }}
+            className="px-2 py-1 bg-gray-800 text-[10px] rounded hover:bg-gray-700 border border-gray-600 transition-colors active:bg-blue-600"
+          >
             {dir}
           </button>
         ))}
