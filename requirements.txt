@@ -8,3 +8,4 @@ adbutils
 loguru
 deprecation
 retry2
+websockets

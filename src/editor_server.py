@@ -58,6 +58,10 @@ class EditorWebSocketServer:
         self.jpeg_quality = 50
 
     def start(self):
+        if not WEBSOCKETS_AVAILABLE:
+            print("[EditorServer] ❌ 尚未安裝 websockets 套件，無法啟動編輯器伺服器。請執行 pip install websockets")
+            return False
+            
         if self.running: return True
         self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
         self._thread.start()
