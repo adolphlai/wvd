@@ -1,7 +1,7 @@
 {
-  "download_url": "https://github.com/adolphlai/wvd/releases/download/1.11.17/wvd.zip",
-  "release_date": "2026-01-09 13:48:30",
-  "version": "1.11.17",
-  "release_notes": "https://github.com/adolphlai/wvd/releases/tag/1.11.17",
-  "md5": "311c98a29a86d7df10ce14e01526c72e"
+  "version": "1.11.18",
+  "release_date": "2026-01-09 15:35:35",
+  "md5": "3ae00a9d994aad53c611a7ba46bda322",
+  "download_url": "https://github.com/adolphlai/wvd/releases/download/1.11.18/wvd.zip",
+  "release_notes": "https://github.com/adolphlai/wvd/releases/tag/1.11.18"
 }
