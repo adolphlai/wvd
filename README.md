@@ -1,6 +1,6 @@
 # WvDAS - 巫術 Daphne 自動刷怪腳本
 
-[English (v1.8.20)](README.en.md) | [📖 自定義角色與技能說明](Custom_Assets_Guide.md) | [📜 quest.json 編輯指南](resources/quest/QUEST_EDIT_GUIDE.md)
+[English (v1.8.20)](README.en.md) | [📝 GUI 編輯器使用說明](doc/EDITOR_USAGE.md) | [📖 自定義角色與技能說明](Custom_Assets_Guide.md) | [📜 quest.json 編輯指南](resources/quest/QUEST_EDIT_GUIDE.md)
 
 > **本分支基於上游 arnold2957/wvd v1.9.30，進行了大量優化與功能擴展**
 
