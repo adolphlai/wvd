@@ -529,6 +529,7 @@ class RuntimeContext:
     _RESET_BATTLE_COUNT_AFTER_RECOVER = False # 麻痺/封技恢復後重置戰鬥計數器標誌
     _RESTART_SKIP_INTERVAL_THIS_DUNGEON = False  # 重啟後跳過間隔判斷標誌，讓 _AUTO_COMBAT_MODE 正常運作
     _IN_RESTART = False # [新增] 標記是否正在執行重啟流程
+    _RESET_TARGETS_PENDING = False # [新增] 跳過回村時標記需要重新初始化目標列表
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -2488,8 +2489,10 @@ def Factory():
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
-                        reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
-                        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
+                        runtimeContext._RESET_TARGETS_PENDING = True  # [關鍵修復] 標記需要重置目標列表
+                        runtimeContext._RESTART_OPEN_MAP_PENDING = True  # [新增] 跳過 Resume 優化，強制重新開地圖
+                        runtimeContext._DUNGEON_CONFIRMED = False  # [新增] 重置地城確認標記
+                        logger.info(f"[DEBUG] 跳過回城(returntoTown): RESET_TARGETS_PENDING={runtimeContext._RESET_TARGETS_PENDING}, RESTART_OPEN_MAP_PENDING={runtimeContext._RESTART_OPEN_MAP_PENDING}")
                         MonitorState.current_state = "Dungeon"
                         MonitorState.current_dungeon_state = None
                         return State.Dungeon, None, ScreenShot()
@@ -2503,10 +2506,14 @@ def Factory():
                     MonitorState.current_state = "Dungeon"
                     MonitorState.current_dungeon_state = "Quit"
                     return State.Dungeon, DungeonState.Quit, screen
+                
+                # 處理世界地圖回程邏輯，不遞歸調用 IdentifyState 以免 double-count
                 if not should_skip_return_to_town():
                     # 回城
                     Press(pos)
-                    return IdentifyState()
+                    # 讓主循環下一次迭代處理新狀態
+                    counter += 1
+                    continue
                 else:
                     # 跳過回城，繼續刷地城
                     # 提前重置旗標，避免進入地城過場黑屏時誤觸發首戰打斷
@@ -2522,7 +2529,10 @@ def Factory():
                             if info[0] == "press":
                                 Press(pos)
                     Sleep(2)
-                    Sleep(2)
+                    runtimeContext._RESET_TARGETS_PENDING = True  # [關鍵修復] 標記需要重置目標列表
+                    runtimeContext._RESTART_OPEN_MAP_PENDING = True  # [新增] 跳過 Resume 優化，強制重新開地圖
+                    runtimeContext._DUNGEON_CONFIRMED = False  # [新增] 重置地城確認標記
+                    logger.info(f"[DEBUG] 跳過回城(openworldmap): RESET_TARGETS_PENDING={runtimeContext._RESET_TARGETS_PENDING}, RESTART_OPEN_MAP_PENDING={runtimeContext._RESTART_OPEN_MAP_PENDING}")
                     MonitorState.current_state = "Dungeon"
                     MonitorState.current_dungeon_state = None
                     return State.Dungeon, None, ScreenShot()
@@ -4072,7 +4082,7 @@ def Factory():
                 else:
                     # 緊急撤離：盲點 gohome 常見位置
                     logger.warning("[DungeonMover] 無法找到 gohome，嘗試盲點")
-                    Press([800, 360])  # 常見的 gohome 位置
+                    Press([252, 1433])  # 盲點 gohome 座標 (根據用戶文件)
             
             return self._monitor_move(targetInfoList, ctx)
         
@@ -4425,11 +4435,12 @@ def Factory():
                 
                 main_state, state, screen = IdentifyState()
                 
-                # 檢測重新進入地城：如果 _DUNGEON_CONFIRMED 從 False 變為 True，重置計時器
+                # [關鍵修復] 檢測重新進入地城：如果 _DUNGEON_CONFIRMED 從 False 變為 True，
+                # 表示已經「跳過回村並重新進入」。此時應該退出，讓主循環重新載入目標列表。
                 if not was_dungeon_confirmed and ctx._DUNGEON_CONFIRMED:
-                    logger.info("[DungeonMover] 偵測到重新進入地城，重置計時器")
-                    self.move_start_time = time.time()
-                    MonitorState.state_start_time = self.move_start_time
+                    logger.info("[DungeonMover] 偵測到重新進入地城，退出以重新載入目標")
+                    return self._cleanup_exit(DungeonState.Map)  # 返回 Map 讓主循環重新讀取目標
+
                 
                 # 首先檢查是否離開了地城（回到 Inn 或其他主狀態）
                 if main_state == State.Inn or main_state == State.EoT:
@@ -5332,6 +5343,11 @@ def Factory():
                     # DungeonMover.initiate_move -> resume_navigation 會處理 Resume 和開地圖
                     dungState = DungeonState.Map
                 case DungeonState.Map:
+                    # [關鍵修復] 檢查是否需要重新載入目標列表（跳過回城後由 IdentifyState 設置）
+                    if runtimeContext._RESET_TARGETS_PENDING:
+                        logger.info("[StateDungeon] 偵測到目標重置標誌，退出以重新載入目標列表")
+                        break  # 退出 StateDungeon，讓 DungeonFarm 重新初始化 targetInfoList
+                    
                     # ==================== 使用 DungeonMover 統一處理移動 ====================
                     logger.info("[StateDungeon] 使用 DungeonMover 處理移動")
                     dungState = dungeon_mover.initiate_move(targetInfoList, runtimeContext)
@@ -5478,14 +5494,19 @@ def Factory():
                     if not is_mid_dungeon_start:
                         runtimeContext._FIRST_DUNGEON_ENTRY = True  # 重置第一次進入標誌
                         runtimeContext._DUNGEON_CONFIRMED = False  # 重置地城確認標記（新地城循環開始）
+                        runtimeContext._MEET_CHEST_OR_COMBAT = False # [關鍵修復] 重置事件標誌，確保每場地城重新統計
                         reset_ae_caster_flags()  # 重置 AE 手相關旗標
                     else:
                         logger.debug("[地城內啟動] 跳過 flag 重置")
 
                     # 只有在列表為空或正式進入地城時才初始化
-                    if targetInfoList is None:
-                        logger.info("[DungeonFarm] 初始化地城目標列表")
+                    if targetInfoList is None or runtimeContext._RESET_TARGETS_PENDING:
+                        logger.info(f"[DungeonFarm] 初始化地城目標列表 (原因: targetInfoList={targetInfoList is None}, RESET_TARGETS_PENDING={runtimeContext._RESET_TARGETS_PENDING})")
+                        logger.info(f"[DEBUG] quest._TARGETINFOLIST 長度: {len(quest._TARGETINFOLIST) if quest._TARGETINFOLIST else 0}")
                         targetInfoList = quest._TARGETINFOLIST.copy()
+                        logger.info(f"[DEBUG] 新 targetInfoList 長度: {len(targetInfoList) if targetInfoList else 0}, 首目標: {targetInfoList[0].target if targetInfoList else 'None'}")
+                        runtimeContext._RESET_TARGETS_PENDING = False # 重置標誌
+
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
                     _initial = initial_dungState
                     RestartableSequenceExecution(
