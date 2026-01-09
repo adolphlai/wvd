@@ -61,11 +61,44 @@ jobs:
         pyinstaller --onedir --noconsole --noconfirm --add-data "resources;resources/" --hidden-import=pyscrcpy --hidden-import=pyscrcpy.core --hidden-import=av --hidden-import=adbutils --hidden-import=deprecation --hidden-import=retry2 --hidden-import=loguru --collect-all=pyscrcpy --collect-all=adbutils --collect-all=av src/main.py -n wvd
         Write-Host "Build completed successfully."
 
+    # --- Editor-Lite 打包步驟 ---
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Build Editor Frontend
+      shell: pwsh
+      run: |
+        cd editor/release/DungeonScriptEditor-win32-x64/resources/app
+        npm ci
+        npm run build
+        Write-Host "Editor frontend build completed."
+
+    - name: Build DungeonEditor.exe
+      shell: pwsh
+      run: |
+        cd editor-lite
+        # 從前端源碼複製最新編譯結果
+        Copy-Item -Path "../editor/release/DungeonScriptEditor-win32-x64/resources/app/dist/*" -Destination "./dist" -Recurse -Force
+        # 打包成執行檔
+        pyinstaller --onefile --name DungeonEditor --noconsole start_editor.py
+        Move-Item -Path "dist/DungeonEditor.exe" -Destination "." -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "build", "DungeonEditor.spec" -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "DungeonEditor.exe build completed."
+
     - name: Compress build artifact to ZIP
       shell: pwsh
       run: |
-        # Copy changelog into the build directory before zipping
+        # 複製 changelog
         Copy-Item -Path './CHANGES_LOG.md' -Destination './dist/wvd/' -Force
+        
+        # 複製 editor-lite 資料夾（包含 exe 和 dist）
+        New-Item -ItemType Directory -Path './dist/wvd/editor-lite' -Force
+        Copy-Item -Path './editor-lite/DungeonEditor.exe' -Destination './dist/wvd/editor-lite/' -Force
+        Copy-Item -Path './editor-lite/dist' -Destination './dist/wvd/editor-lite/' -Recurse -Force
+        
+        # 壓縮
         Compress-Archive -Path ./dist/wvd/* -DestinationPath ./dist/wvd.zip -Force
         Get-ChildItem dist/wvd.zip
 

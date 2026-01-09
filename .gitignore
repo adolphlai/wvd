@@ -64,3 +64,13 @@ src/*
 /巫术.png
 /wvd.spec
 
+# Editor-Lite (CI 產出的檔案)
+editor-lite/DungeonEditor.exe
+editor-lite/build/
+editor-lite/*.spec
+
+# Editor Frontend (CI 產出的 dist，但源碼需保留)
+editor/release/DungeonScriptEditor-win32-x64/resources/app/dist/
+editor/release/DungeonScriptEditor-win32-x64/resources/app/node_modules/
+
+editor/release/DungeonScriptEditor-win32-x64/resources/app/captures/
