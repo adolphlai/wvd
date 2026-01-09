@@ -65,7 +65,9 @@ src/*
 editor/node_modules/
 editor/dist/
 editor/release/
+editor/.env
 editor/.env.local
+editor/.vite/
 
 # Detection Debug Tools
 detect/
