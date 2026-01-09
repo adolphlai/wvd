@@ -606,7 +606,11 @@ def KillAdb(setting : FarmConfig):
                 stderr=subprocess.DEVNULL,
                 check=False  # 不檢查命令是否成功（進程可能不存在）
             )
-            time.sleep(1)
+            # NOTE: 使用分段 sleep 確保能響應停止信號
+            for _ in range(2):
+                if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return
+                time.sleep(0.5)
             subprocess.run(
                 f"taskkill /f /im HD-Adb.exe", 
                 shell=True,
@@ -640,7 +644,11 @@ def KillEmulator(setting : FarmConfig):
                 stderr=subprocess.DEVNULL,
                 check=False  # 不檢查命令是否成功（進程可能不存在）
             )
-            time.sleep(1)
+            # NOTE: 使用分段 sleep 確保能響應停止信號
+            for _ in range(2):
+                if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return
+                time.sleep(0.5)
             subprocess.run(
                 f"taskkill /f /im {emulator_SVC}", 
                 shell=True,
@@ -648,7 +656,11 @@ def KillEmulator(setting : FarmConfig):
                 stderr=subprocess.DEVNULL,
                 check=False  # 不檢查命令是否成功（進程可能不存在）
             )
-            time.sleep(1)
+            # NOTE: 使用分段 sleep 確保能響應停止信號
+            for _ in range(2):
+                if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    return
+                time.sleep(0.5)
 
         # Unix/Linux 系統使用 pkill 命令
         else:
@@ -688,7 +700,12 @@ def StartEmulator(setting):
         return False
     
     logger.info("等待模擬器啓動...")
-    time.sleep(15)
+    # NOTE: 使用分段 sleep 確保能響應停止信號（15秒 = 30 x 0.5秒）
+    for _ in range(30):
+        if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+            logger.info("模擬器啓動等待中收到停止信號")
+            return False
+        time.sleep(0.5)
 def GetADBPath(setting):
     adb_path = setting._EMUPATH
     adb_path = adb_path.replace("HD-Player.exe", "HD-Adb.exe") # 藍疊
@@ -1877,9 +1894,15 @@ def Factory():
         Args:
             grace_period: 啟動後的寬限期（秒），期間不進行監控
         """
+        # NOTE: 使用分段 sleep 確保能快速響應停止信號
         if grace_period > 0:
             logger.debug(f"[GameMonitor] 寬限期中 ({grace_period}s)...")
-            time.sleep(grace_period)
+            # 分段 sleep，每 0.5 秒檢查停止信號
+            for _ in range(int(grace_period * 2)):
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    logger.debug("[GameMonitor] 寬限期中收到停止信號")
+                    return
+                time.sleep(0.5)
             
         package_name = "jp.co.drecom.wizardry.daphne"
         while not (setting._FORCESTOPING and setting._FORCESTOPING.is_set()):
@@ -1892,7 +1915,12 @@ def Factory():
             except Exception as e:
                 # ADB 異常時不誤判（可能是暫時斷線）
                 logger.debug(f"[GameMonitor] ADB 檢查異常: {e}")
-            time.sleep(2)
+            # NOTE: 分段 sleep，每 0.5 秒檢查停止信號（2秒 = 4 x 0.5秒）
+            for _ in range(4):
+                if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                    logger.debug("[GameMonitor] 監控線程收到停止信號")
+                    return
+                time.sleep(0.5)
         logger.debug("[GameMonitor] 監控線程結束（收到停止信號）")
 
     def _start_game_monitor():
