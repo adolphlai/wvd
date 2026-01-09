@@ -52,23 +52,25 @@ src/output.txt
 
 # Test tools (downloadable from official sources)
 test_minimap_package/
-doc/
+test_minimap_package/
 src/*
 !src/*.py
 
 # Web UI & Editor (Local only)
 /web_prototype/
-/doc/
 /巫术.png
 /wvd.spec
+
+# Editor - Dependencies and Builds
+editor/node_modules/
+editor/dist/
+editor/release/
+editor/.env.local
+
+# Detection Debug Tools
+detect/
 
 # Editor-Lite (CI 產出的檔案)
 editor-lite/DungeonEditor.exe
 editor-lite/build/
 editor-lite/*.spec
-
-# Editor Frontend (CI 產出的 dist，但源碼需保留)
-editor/release/DungeonScriptEditor-win32-x64/resources/app/dist/
-editor/release/DungeonScriptEditor-win32-x64/resources/app/node_modules/
-
-editor/release/DungeonScriptEditor-win32-x64/resources/app/captures/
