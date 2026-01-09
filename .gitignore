@@ -52,14 +52,12 @@ src/output.txt
 
 # Test tools (downloadable from official sources)
 test_minimap_package/
-detect/
 doc/
 src/*
 !src/*.py
 
 # Web UI & Editor (Local only)
 /web_prototype/
-/detect/
 /doc/
 /巫术.png
 /wvd.spec

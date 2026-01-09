@@ -58,7 +58,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onedir --noconsole --noconfirm --add-data "resources;resources/" --hidden-import=pyscrcpy --hidden-import=pyscrcpy.core --hidden-import=av --hidden-import=adbutils --hidden-import=deprecation --hidden-import=retry2 --hidden-import=loguru --hidden-import=websockets --collect-all=pyscrcpy --collect-all=adbutils --collect-all=av src/main.py -n wvd
+        pyinstaller --onedir --noconsole --noconfirm --add-data "resources;resources/" --add-data "detect;detect/" --hidden-import=pyscrcpy --hidden-import=pyscrcpy.core --hidden-import=av --hidden-import=adbutils --hidden-import=deprecation --hidden-import=retry2 --hidden-import=loguru --hidden-import=websockets --collect-all=pyscrcpy --collect-all=adbutils --collect-all=av src/main.py -n wvd
         Write-Host "Build completed successfully."
 
     # --- Editor-Lite 打包步驟 ---
