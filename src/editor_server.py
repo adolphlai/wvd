@@ -43,6 +43,86 @@ def _get_resource_base_dir():
         return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
+
+# -----------------------------------------------------------------------------
+# Custom Compact JSON Formatter
+# 用於保持 Quest JSON 的緊湊格式 (例如 list 不會強制換行)
+# -----------------------------------------------------------------------------
+def _is_compactable(data):
+    """
+    判斷一個 list 是否適合壓縮成單行。
+    條件：
+    1. 不包含 dict (dict 通常需要換行)
+    2. 遞歸檢查子 list
+    """
+    if not isinstance(data, list):
+        return True # Primitives are compact
+        
+    for item in data:
+        if isinstance(item, dict):
+            return False
+        if isinstance(item, list):
+            if not _is_compactable(item):
+                return False
+    return True
+
+def _format_json(data, indent=0):
+    """
+    遞歸格式化 JSON，對於符合條件的 list 強制單行顯示。
+    """
+    pad = " " * indent
+    if isinstance(data, dict):
+        if not data: return "{}"
+        
+        # 為了美觀，Dictionary 總是換行
+        items = []
+        items.append("{\n")
+        keys = list(data.keys())
+        for i, k in enumerate(keys):
+            v = data[k]
+            comma = "," if i < len(keys) - 1 else ""
+            
+            k_str = json.dumps(k, ensure_ascii=False)
+            
+            # 遞歸獲取值 (增加縮進)
+            v_str = _format_json(v, indent + 4)
+            
+            # 處理值的縮進 (如果是 Compact List，則 v_str 已經是字串; 如果是結構，則 v_str 第一行有縮進)
+            # 我們希望形式為: "key": value
+            # 如果 value 是多行結構，其第一行縮進應該被忽略 (接在 key 後面)，後續行保持縮進
+            
+            items.append(f"{pad}    {k_str}: {v_str.lstrip()}{comma}\n")
+            
+        items.append(f"{pad}}}")
+        return "".join(items)
+        
+    elif isinstance(data, list):
+        if not data: return "[]"
+        
+        # 檢查是否可以緊湊顯示
+        # 1. 結構簡單 (無 Dict)
+        # 2. 長度適中 (避免極長的一行)
+        if _is_compactable(data):
+             compact_str = json.dumps(data, ensure_ascii=False)
+             # 限制單行最大長度，超過則展開 (例如 _EOT 有些很長)
+             if len(compact_str) < 120:
+                 return f"{pad}{compact_str}"
+        
+        # 展開顯示
+        items = []
+        items.append(f"{pad}[\n")
+        for i, item in enumerate(data):
+            comma = "," if i < len(data) - 1 else ""
+            v_str = _format_json(item, indent + 4)
+            items.append(f"{v_str}{comma}\n")
+        items.append(f"{pad}]")
+        return "".join(items)
+        
+    else:
+        # 基本型別 (str, int, float, bool, None)
+        return f"{pad}{json.dumps(data, ensure_ascii=False)}"
+
+
 class EditorWebSocketServer:
     def __init__(self, host="localhost", port=8765, quest_json_path=None):
         self.host = host
@@ -278,25 +358,21 @@ class EditorWebSocketServer:
             
             # --- DEBUG LOG START ---
             logger.info(f"[EditorServer] 收到保存請求。包含 {len(data)} 個任務。")
-            debug_count = 0
-            for q_id, q_data in data.items():
-                if debug_count >= 3: break
-                eot_len = len(q_data.get('_EOT', []))
-                logger.info(f"[Debug] Quest: {q_id}, EOT長度: {eot_len}")
-                for item in q_data.get('_EOT', []):
-                    if isinstance(item, list) and len(item) > 1 and item[0] == 'press':
-                        logger.info(f"   -> Found Press Item: Pattern='{item[1]}', Fallback={item[2]}")
-                        break
-                debug_count += 1
             # --- DEBUG LOG END ---
 
+            # 使用自定義的緊湊格式保存
+            json_str = _format_json(data)
+            
             with open(self.quest_json_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
+                f.write(json_str)
+                
             await websocket.send(json.dumps({"type": "saved", "success": True, "path": abs_path}))
-            logger.info(f"[EditorServer] quest.json 儲存成功: {abs_path}")
+            logger.info(f"[EditorServer] quest.json 儲存成功 (Compact Mode): {abs_path}")
         except Exception as e:
             logger.error(f"[EditorServer] 儲存失敗 ERROR: {e}")
             await websocket.send(json.dumps({"type": "error", "message": f"儲存失敗: {e}"}))
+
+
 
     async def _handle_save_image(self, websocket, filename, base64_data, capture_target=None):
         try:
