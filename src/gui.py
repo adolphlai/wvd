@@ -1452,11 +1452,24 @@ class ConfigPanelApp(tk.Toplevel):
                 import threading
                 threading.Thread(target=start_server, daemon=True).start()
             else:
-                self._editor_server.stop()
-                self._editor_server = None
-                self.editor_server_status_var.set("伺服器已停止")
-                self.editor_toggle_btn.config(text="啟動伺服器")
-                logger.info("[EditorServer] 已停止")
+                # NOTE: 在背景執行緒中執行 stop()，避免阻塞 GUI 主執行緒
+                self.editor_toggle_btn.config(state="disabled")
+                self.editor_server_status_var.set("正在停止...")
+                
+                def stop_server():
+                    try:
+                        server = self._editor_server
+                        self._editor_server = None
+                        if server:
+                            server.stop()
+                    except Exception as e:
+                        logger.error(f"[EditorServer] 停止失敗: {e}")
+                    finally:
+                        # 回到主執行緒更新 UI
+                        self.root.after(0, lambda: self._on_editor_server_stopped())
+                
+                import threading
+                threading.Thread(target=stop_server, daemon=True).start()
 
         self.editor_toggle_btn = ttk.Button(frame_editor, text="啟動伺服器", command=toggle_editor_server)
         self.editor_toggle_btn.grid(row=0, column=2, padx=10, pady=5)
@@ -1467,6 +1480,13 @@ class ConfigPanelApp(tk.Toplevel):
         row += 1
         ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試小地圖偵測：請確保遊戲在地城中\n3. 不需要啟動主任務",
                   foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
+
+
+    def _on_editor_server_stopped(self):
+        """EditorServer 停止後的回調，用於更新 GUI 狀態"""
+        self.editor_server_status_var.set("伺服器已停止")
+        self.editor_toggle_btn.config(text="啟動伺服器", state="normal")
+        logger.info("[EditorServer] 已停止")
 
     def _test_organize_backpack_standalone(self):
         """測試整理背包功能（完全獨立運行）"""

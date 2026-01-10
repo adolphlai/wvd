@@ -137,6 +137,47 @@ class EditorWebSocketServer:
         self.stream_fps = 10  # 稍微降低 FPS 提高指令穩定性
         self.jpeg_quality = 50
 
+    def _transform_quest_rois(self, data, mode='to_script'):
+        """
+        遞歸遍歷任務資料，轉換 ROI 格式
+        mode='to_editor': [x, y, w, h] -> [x, y, x+w, y+h]
+        mode='to_script': [x, y, x2, y2] -> [x, y, x2-x, y2-y]
+        """
+        if not isinstance(data, (dict, list)):
+            return data
+
+        if isinstance(data, dict):
+            # 如果是任務對象，遍歷其內容
+            for k, v in data.items():
+                if k == "_TARGETINFOLIST" and isinstance(v, list):
+                    for target_item in v:
+                        # target_item 格式: [target_name, swipe_dir, roi_list]
+                        if len(target_item) >= 3 and isinstance(target_item[2], list):
+                            new_rois = []
+                            for rect in target_item[2]:
+                                if isinstance(rect, list) and len(rect) == 4:
+                                    x, y, val3, val4 = rect
+                                    if mode == 'to_editor':
+                                        # 只有看起來是寬高格式時才轉換 (val3+x <= 900)
+                                        if x + val3 <= 905 and y + val4 <= 1605:
+                                            new_rois.append([x, y, x + val3, y + val4])
+                                        else:
+                                            new_rois.append(rect)
+                                    else: # to_script
+                                        # 只有看起來是坐標格式時才轉換 (val3 > x)
+                                        if val3 >= x and val4 >= y and (x + val3 > 900 or y + val4 > 1600):
+                                            new_rois.append([x, y, val3 - x, val4 - y])
+                                        else:
+                                            new_rois.append(rect)
+                                else:
+                                    new_rois.append(rect)
+                            target_item[2] = new_rois
+                else:
+                    self._transform_quest_rois(v, mode)
+        elif isinstance(data, list):
+            for item in data:
+                self._transform_quest_rois(item, mode)
+
     def start(self):
         if not WEBSOCKETS_AVAILABLE:
             print("[EditorServer] ❌ 尚未安裝 websockets 套件，無法啟動編輯器伺服器。請執行 pip install websockets")
@@ -326,9 +367,11 @@ class EditorWebSocketServer:
             await websocket.send(json.dumps({"type": "log", "message": f"❌ 比對出錯: {e}"}))
 
     async def _stream_broadcast_loop(self):
-        while True:
+        # NOTE: 此循環需要在 running=False 時正確退出，否則 stop() 會阻塞
+        while self.running:
             await asyncio.sleep(1.0 / self.stream_fps)
-            if not self.clients or not self.running: continue
+            if not self.clients:
+                continue
             
             frame = None
             if self._get_frame_func:
@@ -343,11 +386,16 @@ class EditorWebSocketServer:
                     await asyncio.gather(*tasks, return_exceptions=True)
                 except Exception as e:
                     pass
+        print("[EditorServer] 串流循環已停止")
 
     async def _handle_load_quest(self, websocket):
         try:
             with open(self.quest_json_path, "r", encoding="utf-8") as f:
                 content = json.load(f)
+            
+            # 轉換為編輯器使用的格式 (x2, y2)
+            self._transform_quest_rois(content, 'to_editor')
+            
             await websocket.send(json.dumps({"type": "quest", "data": content}))
         except Exception as e:
             await websocket.send(json.dumps({"type": "error", "message": f"載入失敗: {e}"}))
@@ -356,9 +404,10 @@ class EditorWebSocketServer:
         try:
             abs_path = os.path.abspath(self.quest_json_path)
             
-            # --- DEBUG LOG START ---
             logger.info(f"[EditorServer] 收到保存請求。包含 {len(data)} 個任務。")
-            # --- DEBUG LOG END ---
+
+            # 轉換為腳本使用的格式 (w, h)
+            self._transform_quest_rois(data, 'to_script')
 
             # 使用自定義的緊湊格式保存
             json_str = _format_json(data)
@@ -367,7 +416,7 @@ class EditorWebSocketServer:
                 f.write(json_str)
                 
             await websocket.send(json.dumps({"type": "saved", "success": True, "path": abs_path}))
-            logger.info(f"[EditorServer] quest.json 儲存成功 (Compact Mode): {abs_path}")
+            logger.info(f"[EditorServer] quest.json 儲存成功 (ROI 自動校正並以 Compact Mode 儲存): {abs_path}")
         except Exception as e:
             logger.error(f"[EditorServer] 儲存失敗 ERROR: {e}")
             await websocket.send(json.dumps({"type": "error", "message": f"儲存失敗: {e}"}))
@@ -483,9 +532,44 @@ class EditorWebSocketServer:
         self._get_frame_func = func
 
     def stop(self):
+        """優雅停止 WebSocket 伺服器"""
+        if not self.running:
+            return
+        
+        print("[EditorServer] 正在停止伺服器...")
         self.running = False
-        if hasattr(self, "_loop"):
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        
+        if hasattr(self, "_loop") and self._loop.is_running():
+            # 在事件循環中執行關閉操作
+            async def _shutdown():
+                # 1. 關閉 WebSocket 伺服器，停止接受新連線
+                if hasattr(self, "_server"):
+                    self._server.close()
+                    await self._server.wait_closed()
+                
+                # 2. 中斷所有現有客戶端連線
+                if self.clients:
+                    for client in list(self.clients):
+                        try:
+                            await client.close()
+                        except Exception:
+                            pass
+                    self.clients.clear()
+                
+                # 3. 停止事件循環
+                self._loop.stop()
+            
+            self._loop.call_soon_threadsafe(
+                lambda: asyncio.ensure_future(_shutdown(), loop=self._loop)
+            )
+        
+        # 等待執行緒結束（最多 3 秒）
+        if hasattr(self, "_thread") and self._thread.is_alive():
+            self._thread.join(timeout=3.0)
+            if self._thread.is_alive():
+                print("[EditorServer] ⚠ 執行緒未能在時限內結束")
+        
+        print("[EditorServer] 伺服器已停止")
 
 _server_instance = None
 

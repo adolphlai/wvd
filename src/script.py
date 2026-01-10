@@ -583,11 +583,29 @@ class TargetInfo:
 
     @roi.setter
     def roi(self, value):
+        # 1. 處理預設與特殊值
         if value == 'default':
             value = [[0,0,900,1600],[0,0,900,208],[0,1265,900,335],[0,636,137,222],[763,636,137,222], [336,208,228,77],[336,1168,228,97]]
+        elif self.target == 'chest' and value is None:
+            value = [[0,0,900,1600]]
+
+        # 2. 自動偵測坐標格式並轉換 ([x1, y1, x2, y2] -> [x, y, w, h])
+        # 如果起始點加上第三、四個參數超過了 900x1600 的邊界，則判定為絕對座標點
+        normalized_value = []
+        if isinstance(value, list):
+            for rect in value:
+                if isinstance(rect, list) and len(rect) == 4:
+                    x, y, w, h = rect
+                    # 啟發式判定：如果 w > x 且 h > y，且之和超出標準螢幕長寬，則必為座標點
+                    if (x + w > 900 or y + h > 1600) and (w >= x and h >= y):
+                        rect = [x, y, w - x, h - y]
+                    normalized_value.append(rect)
+                else:
+                    normalized_value.append(rect)
+            value = normalized_value
+
+        # 3. 針對寶箱目標追加預設屏蔽區
         if self.target == 'chest':
-            if value == None:
-                value = [[0,0,900,1600]]
             value += [[0,0,900,208],[0,1265,900,335],[0,636,137,222],[763,636,137,222], [336,208,228,77],[336,1168,228,97]]
 
         self._roi = value
