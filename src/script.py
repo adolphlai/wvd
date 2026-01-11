@@ -5326,12 +5326,19 @@ def Factory():
                             logger.debug(f"[圖片偵測] dungflag: {dunflag_result}")
                             if dunflag_result and (counter_trychar <=20):
                                 Press([36+(counter_trychar%3)*286,1425])
-                                Sleep(1)
+                                Sleep(0.5)
                             else:
                                 logger.info("自動回覆失敗, 暫不進行回覆.")
                                 break
-                            trait_result = CheckIf(scn:=ScreenShot(),'trait')
-                            logger.debug(f"[圖片偵測] trait: {trait_result}")
+                            # NOTE: 連續偵測 trait 最多 5 次，適應慢機器角色頁面打開較慢的情況
+                            trait_result = None
+                            for trait_attempt in range(5):
+                                scn = ScreenShot()
+                                trait_result = CheckIf(scn, 'trait')
+                                logger.debug(f"[圖片偵測] trait (嘗試 {trait_attempt+1}/5): {trait_result}")
+                                if trait_result:
+                                    break
+                                Sleep(0.5)
                             if trait_result:
                                 story_result = CheckIf(scn,'story', [[676,800,220,108]])
                                 logger.debug(f"[圖片偵測] story: {story_result}")
