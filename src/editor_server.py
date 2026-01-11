@@ -197,7 +197,7 @@ class EditorWebSocketServer:
         asyncio.set_event_loop(self._loop)
         try:
             self._loop.run_until_complete(self._start_server_internal())
-            self.running = True
+            # NOTE: running 已在 _start_server_internal 中設置
             print(f"\n[EditorServer] 伺服器已在 ws://{self.host}:{self.port} 啟動")
             sys.stdout.flush()
             self._loop.run_forever()
@@ -214,7 +214,9 @@ class EditorWebSocketServer:
             ping_interval=20, # 每 20 秒發送一次 ping
             ping_timeout=20   # 如果 20 秒沒收到 pong 則判定斷線
         )
-        asyncio.create_task(self._stream_broadcast_loop())
+        # NOTE: 必須在創建串流任務前設置 running，否則 while self.running 會立即退出
+        self.running = True
+        self._stream_task = asyncio.create_task(self._stream_broadcast_loop())
 
     async def _connection_handler(self, websocket):
         self.clients.add(websocket)
@@ -368,24 +370,28 @@ class EditorWebSocketServer:
 
     async def _stream_broadcast_loop(self):
         # NOTE: 此循環需要在 running=False 時正確退出，否則 stop() 會阻塞
-        while self.running:
-            await asyncio.sleep(1.0 / self.stream_fps)
-            if not self.clients:
-                continue
-            
-            frame = None
-            if self._get_frame_func:
-                frame = self._get_frame_func()
+        try:
+            while self.running:
+                await asyncio.sleep(1.0 / self.stream_fps)
+                if not self.clients:
+                    continue
                 
-            if frame is not None and CV2_AVAILABLE:
-                try:
-                    _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
-                    jpg_as_text = buffer.tobytes()
-                    # 廣播
-                    tasks = [client.send(jpg_as_text) for client in self.clients]
-                    await asyncio.gather(*tasks, return_exceptions=True)
-                except Exception as e:
-                    pass
+                frame = None
+                if self._get_frame_func:
+                    frame = self._get_frame_func()
+                    
+                if frame is not None and CV2_AVAILABLE:
+                    try:
+                        _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+                        jpg_as_text = buffer.tobytes()
+                        # 廣播
+                        tasks = [client.send(jpg_as_text) for client in self.clients]
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                    except Exception as e:
+                        pass
+        except asyncio.CancelledError:
+            # 正常取消，不需要輸出錯誤
+            pass
         print("[EditorServer] 串流循環已停止")
 
     async def _handle_load_quest(self, websocket):
@@ -542,12 +548,20 @@ class EditorWebSocketServer:
         if hasattr(self, "_loop") and self._loop.is_running():
             # 在事件循環中執行關閉操作
             async def _shutdown():
-                # 1. 關閉 WebSocket 伺服器，停止接受新連線
+                # 1. 取消串流任務
+                if hasattr(self, "_stream_task") and not self._stream_task.done():
+                    self._stream_task.cancel()
+                    try:
+                        await self._stream_task
+                    except asyncio.CancelledError:
+                        pass  # 正常取消
+                
+                # 2. 關閉 WebSocket 伺服器，停止接受新連線
                 if hasattr(self, "_server"):
                     self._server.close()
                     await self._server.wait_closed()
                 
-                # 2. 中斷所有現有客戶端連線
+                # 3. 中斷所有現有客戶端連線
                 if self.clients:
                     for client in list(self.clients):
                         try:
@@ -556,7 +570,7 @@ class EditorWebSocketServer:
                             pass
                     self.clients.clear()
                 
-                # 3. 停止事件循環
+                # 4. 停止事件循環
                 self._loop.stop()
             
             self._loop.call_soon_threadsafe(

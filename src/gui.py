@@ -1465,8 +1465,8 @@ class ConfigPanelApp(tk.Toplevel):
                     except Exception as e:
                         logger.error(f"[EditorServer] 停止失敗: {e}")
                     finally:
-                        # 回到主執行緒更新 UI
-                        self.root.after(0, lambda: self._on_editor_server_stopped())
+                        # 回到主執行緒更新 UI（ConfigPanelApp 繼承自 Toplevel）
+                        self.after(0, lambda: self._on_editor_server_stopped())
                 
                 import threading
                 threading.Thread(target=stop_server, daemon=True).start()
