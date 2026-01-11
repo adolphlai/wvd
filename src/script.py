@@ -3393,7 +3393,24 @@ def Factory():
     def reset_ae_caster_flags():
         """重置戰鬥相關旗標，用於新地城開始時"""
         nonlocal runtimeContext
-        runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
+
+        # [修正] 使用 _DUNGEON_REPEAT_COUNT 作為間隔計數基準
+        # 因為跳過回城時 _COUNTERDUNG 不會增加，只有 _DUNGEON_REPEAT_COUNT 會遞增
+        # 第 0 場 (首場) 符合觸發條件，第 1~N 場不符合
+        eff_counter = runtimeContext._DUNGEON_REPEAT_COUNT
+        ae_interval_match = (eff_counter % (setting._AE_CASTER_INTERVAL + 1) == 0)
+        if setting._AE_CASTER_INTERVAL == 0:
+            ae_interval_match = True
+
+        # [關鍵修復] 如果間隔不匹配，則代表本場地城為自動戰鬥場次
+        # 我們必須在初始化時就立起 flag，否則 IdentifyState 會在第一場戰鬥前打斷黑屏
+        if not ae_interval_match and not runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON:
+            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
+            logger.info(f"[技能施放] 地城循環第 {eff_counter + 1} 場，間隔不匹配 -> 預設自動戰鬥（跳過黑屏）")
+        else:
+            runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = False
+            logger.info(f"[技能施放] 地城循環第 {eff_counter + 1} 場，符合觸發週期 -> 重置旗標")
+
         runtimeContext._AE_CASTER_FIRST_ATTACK_DONE = False
         runtimeContext._COMBAT_ACTION_COUNT = 0
         runtimeContext._COMBAT_BATTLE_COUNT = 0
@@ -3401,7 +3418,6 @@ def Factory():
         runtimeContext._IS_FIRST_COMBAT_IN_DUNGEON = True  # 重置首戰標記
         runtimeContext._MID_DUNGEON_START = False  # 重置地城內啟動標記，讓新地城可觸發黑屏偵測
         runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = False  # 新地城清除重啟跳過標誌
-        logger.info("[技能施放] 重置旗標")
 
     def should_skip_return_to_town():
         """判斷是否應該跳過回城（用於連續刷地城功能）
@@ -3846,19 +3862,20 @@ def Factory():
             for cfg in skill_config_list
         )
         # 觸發間隔判斷
-        eff_counter = runtimeContext._COUNTERDUNG if runtimeContext._COUNTERDUNG > 0 else 1
-        ae_interval_match = ((eff_counter-1) % (setting._AE_CASTER_INTERVAL+1) == 0)
+        # [修正] 使用 _DUNGEON_REPEAT_COUNT 與 reset_ae_caster_flags 保持一致
+        eff_counter = runtimeContext._DUNGEON_REPEAT_COUNT
+        ae_interval_match = (eff_counter % (setting._AE_CASTER_INTERVAL + 1) == 0)
         if setting._AE_CASTER_INTERVAL == 0:
             ae_interval_match = True
 
         # 調試 log
         logger.debug(f"[技能施放調試] has_skill_config={has_skill_config}, ae_interval_match={ae_interval_match}, "
-                     f"_COUNTERDUNG={runtimeContext._COUNTERDUNG}, _AE_CASTER_INTERVAL={setting._AE_CASTER_INTERVAL}")
+                     f"_DUNGEON_REPEAT_COUNT={runtimeContext._DUNGEON_REPEAT_COUNT}, _AE_CASTER_INTERVAL={setting._AE_CASTER_INTERVAL}")
 
         # === 間隔不匹配時的處理 ===
         # 間隔不匹配時，直接開啟自動戰鬥（重啟後跳過此判斷）
         if has_skill_config and not ae_interval_match and not runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON:
-            logger.info(f"[技能施放] 觸發間隔不匹配（第 {runtimeContext._COUNTERDUNG} 次地城，間隔設定 {setting._AE_CASTER_INTERVAL}），開啟自動戰鬥")
+            logger.info(f"[技能施放] 觸發間隔不匹配（地城循環第 {eff_counter + 1} 場，間隔設定 {setting._AE_CASTER_INTERVAL}），開啟自動戰鬥")
             runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
             enable_auto_combat()
             Sleep(3)
