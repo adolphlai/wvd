@@ -5190,6 +5190,24 @@ def Factory():
             # 更新監控狀態 - 地城子狀態
             MonitorState.current_dungeon_state = str(dungState.value) if dungState else "識別中"
 
+            # NOTE: [硬超時檢測] 移至迴圈開頭，確保每次迭代都執行
+            # 原本放在 case None 裡面，導致當 IdentifyState 識別到狀態時不會觸發
+            MAXTIMEOUT = 400
+            # 顯示當前計時器狀態（debug 用）
+            if runtimeContext._TIME_COMBAT != 0:
+                combat_elapsed = time.time() - runtimeContext._TIME_COMBAT
+                logger.debug(f"[硬超時] 戰鬥計時: {combat_elapsed:.0f}/{MAXTIMEOUT}秒")
+            if runtimeContext._TIME_CHEST != 0:
+                chest_elapsed = time.time() - runtimeContext._TIME_CHEST
+                logger.debug(f"[硬超時] 寶箱計時: {chest_elapsed:.0f}/{MAXTIMEOUT}秒")
+            # 超時重啟
+            if (runtimeContext._TIME_CHEST != 0) and (time.time() - runtimeContext._TIME_CHEST > MAXTIMEOUT):
+                logger.info("由於寶箱用時過久, 硬超時重啓.")
+                restartGame()
+            if (runtimeContext._TIME_COMBAT != 0) and (time.time() - runtimeContext._TIME_COMBAT > MAXTIMEOUT):
+                logger.info("由於戰鬥用時過久, 硬超時重啓.")
+                restartGame()
+
             match dungState:
                 case None:
                     s, dungState,scn = IdentifyState()
@@ -5197,18 +5215,11 @@ def Factory():
                         elapsed_ms = (time.time() - state_handle_start) * 1000
                         logger.debug(f"[耗時] 地城狀態處理 {state_handle_name} (耗時 {elapsed_ms:.0f} ms)")
                         break
-                    # 只有在 IdentifyState 沒有識別到狀態時才執行卡死檢測
+                    # 只有在 IdentifyState 沒有識別到狀態時才執行卡死檢測（軟超時）
                     if dungState is None:
                         gameFrozen_none, result = GameFrozenCheck(gameFrozen_none,scn)
                         if result:
-                            logger.info("由於畫面卡死, 在state:None中重啓.")
-                            restartGame()
-                        MAXTIMEOUT = 400
-                        if (runtimeContext._TIME_CHEST != 0 ) and (time.time()-runtimeContext._TIME_CHEST > MAXTIMEOUT):
-                            logger.info("由於寶箱用時過久, 在state:None中重啓.")
-                            restartGame()
-                        if (runtimeContext._TIME_COMBAT != 0) and (time.time()-runtimeContext._TIME_COMBAT > MAXTIMEOUT):
-                            logger.info("由於戰鬥用時過久, 在state:None中重啓.")
+                            logger.info("由於畫面卡死, 軟超時重啓.")
                             restartGame()
                 case DungeonState.Quit:
                     elapsed_ms = (time.time() - state_handle_start) * 1000
