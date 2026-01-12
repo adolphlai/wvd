@@ -158,7 +158,8 @@ _fallback_gohome
     │
     ├─ 2. 進入 _monitor_move (is_gohome_mode=True)
     │   ├─ 每 3 秒持續點擊 gohome (Keep-Alive)
-    │   └─ 偵測離開地城：worldmapflag 或 Inn
+    │   ├─ 偵測離開地城標誌：worldmapflag 或 Inn 或 dungFlag 消失
+    │   └─ **注意**：靜止判定 (Stillness Check) 在此模式下無效，直到觸發硬超時
     │
     └─ 3. 離開地城
         └─ return DungeonState.Quit

@@ -4559,12 +4559,17 @@ def Factory():
                 
                 # ========== E. gohome Keep-Alive ==========
                 if self.is_gohome_mode:
-                    # E1. 離開地城檢測（世界地圖或 Inn）
-                    if CheckIf(screen, 'worldmapflag'):
+                    # E1. 離開地城檢測（世界地圖、Inn、或地城標誌消失）
+                    if CheckIf(screen, 'worldmapflag') or CheckIf(screen, 'worldmapflag_2'):
                         logger.info("[DungeonMover] gohome: 偵測到世界地圖，已離開地城")
                         return self._cleanup_exit(DungeonState.Quit)
                     if CheckIf(screen, 'Inn'):
                         logger.info("[DungeonMover] gohome: 偵測到 Inn，已回城")
+                        return self._cleanup_exit(DungeonState.Quit)
+                    
+                    # 雙重檢查：如果連 dungFlag 都沒了，也視為離開 (可能在黑屏過場)
+                    if not CheckIf(screen, 'dungFlag', threshold=0.7) and not CheckIf(screen, 'mapFlag', threshold=0.7):
+                        logger.info("[DungeonMover] gohome: dungFlag/mapFlag 消失，視為已離開地城")
                         return self._cleanup_exit(DungeonState.Quit)
                     
                     # E2. Keep-Alive 點擊
@@ -4730,8 +4735,8 @@ def Factory():
                             
 
                             
-                            # 判定停止（無 Resume 且靜止）
-                            if not is_chest_auto and not CheckIf(screen, 'resume'):
+                            # 判定停止（無 Resume 且靜止，且非 GoHome 模式）
+                            if not self.is_gohome_mode and not is_chest_auto and not CheckIf(screen, 'resume'):
                                 logger.info("[DungeonMover] 靜止且無 Resume，判定到達")
                                 if target in ['position', 'harken'] or (target and target.startswith('stair')):
                                     targetInfoList.pop(0)
