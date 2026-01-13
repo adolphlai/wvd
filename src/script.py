@@ -4560,7 +4560,7 @@ def Factory():
                 # ========== E. gohome Keep-Alive ==========
                 if self.is_gohome_mode:
                     # E1. 離開地城檢測（世界地圖、Inn、或地城標誌消失）
-                    if CheckIf(screen, 'worldmapflag') or CheckIf(screen, 'worldmapflag_2'):
+                    if CheckIf(screen, 'worldmapflag'):
                         logger.info("[DungeonMover] gohome: 偵測到世界地圖，已離開地城")
                         return self._cleanup_exit(DungeonState.Quit)
                     if CheckIf(screen, 'Inn'):
