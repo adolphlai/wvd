@@ -2175,6 +2175,12 @@ def Factory():
                 while csc_swipe_count < MAX_CSC_SWIPES:
                     if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                         return
+                    
+                    # [網路重試] 檢測網路波動
+                    if TryPressRetry(ScreenShot()):
+                        logger.info("[因果調整] 關閉因果時偵測到 Retry 選項，點擊重試")
+                        Sleep(2)
+                        continue
                     Press(CheckIf(WrapImage(ScreenShot(),2,0,0),'didnottakethequest'))
                     DeviceShell(f"input swipe 150 500 150 400")
                     Sleep(1)
@@ -2194,6 +2200,12 @@ def Factory():
                     while csc_adjust_count < MAX_CSC_SWIPES:
                         if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
                             return
+                        
+                        # [網路重試] 檢測網路波動
+                        if TryPressRetry(ScreenShot()):
+                            logger.info("[因果調整] 調整因果時偵測到 Retry 選項，點擊重試")
+                            Sleep(2)
+                            continue
                         for option, r, g, b in CSC_setting:
                             Press(CheckIf(WrapImage(ScreenShot(),r,g,b),option))
                             Sleep(1)
@@ -3693,6 +3705,13 @@ def Factory():
             # 等待 OK 按鈕出現 (最多 3 秒)
             ok_pos = None
             for wait_ok in range(6):
+                # [網路重試] 檢測網路波動
+                if TryPressRetry(scn):
+                    logger.info("[戰鬥] 等待 OK 按鈕時偵測到 Retry 選項，點擊重試")
+                    Sleep(2)
+                    scn = ScreenShot()  # 重新截圖
+                    continue
+                
                 ok_pos = CheckIf(scn, 'OK')
                 if ok_pos:
                     break
@@ -3962,6 +3981,12 @@ def Factory():
                 logger.info("[戰鬥] flee 等待中偵測到 returnText，中斷並處理對話")
                 Sleep(1)
                 return IdentifyState()
+            
+            # [網路重試] 檢測網路波動
+            if TryPressRetry(screen):
+                logger.info("[戰鬥] flee 等待中偵測到 Retry 選項，點擊重試")
+                Sleep(2)
+                continue
 
             # [新增] 檢查是否已經脫離戰鬥 (例如瞬殺或過場過快)
             # 如果出現 寶箱/地城/地圖 標誌，代表戰鬥已結束
@@ -4013,6 +4038,12 @@ def Factory():
                     if any(CheckIf(scn, marker) for marker in next_state_markers):
                         logger.info(f"[戰後加速] 偵測到下一狀態標誌 (點擊 {spam_click_count} 次)，結束等待")
                         break
+                    
+                    # [網路重試] 檢測網路波動
+                    if TryPressRetry(scn):
+                        logger.info("[戰鬥] 黑屏加速時偵測到 Retry 選項，點擊重試")
+                        Sleep(2)
+                        break  # 退出黑屏加速循環，重新識別狀態
                 
                 logger.info(f"[戰後加速] 完成，共點擊 {spam_click_count} 次")
                 # 黑屏結束後，回到 StateCombat 開頭重新計數
@@ -5312,6 +5343,13 @@ def Factory():
                     logger.info("[StateChest] 偵測到死亡")
                     RiseAgainReset(reason='chest')
                     return None
+
+            # [網路重試] 檢測網路波動 (每 10 次循環)
+            if chest_wait_count % 10 == 0:
+                if TryPressRetry(scn):
+                    logger.info("[StateChest] 偵測到 Retry 選項，點擊重試")
+                    Sleep(2)
+                    continue
 
             # 2. 結束檢查 (DungFlag) - 帶連續確認 (保持每次檢查)
             dungFlag_result = CheckIf(scn, 'dungFlag', threshold=0.75)
