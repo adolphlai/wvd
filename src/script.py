@@ -530,6 +530,9 @@ class RuntimeContext:
     _RESTART_SKIP_INTERVAL_THIS_DUNGEON = False  # 重啟後跳過間隔判斷標誌，讓 _AUTO_COMBAT_MODE 正常運作
     _IN_RESTART = False # [新增] 標記是否正在執行重啟流程
     _RESET_TARGETS_PENDING = False # [新增] 跳過回村時標記需要重新初始化目標列表
+    
+    # === 打王模式相關 ===
+    _AUTO_SKILL_PRESET_INDEX = -1  # 打王模式預設索引 (-1=正常模式, 0-9=打王模式)
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -542,12 +545,20 @@ class FarmQuest:
         # 當訪問不存在的屬性時，拋出AttributeError
         raise AttributeError(f"FarmQuest對象沒有屬性'{name}'")
 class TargetInfo:
-    def __init__(self, target: str, swipeDir: list = None, roi=None, floorImage=None):
+    def __init__(self, target: str, swipeDir: list = None, roi=None, extra=None):
+        # 安全處理：如果第一個參數是 list，自動展開
+        if isinstance(target, list) and len(target) >= 1:
+            row = target
+            target = row[0]
+            swipeDir = row[1] if len(row) > 1 else None
+            roi = row[2] if len(row) > 2 else None
+            extra = row[3] if len(row) > 3 else None
+        
         self.target = target
         self.swipeDir = swipeDir
         # 注意 roi校驗需要target的值. 請嚴格保證roi在最後.
         self.roi = roi
-        self.floorImage = floorImage  # 用於 harken 樓層選擇
+        self.extra = extra  # 用於打王預設索引 (swipe) 或樓層圖片 (harken)
     @property
     def swipeDir(self):
         return self._swipeDir
@@ -3733,7 +3744,117 @@ def Factory():
             Sleep(1)
             return (is_success_aoe)
 
-        nonlocal runtimeContext
+        # ==================== 打王模式獨立處理 ====================
+        def BossCombat():
+            """
+            獨立的打王戰鬥邏輯，從指定預設讀取技能並施放。
+            此函數完全獨立，不影響原有戰鬥邏輯。
+            """
+            nonlocal runtimeContext
+            preset_idx = runtimeContext._AUTO_SKILL_PRESET_INDEX
+            
+            logger.info(f"[打王模式] 進入打王戰鬥，使用預設: {preset_idx + 1}")
+            
+            # 戰鬥計數器 (與原有邏輯一致)
+            if runtimeContext._COMBAT_ACTION_COUNT == 0:
+                runtimeContext._COMBAT_BATTLE_COUNT += 1
+                logger.info(f"[打王模式] 第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰開始")
+            runtimeContext._COMBAT_ACTION_COUNT += 1
+            
+            # 等待 flee 出現
+            logger.info("[打王模式] 等待 flee 出現...")
+            for wait_count in range(30):
+                screen = ScreenShot()
+                update_combat_flag(screen)
+                
+                # 特殊情況檢測
+                if CheckIf(screen, 'RiseAgain'):
+                    logger.info("[打王模式] 偵測到 RiseAgain，處理復活")
+                    RiseAgainReset(reason='boss_combat')
+                    return
+                
+                if CheckIf(screen, 'someonedead'):
+                    logger.info("[打王模式] 偵測到有人死亡")
+                    Press(CheckIf(screen, 'someonedead'))
+                    return
+                
+                # 偵測黑屏 (戰鬥結束)
+                is_black = IsScreenBlack(screen)
+                if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
+                    logger.info(f"[打王模式] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束")
+                    runtimeContext._COMBAT_ACTION_COUNT = 0
+                    # 戰後加速
+                    spam_click_count = 0
+                    while spam_click_count < 20:
+                        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                            return
+                        Press([1, 1])
+                        spam_click_count += 1
+                        Sleep(0.3)
+                        scn = ScreenShot()
+                        if not IsScreenBlack(scn):
+                            break
+                    return
+                
+                if CheckIf(screen, 'flee'):
+                    logger.info(f"[打王模式] flee 出現，等待 {wait_count + 1} 次")
+                    break
+                Sleep(0.5)
+            else:
+                logger.warning("[打王模式] flee 等待超時，跳過本次行動")
+                return
+            
+            # 從預設配置讀取技能
+            screen = ScreenShot()
+            battle_num = runtimeContext._COMBAT_BATTLE_COUNT
+            current_char = DetectCharacter(screen)
+            
+            # 獲取預設配置（從配置文件直接讀取，因為 setting._SKILL_PRESETS 未被載入）
+            skill = None
+            level = "關閉"
+            
+            try:
+                from utils import LoadConfigFromFile
+                config = LoadConfigFromFile()
+                skill_presets = config.get("_SKILL_PRESETS", [])
+                
+                if 0 <= preset_idx < len(skill_presets):
+                    config_list = skill_presets[preset_idx]
+                    for cfg in config_list:
+                        if cfg.get("character") == current_char:
+                            if battle_num == 1:
+                                skill = cfg.get("skill_first", "attack")
+                                level = cfg.get("level_first", "關閉")
+                            else:
+                                skill = cfg.get("skill_after", "attack")
+                                level = cfg.get("level_after", "關閉")
+                            break
+            except Exception as e:
+                logger.error(f"[打王模式] 讀取預設配置失敗: {e}")
+            
+            if not skill:
+                skill = "attack"
+            
+            logger.info(f"[打王模式] 角色={current_char}, 第{battle_num}戰, 技能={skill}")
+            
+            # 判斷技能類別並施放
+            category = None
+            if skill and skill != "attack":
+                for cat, skills in SKILLS_BY_CATEGORY.items():
+                    if skill in skills:
+                        category = cat
+                        break
+            
+            if skill == "attack" or not category:
+                use_normal_attack()
+            elif skill and category:
+                cast_skill_by_category(category, skill, level)
+        
+        # ==================== 打王模式判定 (最高優先級) ====================
+        if getattr(runtimeContext, '_AUTO_SKILL_PRESET_INDEX', -1) != -1:
+            BossCombat()
+            return  # 打王模式處理完畢，不進入原有邏輯
+        # ==================== 以下為原有邏輯，完全不變 ====================
 
         # [重啟後重置] 如果是重啟後的第一場戰鬥，強制重置計數器
         if runtimeContext._RESTART_PENDING_BATTLE_RESET:
@@ -4082,12 +4203,73 @@ def Factory():
                 elif self.current_target == 'gohome':
                     self.is_gohome_mode = True
                     return self._fallback_gohome(targetInfoList, ctx)
+                elif self.current_target == 'swipe':
+                    return self.swipe_move(targetInfoList, ctx)
                 else:
                     # position, harken, stair 等
                     return self.resume_navigation(targetInfoList, ctx)
             except Exception as e:
                 logger.error(f"[DungeonMover] 啟動移動發生例外: {e}")
                 return None
+
+        @stoppable
+        def swipe_move(self, targetInfoList: list, ctx):
+            """
+            執行單次滑動或點擊移動，並可選擇性切換技能配置。
+            此方法不開地圖，直接執行動作。
+            """
+            target_info = targetInfoList[0]
+            action = target_info.swipeDir
+            extra = target_info.extra
+            
+            # 1. 處理技能預設切換 (打王支援)
+            if isinstance(extra, int) and 0 <= extra < 10:
+                ctx._AUTO_SKILL_PRESET_INDEX = extra
+                logger.info(f"[DungeonMover] 檢測到打王標記，戰鬥技能將切換至預設: {extra + 1}")
+            
+            # 2. 座標映射
+            coords_map = {
+                "前": {"type": "swipe", "from": [450, 700], "to": [450, 500]},
+                "後": {"type": "swipe", "from": [450, 700], "to": [450, 900]},
+                "左": {"type": "press", "pos": [27,  950]},
+                "右": {"type": "press", "pos": [853, 950]}
+            }
+            
+            try:
+                if isinstance(action, str) and action in coords_map:
+                    cfg = coords_map[action]
+                    if cfg["type"] == "swipe":
+                        logger.info(f"[DungeonMover] 執行 Swipe ({action}): {cfg['from']} -> {cfg['to']}")
+                        Swipe(cfg["from"], cfg["to"])
+                    else:
+                        logger.info(f"[DungeonMover] 執行 Press ({action}): {cfg['pos']}")
+                        Press(cfg["pos"])
+                elif isinstance(action, list):
+                    # 自定義座標
+                    if len(action) == 2 and isinstance(action[0], list):
+                        logger.info(f"[DungeonMover] 執行自定義 Swipe: {action[0]} -> {action[1]}")
+                        Swipe(action[0], action[1])
+                    elif len(action) == 2 and isinstance(action[0], int):
+                        logger.info(f"[DungeonMover] 執行自定義 Press: {action}")
+                        Press(action)
+                    else:
+                        logger.warning(f"[DungeonMover] swipe 目標格式解析失敗: {action}")
+                else:
+                    logger.warning(f"[DungeonMover] 未知的 swipe 動作類型: {action}")
+                
+                Sleep(1)
+                
+            except Exception as e:
+                logger.error(f"[DungeonMover] 執行 swipe 動作時出錯: {e}")
+
+            # 3. 完成目標
+            targetInfoList.pop(0)
+            logger.info(f"[DungeonMover] 已完成 swipe 目標，剩餘目標數: {len(targetInfoList)}")
+            
+            # 設置標誌，確保下一個目標如果不也是 swipe，則重新開地圖
+            ctx._RESTART_OPEN_MAP_PENDING = True
+            
+            return self._cleanup_exit(DungeonState.Map)
         
         def chest_search(self, targetInfoList, ctx):
             """啟動 chest_auto 移動"""
