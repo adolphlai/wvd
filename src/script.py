@@ -160,6 +160,7 @@ SKILL_CATEGORIES = {
     "全體": {"cast_type": "ok", "folder": "全體"},
     "秘術": {"cast_type": "ok", "folder": "秘術"},
     "群控": {"cast_type": "target", "folder": "群控"},
+    "輔助": {"cast_type": "support", "folder": "輔助"},
     "防禦": {"cast_type": "none", "folder": "防禦"},
 }
 
@@ -277,6 +278,19 @@ PHYSICAL_SKILLS = SKILLS_BY_CATEGORY.get("單體", ["unendingdeaths", "動靜斬
 ALL_AOE_SKILLS = SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS
 ALL_SKILLS = CC_SKILLS + SECRET_AOE_SKILLS + FULL_AOE_SKILLS + ROW_AOE_SKILLS + PHYSICAL_SKILLS
 
+# 輔助技能（需要點我方角色）
+SUPPORT_SKILLS = SKILLS_BY_CATEGORY.get("輔助", ["霧消", "法系霧消"])
+
+# 隊伍位置座標映射（使用開鎖時的座標，輔助技能點擊我方角色用）
+PARTY_POSITIONS = {
+    1: [258, 1161],   # 前排左 (whowillopenit=0)
+    2: [516, 1161],   # 前排中 (whowillopenit=1)
+    3: [774, 1161],   # 前排右 (whowillopenit=2)
+    4: [258, 1345],   # 後排左 (whowillopenit=3)
+    5: [516, 1345],   # 後排中 (whowillopenit=4)
+    6: [774, 1345],   # 後排右 (whowillopenit=5)
+}
+
 
 DUNGEON_TARGETS = BuildQuestReflection()
 
@@ -362,17 +376,20 @@ class FarmConfig:
                 if battle_num == 1:
                     skill = char_config.get("skill_first", "")
                     level = char_config.get("level_first", "關閉")
+                    target = char_config.get("target_first")
                 else:
                     skill = char_config.get("skill_after", "")
                     level = char_config.get("level_after", "關閉")
+                    target = char_config.get("target_after")
                 break
 
         # 未配置時返回普攻
         if not skill:
             skill = "attack"
             level = "關閉"
+            target = None
 
-        return skill, level
+        return skill, level, target
 
     def __getattr__(self, name):
         # 當訪問不存在的屬性時，拋出AttributeError
@@ -533,6 +550,7 @@ class RuntimeContext:
     
     # === 打王模式相關 ===
     _AUTO_SKILL_PRESET_INDEX = -1  # 打王模式預設索引 (-1=正常模式, 0-9=打王模式)
+    _BOSS_CHARACTER_ACTION_COUNT = {}  # 打王模式中每個角色的行動次數 {角色名: 行動次數}
 class FarmQuest:
     _DUNGWAITTIMEOUT = 0
     _TARGETINFOLIST = None
@@ -545,7 +563,7 @@ class FarmQuest:
         # 當訪問不存在的屬性時，拋出AttributeError
         raise AttributeError(f"FarmQuest對象沒有屬性'{name}'")
 class TargetInfo:
-    def __init__(self, target: str, swipeDir: list = None, roi=None, extra=None):
+    def __init__(self, target: str, swipeDir: list = None, roi=None, extra=None, wait=1):
         # 安全處理：如果第一個參數是 list，自動展開
         if isinstance(target, list) and len(target) >= 1:
             row = target
@@ -553,12 +571,14 @@ class TargetInfo:
             swipeDir = row[1] if len(row) > 1 else None
             roi = row[2] if len(row) > 2 else None
             extra = row[3] if len(row) > 3 else None
+            wait = row[4] if len(row) > 4 else 1
         
         self.target = target
         self.swipeDir = swipeDir
         # 注意 roi校驗需要target的值. 請嚴格保證roi在最後.
         self.roi = roi
         self.extra = extra  # 用於打王預設索引 (swipe) 或樓層圖片 (harken)
+        self.wait = wait
     @property
     def swipeDir(self):
         return self._swipeDir
@@ -1326,8 +1346,6 @@ def Factory():
         """
         mean_brightness = np.mean(screen)
         is_black = mean_brightness < threshold
-        if is_black:
-            logger.debug(f"[黑屏偵測] 平均亮度: {mean_brightness:.2f} < {threshold}，判定為黑屏")
         return is_black
 
     def GetMatchValue(screenImage, shortPathOfTarget, roi=None):
@@ -3495,7 +3513,7 @@ def Factory():
             return False
         return battle_count > manual_battles
 
-    def cast_skill_by_category(category, skill_name, level="關閉"):
+    def cast_skill_by_category(category, skill_name, level="關閉", target_pos=None):
         """統一的技能施放函數
         
         根據技能類別自動判斷施放方式 (target/ok)，並處理技能等級升級。
@@ -3580,6 +3598,19 @@ def Factory():
             if cast_type == "none":
                 # 直接施放技能 (如：防禦)
                 logger.info(f"[技能施放] {skill_name} 為直接施放技能，完成行動")
+                return True
+            elif cast_type == "support":
+                # 輔助技能：點擊指定我方位置 (1~6)
+                if target_pos and 1 <= target_pos <= 6:
+                    pos = PARTY_POSITIONS.get(target_pos)
+                    if pos:
+                        logger.info(f"[技能施放] 輔助技能 {skill_name}，點擊目標位置 {target_pos}: {pos}")
+                        # 等待技能選擇介面完全顯示（參考其他技能的等待時間）
+                        Sleep(1)
+                        Press(pos)
+                        Sleep(0.5)
+                        return True
+                logger.warning(f"[技能施放] 輔助技能 {skill_name} 未指定有效目標位置 ({target_pos})，不點擊目標")
                 return True
             elif cast_type == "ok":
                 # AOE 類技能：等待並點擊 OK 確認
@@ -3763,9 +3794,19 @@ def Factory():
             
             # 等待 flee 出現
             logger.info("[打王模式] 等待 flee 出現...")
+            flee_seen = False
             for wait_count in range(30):
                 screen = ScreenShot()
                 update_combat_flag(screen)
+                
+                # 檢查戰鬥是否已結束（偵測到其他狀態標誌）
+                end_markers = ['Inn', 'dungFlag', 'mapFlag', 'chestFlag']
+                if any(CheckIf(screen, marker) for marker in end_markers):
+                    logger.info(f"[打王模式] 偵測到戰鬥結束標誌，戰鬥已結束")
+                    runtimeContext._COMBAT_ACTION_COUNT = 0
+                    runtimeContext._AUTO_SKILL_PRESET_INDEX = -1
+                    logger.info("[打王模式] 已重置打王模式")
+                    return
                 
                 # 特殊情況檢測
                 if CheckIf(screen, 'RiseAgain'):
@@ -3779,25 +3820,39 @@ def Factory():
                     return
                 
                 # 偵測黑屏 (戰鬥結束)
+                # [關鍵修正] 只有在已經看到過戰鬥介面 (flee_seen) 之後，黑屏才代表戰鬥結束
                 is_black = IsScreenBlack(screen)
-                if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
-                    logger.info(f"[打王模式] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束")
+                if is_black and flee_seen:
+                    logger.info(f"[打王模式] 偵測到轉場黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束")
                     runtimeContext._COMBAT_ACTION_COUNT = 0
-                    # 戰後加速
-                    spam_click_count = 0
-                    while spam_click_count < 20:
-                        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                            return
+                    
+                    # [重要] 戰鬥結束後重置打王模式索引
+                    runtimeContext._AUTO_SKILL_PRESET_INDEX = -1
+                    logger.info("[打王模式] 戰鬥結束，已重置打王模式")
+                    
+                    # 黑屏打斷：持續點擊直到黑屏結束
+                    logger.info("[打王模式] 開始黑屏打斷，持續點擊...")
+                    click_count = 0
+                    while IsScreenBlack(ScreenShot()):
+                        check_stop_signal()
                         Press([1, 1])
-                        spam_click_count += 1
-                        Sleep(0.3)
-                        scn = ScreenShot()
-                        if not IsScreenBlack(scn):
+                        click_count += 1
+                        Sleep(0.1)
+                        if click_count > 100:  # 防止無限迴圈（最多 10 秒）
+                            logger.warning("[打王模式] 黑屏持續過久，中斷點擊")
                             break
+                    
+                    # 黑屏結束後額外點擊，確保完全過場
+                    logger.info(f"[打王模式] 黑屏結束（點擊了 {click_count} 次），繼續加速過場...")
+                    for _ in range(10):
+                        check_stop_signal()
+                        Press([1, 1])
+                        Sleep(0.3)
                     return
                 
                 if CheckIf(screen, 'flee'):
                     logger.info(f"[打王模式] flee 出現，等待 {wait_count + 1} 次")
+                    flee_seen = True # 標記已看到介面，後續的黑屏才有效
                     break
                 Sleep(0.5)
             else:
@@ -3806,12 +3861,20 @@ def Factory():
             
             # 從預設配置讀取技能
             screen = ScreenShot()
-            battle_num = runtimeContext._COMBAT_BATTLE_COUNT
             current_char = DetectCharacter(screen)
             
+            # [打王模式] 追蹤每個角色的行動次數
+            if current_char not in runtimeContext._BOSS_CHARACTER_ACTION_COUNT:
+                runtimeContext._BOSS_CHARACTER_ACTION_COUNT[current_char] = 0
+            runtimeContext._BOSS_CHARACTER_ACTION_COUNT[current_char] += 1
+            char_action_num = runtimeContext._BOSS_CHARACTER_ACTION_COUNT[current_char]
+            
+            logger.info(f"[打王模式] 角色={current_char}, 第 {char_action_num} 次行動")
+            
             # 獲取預設配置（從配置文件直接讀取，因為 setting._SKILL_PRESETS 未被載入）
-            skill = None
+            skill = "attack"
             level = "關閉"
+            target_pos = None
             
             try:
                 from utils import LoadConfigFromFile
@@ -3822,23 +3885,25 @@ def Factory():
                     config_list = skill_presets[preset_idx]
                     for cfg in config_list:
                         if cfg.get("character") == current_char:
-                            if battle_num == 1:
+                            # [關鍵修改] 改用角色行動次數而非戰鬥場次
+                            if char_action_num == 1:
                                 skill = cfg.get("skill_first", "attack")
                                 level = cfg.get("level_first", "關閉")
-                            else:
+                                target_pos = cfg.get("target_first")
+                            else:  # 第 2 次及以後都用 skill_after
                                 skill = cfg.get("skill_after", "attack")
                                 level = cfg.get("level_after", "關閉")
+                                target_pos = cfg.get("target_after")
                             break
             except Exception as e:
                 logger.error(f"[打王模式] 讀取預設配置失敗: {e}")
             
-            if not skill:
-                skill = "attack"
-            
-            logger.info(f"[打王模式] 角色={current_char}, 第{battle_num}戰, 技能={skill}")
+            logger.info(f"[打王模式] 技能={skill}, 目標位置={target_pos}")
             
             # 判斷技能類別並施放
             category = None
+            is_support_skill = skill in SUPPORT_SKILLS
+            
             if skill and skill != "attack":
                 for cat, skills in SKILLS_BY_CATEGORY.items():
                     if skill in skills:
@@ -3848,7 +3913,8 @@ def Factory():
             if skill == "attack" or not category:
                 use_normal_attack()
             elif skill and category:
-                cast_skill_by_category(category, skill, level)
+                # 統一呼叫技能施放函數，傳入目標位置（輔助技能會用到）
+                cast_skill_by_category(category, skill, level, target_pos)
         
         # ==================== 打王模式判定 (最高優先級) ====================
         if getattr(runtimeContext, '_AUTO_SKILL_PRESET_INDEX', -1) != -1:
@@ -4038,7 +4104,7 @@ def Factory():
                 level = "關閉"
             else:
                 # 從配置取得技能
-                skill, level = setting.get_skill_for_character(current_char, battle_num)
+                skill, level, target_pos = setting.get_skill_for_character(current_char, battle_num)
 
             # 判斷技能類別
             category = None
@@ -4054,8 +4120,8 @@ def Factory():
                 # 使用普攻
                 use_normal_attack()
             elif skill and category:
-                # 有設定技能，使用設定的技能
-                cast_skill_by_category(category, skill, level)
+                # 有設定技能，使用設定的技能 (傳入目標位置)
+                cast_skill_by_category(category, skill, level, target_pos)
 
     # ==================== DungeonMover 類別 ====================
     # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯
@@ -4221,11 +4287,14 @@ def Factory():
             target_info = targetInfoList[0]
             action = target_info.swipeDir
             extra = target_info.extra
+            wait_time = getattr(target_info, 'wait', 1)
             
             # 1. 處理技能預設切換 (打王支援)
             if isinstance(extra, int) and 0 <= extra < 10:
                 ctx._AUTO_SKILL_PRESET_INDEX = extra
-                logger.info(f"[DungeonMover] 檢測到打王標記，戰鬥技能將切換至預設: {extra + 1}")
+                ctx._COMBAT_BATTLE_COUNT = 0  # 重置戰鬥計數器，確保從第 1 戰開始
+                ctx._BOSS_CHARACTER_ACTION_COUNT = {}  # 清空角色行動計數器
+                logger.info(f"[DungeonMover] 檢測到打王標記，戰鬥技能將切換至預設: {extra + 1}，已重置戰鬥計數與角色行動計數")
             
             # 2. 座標映射
             coords_map = {
@@ -4257,14 +4326,59 @@ def Factory():
                 else:
                     logger.warning(f"[DungeonMover] 未知的 swipe 動作類型: {action}")
                 
-                Sleep(1)
+                # 執行自定義等待
+                # 執行自定義等待並持續偵測黑屏
+                logger.info(f"[DungeonMover] 開始等待監控黑屏(戰鬥轉場)，預設時長: {wait_time}s")
+                start_wait = time.time()
+                while (time.time() - start_wait) < wait_time:
+                    check_stop_signal()
+                    
+                    # 獲取當前畫面
+                    scn = ScreenShot()
+                    
+                    # 使用標準全屏亮度偵測 (不修改 IsScreenBlack)
+                    avg_brightness = np.mean(scn)
+                    
+                    if avg_brightness < 20: 
+                        logger.info(f"[DungeonMover] 監控中偵測到轉場黑屏 (亮度: {avg_brightness:.2f})！判定進入戰鬥")
+                        
+                        # 黑屏打斷：持續點擊直到黑屏結束
+                        logger.info("[DungeonMover] 開始黑屏打斷，持續點擊...")
+                        click_count = 0
+                        while IsScreenBlack(ScreenShot()):
+                            check_stop_signal()
+                            Press([1, 1])
+                            click_count += 1
+                            Sleep(0.1)
+                            if click_count > 100:  # 防止無限迴圈（最多 10 秒）
+                                logger.warning("[DungeonMover] 黑屏持續過久，中斷點擊")
+                                break
+                        
+                        # 黑屏結束後額外點擊，確保完全打斷
+                        logger.info(f"[DungeonMover] 黑屏結束（點擊了 {click_count} 次），繼續加速進入戰鬥...")
+                        for _ in range(10):
+                            check_stop_signal()
+                            Press([1, 1])
+                            Sleep(0.3)
+                        
+                        # 移除目標並返回戰鬥狀態
+                        if targetInfoList:
+                            targetInfoList.pop(0)
+                        ctx._RESTART_OPEN_MAP_PENDING = True
+                        return self._cleanup_exit(DungeonState.Combat)
+                    
+                    time.sleep(0.1)
+                
+                # 正常完成處理 (若循環中未因黑屏 return)
+                logger.info(f"[DungeonMover] 監控結束，未偵測到黑屏")
                 
             except Exception as e:
                 logger.error(f"[DungeonMover] 執行 swipe 動作時出錯: {e}")
 
-            # 3. 完成目標
-            targetInfoList.pop(0)
-            logger.info(f"[DungeonMover] 已完成 swipe 目標，剩餘目標數: {len(targetInfoList)}")
+            # 3. 完成目標 (移出 try 塊，確保無論成功與否都嘗試 pop)
+            if targetInfoList:
+                targetInfoList.pop(0)
+                logger.info(f"[DungeonMover] 已完成目標，剩餘目標數: {len(targetInfoList)}")
             
             # 設置標誌，確保下一個目標如果不也是 swipe，則重新開地圖
             ctx._RESTART_OPEN_MAP_PENDING = True

@@ -840,8 +840,9 @@ class ConfigPanelApp(tk.Toplevel):
                   foreground="gray").grid(row=1, column=0, columnspan=8, sticky=tk.W, pady=(2, 8))
 
         # 類別選項與等級選項
-        category_options = ["", "普攻", "防禦", "單體", "橫排", "全體", "秘術", "群控"]
+        category_options = ["", "普攻", "防禦", "輔助", "單體", "橫排", "全體", "秘術", "群控"]
         level_options = ["關閉", "LV2", "LV3", "LV4", "LV5", "LV6", "LV7", "LV8", "LV9"]
+        target_options = ["無", "1", "2", "3", "4", "5", "6"]
         char_options = [""] + AVAILABLE_CHARACTERS
 
         # 表頭
@@ -851,12 +852,13 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_char_skill, text="類別", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=2, sticky=tk.W, padx=2)
         ttk.Label(frame_char_skill, text="技能", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=3, sticky=tk.W, padx=2)
         ttk.Label(frame_char_skill, text="等級", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=4, sticky=tk.W, padx=2)
+        ttk.Label(frame_char_skill, text="目標", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=5, sticky=tk.W, padx=2)
 
         # 6 組角色配置，每組 2 行（首戰、二戰後）
         self.character_skill_groups = []  # 儲存6組配置的控件引用
         self.skill_combos_all = []  # 用於 set_controls_state
 
-        def make_category_callback(group_idx, battle_type, category_var, skill_var, skill_combo):
+        def make_category_callback(group_idx, battle_type, category_var, skill_var, skill_combo, target_combo=None):
             """類別變更時更新技能下拉選單"""
             def callback(event=None):
                 category = category_var.get()
@@ -875,7 +877,16 @@ class ConfigPanelApp(tk.Toplevel):
                     if skill_var.get() not in skill_options:
                         skill_var.set("")
 
-                skill_combo['values'] = skill_options
+                if skill_combo:
+                    skill_combo['values'] = skill_options
+                
+                # 只有輔助類型可以選目標
+                if target_combo:
+                    if category == "輔助":
+                        target_combo.configure(state="readonly")
+                    else:
+                        target_combo.configure(state="disabled")
+                
                 self._save_skill_config()
             return callback
 
@@ -894,9 +905,11 @@ class ConfigPanelApp(tk.Toplevel):
                 'category_first_var': tk.StringVar(value=""),
                 'skill_first_var': tk.StringVar(value=group_config.get("skill_first", "")),
                 'level_first_var': tk.StringVar(value=group_config.get("level_first", "關閉")),
+                'target_first_var': tk.StringVar(value=str(group_config.get("target_first", "無"))),
                 'category_after_var': tk.StringVar(value=""),
                 'skill_after_var': tk.StringVar(value=group_config.get("skill_after", "")),
                 'level_after_var': tk.StringVar(value=group_config.get("level_after", "關閉")),
+                'target_after_var': tk.StringVar(value=str(group_config.get("target_after", "無"))),
             }
 
             # === 首戰行 ===
@@ -927,18 +940,25 @@ class ConfigPanelApp(tk.Toplevel):
             skill_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
             group_data['skill_first_combo'] = skill_first_combo
 
-            # 更新 category callback 的 skill_combo 引用
-            category_first_combo.unbind("<<ComboboxSelected>>")
-            category_first_combo.bind("<<ComboboxSelected>>", make_category_callback(
-                group_idx, "first", group_data['category_first_var'],
-                group_data['skill_first_var'], skill_first_combo))
-
             # 首戰等級
             level_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['level_first_var'],
                                              values=level_options, state="readonly", width=5)
             level_first_combo.grid(row=first_grid_row, column=4, padx=2, sticky=tk.W, pady=2)
             level_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
             group_data['level_first_combo'] = level_first_combo
+
+            # 首戰目標
+            target_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['target_first_var'],
+                                              values=target_options, state="readonly", width=4)
+            target_first_combo.grid(row=first_grid_row, column=5, padx=2, sticky=tk.W, pady=2)
+            target_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
+            group_data['target_first_combo'] = target_first_combo
+
+            # 更新 category callback 的 skill_combo 與 target_combo 引用
+            category_first_combo.unbind("<<ComboboxSelected>>")
+            category_first_combo.bind("<<ComboboxSelected>>", make_category_callback(
+                group_idx, "first", group_data['category_first_var'],
+                group_data['skill_first_var'], skill_first_combo, target_first_combo))
 
             # === 二戰後行 ===
             after_grid_row = header_row + 2 + group_idx * 2
@@ -962,11 +982,6 @@ class ConfigPanelApp(tk.Toplevel):
             skill_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
             group_data['skill_after_combo'] = skill_after_combo
 
-            # 綁定二戰後類別 callback
-            category_after_combo.bind("<<ComboboxSelected>>", make_category_callback(
-                group_idx, "after", group_data['category_after_var'],
-                group_data['skill_after_var'], skill_after_combo))
-
             # 二戰後等級
             level_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['level_after_var'],
                                              values=level_options, state="readonly", width=5)
@@ -974,21 +989,33 @@ class ConfigPanelApp(tk.Toplevel):
             level_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
             group_data['level_after_combo'] = level_after_combo
 
+            # 二戰後目標
+            target_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['target_after_var'],
+                                              values=target_options, state="readonly", width=4)
+            target_after_combo.grid(row=after_grid_row, column=5, padx=2, sticky=tk.W, pady=2)
+            target_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
+            group_data['target_after_combo'] = target_after_combo
+
+            # 綁定二戰後類別 callback
+            category_after_combo.bind("<<ComboboxSelected>>", make_category_callback(
+                group_idx, "after", group_data['category_after_var'],
+                group_data['skill_after_var'], skill_after_combo, target_after_combo))
+
             self.character_skill_groups.append(group_data)
 
             # 收集所有 combo 控件供 set_controls_state 使用
             self.skill_combos_all.extend([
-                char_combo, category_first_combo, skill_first_combo, level_first_combo,
-                category_after_combo, skill_after_combo, level_after_combo
+                char_combo, category_first_combo, skill_first_combo, level_first_combo, target_first_combo,
+                category_after_combo, skill_after_combo, level_after_combo, target_after_combo
             ])
 
             # 初始化：反推類別
             self._init_skill_combo_from_saved(
                 group_config.get("skill_first", ""),
-                group_data['category_first_var'], skill_first_combo)
+                group_data['category_first_var'], skill_first_combo, target_first_combo)
             self._init_skill_combo_from_saved(
                 group_config.get("skill_after", ""),
-                group_data['category_after_var'], skill_after_combo)
+                group_data['category_after_var'], skill_after_combo, target_after_combo)
 
     def _migrate_old_skill_config(self, old_config):
         """將舊版 dict 格式配置遷移到新版 list 格式"""
@@ -1013,7 +1040,7 @@ class ConfigPanelApp(tk.Toplevel):
 
         return result
 
-    def _init_skill_combo_from_saved(self, saved_skill, category_var, skill_combo):
+    def _init_skill_combo_from_saved(self, saved_skill, category_var, skill_combo, target_combo=None):
         """根據儲存的技能反推類別並初始化下拉選單"""
         if saved_skill:
             if saved_skill == "attack":
@@ -1033,6 +1060,13 @@ class ConfigPanelApp(tk.Toplevel):
         else:
             category_var.set("")
             skill_combo['values'] = [""]
+        
+        # 初始化目標欄位狀態
+        if target_combo:
+            if category_var.get() == "輔助":
+                target_combo.configure(state="readonly")
+            else:
+                target_combo.configure(state="disabled")
 
     def _save_skill_config(self):
         """儲存技能配置（列表格式，共6組）"""
@@ -1042,8 +1076,10 @@ class ConfigPanelApp(tk.Toplevel):
                 "character": group_data['char_var'].get(),
                 "skill_first": group_data['skill_first_var'].get(),
                 "level_first": group_data['level_first_var'].get(),
+                "target_first": int(group_data['target_first_var'].get()) if group_data['target_first_var'].get().isdigit() else None,
                 "skill_after": group_data['skill_after_var'].get(),
                 "level_after": group_data['level_after_var'].get(),
+                "target_after": int(group_data['target_after_var'].get()) if group_data['target_after_var'].get().isdigit() else None,
             })
         # 更新預設列表中的對應項
         idx = self.current_skill_preset_index_var.get()
@@ -1060,23 +1096,27 @@ class ConfigPanelApp(tk.Toplevel):
                 group_data['char_var'].set(cfg.get("character", ""))
                 group_data['skill_first_var'].set(cfg.get("skill_first", ""))
                 group_data['level_first_var'].set(cfg.get("level_first", "關閉"))
+                group_data['target_first_var'].set(str(cfg.get("target_first", "無")) if cfg.get("target_first") else "無")
                 group_data['skill_after_var'].set(cfg.get("skill_after", ""))
                 group_data['level_after_var'].set(cfg.get("level_after", "關閉"))
+                group_data['target_after_var'].set(str(cfg.get("target_after", "無")) if cfg.get("target_after") else "無")
                 
                 # 初始化類別反推
                 self._init_skill_combo_from_saved(
                     cfg.get("skill_first", ""),
-                    group_data['category_first_var'], group_data['skill_first_combo'])
+                    group_data['category_first_var'], group_data['skill_first_combo'], group_data.get('target_first_combo'))
                 self._init_skill_combo_from_saved(
                     cfg.get("skill_after", ""),
-                    group_data['category_after_var'], group_data['skill_after_combo'])
+                    group_data['category_after_var'], group_data['skill_after_combo'], group_data.get('target_after_combo'))
             else:
                 # 預設清空
                 group_data['char_var'].set("")
                 group_data['skill_first_var'].set("")
                 group_data['level_first_var'].set("關閉")
+                group_data['target_first_var'].set("無")
                 group_data['skill_after_var'].set("")
                 group_data['level_after_var'].set("關閉")
+                group_data['target_after_var'].set("無")
                 group_data['category_first_var'].set("")
                 group_data['category_after_var'].set("")
 
