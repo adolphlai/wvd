@@ -1012,6 +1012,23 @@ def Factory():
                     logger.info("pyscrcpy 串流重啟成功")
                 else:
                     logger.warning("pyscrcpy 串流重啟失敗，將使用傳統 ADB 截圖")
+            
+            # NOTE: ADB 重連後，檢查並啟動遊戲進程
+            # 修復：模擬器可能因崩潰重啟，遊戲進程需要重新啟動
+            package_name = "jp.co.drecom.wizardry.daphne"
+            try:
+                result = setting._ADBDEVICE.shell(f"pidof {package_name}", timeout=3)
+                if not result.strip():
+                    logger.info("遊戲未在前台運行，正在啟動遊戲...")
+                    try:
+                        mainAct = setting._ADBDEVICE.shell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
+                    except Exception:
+                        mainAct = f"{package_name}/.MainActivity"
+                    setting._ADBDEVICE.shell(f"am start -n {mainAct}")
+                    logger.info("巫術, 啓動!")
+                    time.sleep(5)  # 等待遊戲啟動
+            except Exception as e:
+                logger.warning(f"檢查/啟動遊戲失敗: {e}")
     def DeviceShell(cmdStr):
         logger.trace(f"[DeviceShell] {cmdStr}")
         MAX_ADB_RETRIES = 5  # 最大重試次數
@@ -2066,12 +2083,13 @@ def Factory():
         pass
     def RestartableSequenceExecution(*operations):
         MonitorState.current_state = "Starting"
-        # 確保遊戲進程監控已啟動
-        if not hasattr(setting, '_GAME_CRASHED') or not (_game_monitor_thread and _game_monitor_thread.is_alive()):
-            _start_game_monitor()
         MAX_RESTART_RETRIES = 50# 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
+            # NOTE: 每次循環開始時都檢查 GameMonitor 是否存活
+            # 修復：之前只在循環外檢查一次，導致重啟後 GameMonitor 沒有重新啟動
+            if not hasattr(setting, '_GAME_CRASHED') or not (_game_monitor_thread and _game_monitor_thread.is_alive()):
+                _start_game_monitor()
             # 每一輪開始前，將重啟標記清空，表示已進入正式執行階段
             runtimeContext._IN_RESTART = False
             try:
@@ -3063,21 +3081,6 @@ def Factory():
     def StateEoT():
         MonitorState.current_state = "EoT"
         MonitorState.current_target = ""
-        
-        # NOTE: 重啟後狀態檢查
-        # 遊戲重啟後可能在標題畫面，需要先通過 IdentifyState 處理
-        # 這會利用 counter>=4 的異常處理機制來處理各種意外狀況
-        logger.info("[StateEoT] 開始執行，先確認當前狀態...")
-        scn = ScreenShot()
-        # 檢查是否在城鎮邊緣（EoT 的前提條件）
-        if not CheckIf(scn, 'EdgeOfTown') and not CheckIf(scn, 'DH'):
-            logger.info("[StateEoT] 未偵測到城鎮標誌，呼叫 IdentifyState 處理...")
-            state, dungeon_state, _ = IdentifyState()
-            if state != State.EoT:
-                # 識別到其他狀態，拋出 RestartSignal 讓主循環重新判斷
-                logger.info(f"[StateEoT] 識別到 {state}，重新進入主循環")
-                raise RestartSignal()
-        
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
                 pass
@@ -3117,19 +3120,12 @@ def Factory():
                                     break
                     
                     if not click_success:
-                        # 3 次都失敗，使用 IdentifyState 的異常處理機制
-                        logger.error(f"[StateEoT] 點擊 {info[1]} 失敗 {MAX_CLICK_ATTEMPTS} 次，啟動異常處理")
-                        # NOTE: 呼叫 IdentifyState 讓 counter 機制處理意外狀況
-                        # 這會觸發 counter>=4 時的各種 fallback 操作
-                        state, dungeon_state, screen = IdentifyState()
-                        if state == State.EoT:
-                            # 如果識別回 EoT，說明還在正確流程，繼續嘗試
-                            logger.info("[StateEoT] 異常處理後仍在 EoT 狀態，繼續嘗試")
-                            continue
-                        else:
-                            # 如果識別到其他狀態，讓主循環接手
-                            logger.info(f"[StateEoT] 異常處理後識別到 {state}，結束 EOT")
-                            return
+                        # 3 次都失敗，返回村莊
+                        logger.error(f"[StateEoT] 點擊 {info[1]} 失敗 {MAX_CLICK_ATTEMPTS} 次，返回村莊")
+                        PressReturn()
+                        Sleep(1)
+                        # 由村莊邏輯接手，直接返回讓 IdentifyState 重新識別
+                        return
                         
             Sleep(1)  # 每個操作後等待遊戲響應
         Sleep(1)
