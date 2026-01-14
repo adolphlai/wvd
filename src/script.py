@@ -2348,8 +2348,10 @@ def Factory():
                     except:
                         continue
             
+
             MonitorState.flag_combatActive = int(max_combat_val * 100)
             MonitorState.flag_updates['combatActive'] = time.time()
+
 
             # 如果預先計算發現是戰鬥狀態 (>0.7)，直接返回，不用再跑後面的迴圈
             if max_combat_val >= 0.70:
@@ -2363,6 +2365,24 @@ def Factory():
                  MonitorState.current_state = "Dungeon"
                  MonitorState.current_dungeon_state = "Combat"
                  return State.Dungeon, DungeonState.Combat, screen
+
+            # [Fix] 檢查復活相關狀態 (恢復原Upstream順序: 戰鬥檢測後)
+            if CheckIf(screen, 'RiseAgain'):
+                logger.info("[狀態識別] 偵測到 RiseAgain")
+                RiseAgainReset(reason='combat')
+                counter += 1
+                continue
+
+            if CheckIf(screen, 'someonedead'):
+                AddImportantInfo("他們活了,活了!")
+                runtimeContext._COUNTERDEATH += 1
+                MonitorState.death_count = runtimeContext._COUNTERDEATH
+                for _ in range(5):
+                    # 點擊隨機位置嘗試互動
+                    Press([400+random.randint(0,100),750+random.randint(0,100)])
+                    Sleep(1)
+                # 點擊後繼續循環，重新截圖判斷狀態
+                continue
 
             # 偵測到 AUTO 時，持續點擊直到消失
             MonitorState.flag_auto_text = GetMatchValue(screen, 'AUTO')
@@ -3043,6 +3063,21 @@ def Factory():
     def StateEoT():
         MonitorState.current_state = "EoT"
         MonitorState.current_target = ""
+        
+        # NOTE: 重啟後狀態檢查
+        # 遊戲重啟後可能在標題畫面，需要先通過 IdentifyState 處理
+        # 這會利用 counter>=4 的異常處理機制來處理各種意外狀況
+        logger.info("[StateEoT] 開始執行，先確認當前狀態...")
+        scn = ScreenShot()
+        # 檢查是否在城鎮邊緣（EoT 的前提條件）
+        if not CheckIf(scn, 'EdgeOfTown') and not CheckIf(scn, 'DH'):
+            logger.info("[StateEoT] 未偵測到城鎮標誌，呼叫 IdentifyState 處理...")
+            state, dungeon_state, _ = IdentifyState()
+            if state != State.EoT:
+                # 識別到其他狀態，拋出 RestartSignal 讓主循環重新判斷
+                logger.info(f"[StateEoT] 識別到 {state}，重新進入主循環")
+                raise RestartSignal()
+        
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
                 pass
@@ -3082,12 +3117,19 @@ def Factory():
                                     break
                     
                     if not click_success:
-                        # 3 次都失敗，返回村莊
-                        logger.error(f"[StateEoT] 點擊 {info[1]} 失敗 {MAX_CLICK_ATTEMPTS} 次，返回村莊")
-                        PressReturn()
-                        Sleep(1)
-                        # 由村莊邏輯接手，直接返回讓 IdentifyState 重新識別
-                        return
+                        # 3 次都失敗，使用 IdentifyState 的異常處理機制
+                        logger.error(f"[StateEoT] 點擊 {info[1]} 失敗 {MAX_CLICK_ATTEMPTS} 次，啟動異常處理")
+                        # NOTE: 呼叫 IdentifyState 讓 counter 機制處理意外狀況
+                        # 這會觸發 counter>=4 時的各種 fallback 操作
+                        state, dungeon_state, screen = IdentifyState()
+                        if state == State.EoT:
+                            # 如果識別回 EoT，說明還在正確流程，繼續嘗試
+                            logger.info("[StateEoT] 異常處理後仍在 EoT 狀態，繼續嘗試")
+                            continue
+                        else:
+                            # 如果識別到其他狀態，讓主循環接手
+                            logger.info(f"[StateEoT] 異常處理後識別到 {state}，結束 EOT")
+                            return
                         
             Sleep(1)  # 每個操作後等待遊戲響應
         Sleep(1)
@@ -3834,9 +3876,12 @@ def Factory():
                     return
                 
                 if CheckIf(screen, 'someonedead'):
-                    logger.info("[打王模式] 偵測到有人死亡")
-                    Press(CheckIf(screen, 'someonedead'))
-                    return
+                    logger.info("[打王模式] 偵測到有人死亡，嘗試多次點擊以推進對話...")
+                    # 仿照 Upstream: 隨機偏移點擊 5 次，確保過場動畫/對話被跳過
+                    for _ in range(5):
+                        Press([400+random.randint(0,100), 750+random.randint(0,100)])
+                        Sleep(1)
+                    continue
                 
                 # 偵測黑屏 (戰鬥結束)
                 # [關鍵修正] 只有在已經看到過戰鬥介面 (flee_seen) 之後，黑屏才代表戰鬥結束
@@ -3975,7 +4020,11 @@ def Factory():
                 RiseAgainReset(reason='combat')
                 return IdentifyState()
             if CheckIf(screen, 'someonedead'):
-                logger.info("[戰鬥] flee 等待中偵測到 someonedead，中斷並處理死亡")
+                logger.info("[戰鬥] flee 等待中偵測到 someonedead，嘗試多次點擊以推進對話")
+                # 仿照 Upstream: 隨機偏移點擊 5 次，確保過場動畫/對話被跳過
+                for _ in range(5):
+                    Press([400+random.randint(0,100), 750+random.randint(0,100)])
+                    Sleep(1)
                 return IdentifyState()
             if Press(CheckIf(screen, 'returnText')) or Press(CheckIf(screen, 'ReturnText')):
                 logger.info("[戰鬥] flee 等待中偵測到 returnText，中斷並處理對話")
@@ -4133,6 +4182,7 @@ def Factory():
                 # 使用第一個可用的單體技能
                 skill = PHYSICAL_SKILLS[0] if PHYSICAL_SKILLS else "attack"
                 level = "關閉"
+                target_pos = None  # [修復] 初始化 target_pos 避免 UnboundLocalError
             else:
                 # 從配置取得技能
                 skill, level, target_pos = setting.get_skill_for_character(current_char, battle_num)
@@ -4770,6 +4820,12 @@ def Factory():
                     # 在監控中途如果遇到能見度過低
                     if CheckIf(screen_pre, 'visibliityistoopoor'):
                         logger.warning("[DungeonMover] 移動中偵測到能見度過低")
+                    
+                    # [新增] 移動中死亡偵測
+                    if CheckIf(screen_pre, 'RiseAgain'):
+                        logger.info("[DungeonMover] 移動中偵測到 RiseAgain (死亡)")
+                        RiseAgainReset(reason='combat')
+                        return None
                         resume_pos = CheckIf(screen_pre, 'resume')
                         if resume_pos:
                             logger.info(f"[DungeonMover] 點擊 Resume 嘗試脫困: {resume_pos}")
@@ -5106,6 +5162,12 @@ def Factory():
             if max_combat_val >= 0.70:
                 logger.info(f"[DungeonMover] 偵測到戰鬥狀態 (匹配度 {max_combat_val*100:.2f}%)")
                 return DungeonState.Combat
+            
+            # [新增] 檢查死亡狀態
+            if CheckIf(screen, 'RiseAgain'):
+                logger.info("[DungeonMover] 偵測到死亡狀態 (RiseAgain)")
+                RiseAgainReset(reason='combat')
+                return None
             
             # 檢查寶箱狀態
             if CheckIf(screen, 'chestFlag') or CheckIf(screen, 'whowillopenit'):
