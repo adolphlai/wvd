@@ -1,0 +1,399 @@
+{
+    "GoblinCave":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]狼洞1f寶箱",
+        "_TARGETINFOLIST":[
+            ["chest_auto"],		
+            ["position","右上",[771,921]]		
+        ],
+        "_preEOTcheck":"AWD/AWD",
+        "_EOT":
+        [
+            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],2],
+            ["press","AWD/AWD1F",[1,1],2]
+        ]
+    },
+	
+    "AWD":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]狼洞2f寶箱",
+        "_TARGETINFOLIST":[
+            ["chest_auto"],
+            ["position","右下",[766,974]]
+        ],
+        "_preEOTcheck":"AWD/AWD",
+        "_EOT":
+        [
+            ["press","intoWorldMap",["AWD/AWD","input swipe 400 400 500 500"],2],
+            ["press","AWD/AWD2F",[1,1],2]
+        ]
+    },
+    "DH-Church1":{
+        "_TYPE":"dungeon",
+        "questName":"[打王]深雪教會區",
+        "_TARGETINFOLIST":[
+            ["position","右下",[872,976]],
+            ["position","右上",[820,712]]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","stair_DH_Church","input swipe 650 900 650 250",2]
+        ]
+    },	
+    "DH-Church":{
+        "_TYPE":"dungeon",
+        "questName":"[刷怪+寶箱]深雪教會區",
+        "_TARGETINFOLIST":[
+            ["position","左下",[240,810]],
+            ["position","左下",[130,400]],
+            ["chest","左上",[[0,0,900,1600],[210,0,410,775]]],	
+            ["chest","右上",[[0,0,900,1600],[0,0,344,790],[0,1044,225,1251]]],		
+            ["position","右上",[500,930]],
+            ["position","右上",[820,712]]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","stair_DH_Church","input swipe 650 900 650 250",2]
+        ]
+    },
+    "Dist":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]水路一號街",
+		"_TARGETINFOLIST":[
+            ["harken","右上",[[769,874,875,942]],"DH-R5-harken"],
+            ["harken","左上",null]
+        ],
+        "_EOT":[
+            ["press","TradeWaterway",["EdgeOfTown",[1,1]],1],
+            ["press","Dist","input swipe 650 250 650 900",1]
+        ]
+    },
+
+    "lounge":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]水路船二lounge",
+        "_TARGETINFOLIST":[
+            ["stair_lounge","左上",[292,394]],
+            ["chest","左上",[[0,0,900,739],[0,529,212,106]]],
+            ["stair_shiphold","左上",[292,394]],
+            ["harken",null,null]
+        ],
+        "_EOT":[
+            ["press","TradeWaterway",["EdgeOfTown",[1,1]],1],
+            ["press","shiphold",[1,1],1]
+        ]
+    },
+
+    "fortress-B1F":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]要塞一層",
+        "_TARGETINFOLIST":[
+            ["chest","左下",[[0,305,900,965]]],
+            ["harken","左下",null]
+        ],
+        "_EOT":[
+            ["press","impregnableFortress",["EdgeOfTown",[1,1]],1],
+            ["press","fortressb1f","input swipe 650 250 650 900",1]
+        ]
+    },
+
+    "fortress-B8F":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]要塞八層",
+        "_TARGETINFOLIST":[
+            ["stair_fortress1f","左上",[720,395]],
+            ["position","左下",[453,865]],
+            ["chest","左下",[[1,783,900,376],[1,839,423,362]]],
+            ["position","右下",[500,918]],
+            ["chest","右下",[[1,783,900,500]]],
+            ["stair_fortressGate","左下", [720,1027]],
+            ["position","左下",[720,1241]]
+        ],
+        "_EOT":[
+            ["press","impregnableFortress",["EdgeOfTown",[1,1]],1],
+            ["press","fortressEntrance","input swipe 650 250 650 900",1]
+        ]
+    },
+
+    "DH-entrance":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]深雪六樓自動寶箱",
+        "_TARGETINFOLIST":[
+            ["chest_auto"],
+            ["position","右上",[825,920]]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],2],
+            ["press","DH-R6","input swipe 650 250 650 900",2]
+        ]
+    },
+    "DH-6f":{
+        "_TYPE":"dungeon",
+        "questName":"*新!*[寶箱+刷怪]深雪R6",
+        "_TARGETINFOLIST":[
+            ["position","右下",[506,1243]],
+            ["position","右下",[768,660]],
+            ["chest","右下",[[426,271,900,1600]]],
+            ["position","左上",[35,707]],
+            ["position","左下",[816,605]],
+            ["position","左下",[80,873]],	
+            ["position","左下",[821,821]],			
+            ["chest","左下",[[0,0,900,1600]]],
+            ["chest","右下",[[0,0,424,1256]]],			
+            ["minimap_stair","右下",[88,1242],"DH-R5-minimap"],
+            ["harken", "左上",null]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],1],
+            ["press","DH-R6","input swipe 650 250 650 900",1]
+        ]
+    },
+
+    "DH-6f-right":{
+        "_TYPE":"dungeon",
+        "questName":"*新!*深雪R6右側及下方箱子",
+        "_TARGETINFOLIST":[
+            ["position","右下",[506,1243]],
+            ["position","右下",[768,660]],
+            ["chest","右下",[[426,271,900,1600]]],
+            ["position","左上",[35,707]],
+            ["position","左下",[816,605]],
+            ["position","左下",[80,873]],	
+            ["position","左下",[821,821]],			
+            ["chest","左下",[[0,0,900,1600]]],
+            ["chest","右下",[[0,0,424,1256]]],			
+            ["stair_DH_R5", "右下",[73,1240]],
+            ["harken", "左上",null]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],1],
+            ["press","DH-R6","input swipe 650 250 650 900",1]
+        ]
+    },
+
+
+    "fordraig-B3F":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]鳥洞三層fordraigB3F",
+        "_TARGETINFOLIST":[
+            ["chest",null],
+            ["harken",[[100,1200,700,100],[700,800,100,800],[400,100,400,1200],[100,800,700,800],[400,1200,400,100]]]
+        ],
+        "_preEOTcheck":"fordraig/B3F",
+        "_EOT":[
+            ["press","intoWorldMap",["fordraig/labyrinthOfFordraig","input swipe 450 150 500 150"],2],
+            ["press","fordraig/B3F",["fordraig/labyrinthOfFordraig",[1,1]],1]
+        ]
+    },
+
+    "SSC_chest":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]忍洞一層寶箱",
+        "_TARGETINFOLIST":[
+	        ["chest","右上",[[0,0,900,1600],[0,0,407,1600]]],
+            ["chest","右下",[[0,0,900,1600],[0,0,900,800]]],
+	        ["chest","左上",[[0,0,900,1600],[640,0,260,1600],[506,0,200,700]]],
+            ["chest","左下",[[0,0,900,1600],[650,0,250,811],[507,166,179,165]]],
+            ["SSC/SSC_quit","左下","default"]
+        ],
+        "_preEOTcheck":"SSC/SSC",
+        "_EOT":[
+            ["press","intoWorldMap",["SSC/SSC","input swipe 700 500 600 600"],1]
+        ]
+    },
+
+    "LBC":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]盧比肯寶箱",
+        "_TARGETINFOLIST":[
+            ["chest"],
+            ["LBC/LBC_quit"]
+        ],
+        "_preEOTcheck":"LBC/LBC",
+        "_EOT":
+        [
+            ["press","intoWorldMap",["LBC/LBC","input swipe 400 400 400 500"],1]
+        ]
+    },
+
+    "GHB":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]百花之庭固定怪",
+        "_TARGETINFOLIST":[
+            ["position","左上",[80,450]],
+            ["position","右上",[340,450]],
+            ["position","右上",[550,290]],
+            ["position","右上",[230,1030]],
+            ["position","左下",[240,860]],
+            ["chest","左下",null],
+            ["chest","左上",null],
+            ["chest","右上",null],
+            ["chest","右下",null],
+            ["GHB/GHB_quit","左下","default"]
+        ],
+        "_preEOTcheck":"GHB/GHB",
+        "_EOT":[
+            ["press","intoWorldMap",["GHB/GHB","input swipe 400 500 450 550"],1]
+        ]
+    },
+
+    "COS_chest":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]離別洞窟",
+        "_TARGETINFOLIST":[
+            ["chest","左上",null],
+            ["chest","右上",null],
+            ["stair_3","左上",[720,822]],
+            ["chest","左上",null],
+            ["chest","左下",null],
+            ["stair_2","左下",[827,547]],
+            ["harken","左下",null]
+        ],
+        "_EOT":[
+            ["press","COS/COS",["EdgeOfTown",[1,1]],1],
+            ["press","COS/COSB2F",[1,1],1]
+        ]
+    },
+
+    "COS_chest_short":{
+        "_TYPE":"dungeon",
+        "questName":"[寶箱]離別洞窟(只刷2f)",
+        "_TARGETINFOLIST":[
+            ["chest","左上",null],
+            ["chest","右上",null],
+            ["harken","左下",null]
+        ],
+        "_EOT":[
+            ["press","COS/COS",["EdgeOfTown",[1,1]],1],
+            ["press","COS/COSB2F",[1,1],1]
+        ]
+    },
+
+
+    "DOE":{
+        "_TYPE":"dungeon",
+        "questName":"[礦石]土洞(5-9)",
+        "_EOT":[
+            ["press","DOE",["EdgeOfTown",[1,1]],1],
+            ["press","DOEB1F",[1,1],1]
+        ],
+        "_TARGETINFOLIST":
+        [
+            ["position", "右下", [713,1027]],
+            ["chest","右下",[[421,768,479,480]]],
+            ["DOE_quit"]
+        ]
+    },
+
+    "DOF": {
+        "_TYPE":"dungeon",
+        "questName":"[礦石]火洞(10-14)",
+        "_TARGETINFOLIST":[
+            ["position","左下",[347,866]],
+            ["position","左下",[400,1183]],
+            ["chest","左下",[[0,783,480,480],[371,888,127,118]]],
+            ["DOF_quit"]
+        ],
+        "_EOT":[
+            ["press","DOF",["EdgeOfTown",[1,1]],1],
+            ["press","DOFB1F",[1,1],1]
+        ]
+    },
+
+    "DOW":{
+        "_TYPE":"dungeon",
+        "questName":"[礦石]風洞(15-19)",
+        "_TARGETINFOLIST":[
+        ["chest",[[700,1200,100,100]],[[0,780,900,500],[0,780,150,120]]],
+        ["DOW_quit",[[700,1200,100,100]],null]
+        ],
+        "_EOT":[
+            ["press","DOW",["EdgeOfTown",[1,1]],1],
+            ["press","DOWB1F",[1,1],1]
+        ]
+    },
+    
+    "DOL":{
+        "_TYPE":"dungeon",
+        "questName":"[礦石]光洞(15-19)",
+        "_EOT":[
+            ["press","DOL",["EdgeOfTown",[1,1]],1],
+            ["press","DOLB1F",[1,1],1]
+        ],
+        "_TARGETINFOLIST":
+        [
+            ["chest","右下",[[419,304,481,485]]],
+            ["position", "右下", [552,599]],
+            ["position", "右下", [662,546]],
+            ["position", "右下", [819,333]]
+        ]
+    },
+
+    "7000G":{
+        "questName":"[金幣]7000G",
+        "_TYPE":"quest"
+    },
+
+    "fordraig":{
+        "questName":"[任務]角鷲之劍 fordraig",
+        "_TYPE":"quest"
+    },
+
+    "darkLight":{
+        "questName":"[裝備]暗燈",
+        "_TYPE":"quest"
+    },
+
+    "LBC-oneGorgon":{
+        "questName":"[任務]盧比肯 三牛",
+        "_TYPE":"quest"
+    },
+
+    "SSC-goldenchest":{
+        "questName":"[任務]忍洞一層 金箱",
+        "_TYPE":"quest"
+    },
+
+    "CaveOfSeperation":{
+        "questName":"[任務]離別洞窟 約定之劍",
+        "_TYPE":"quest"
+    },
+
+    "Scorpionesses":{
+        "questName":"[懸賞+金幣]懸賞點數: 蠍女",
+        "_TYPE":"quest"
+    },
+
+    "steeltrail":{
+        "questName":"[酒]鋼試煉",
+        "_TYPE":"quest"
+    },
+
+    "jier":{
+        "questName":"[刷怪]懸賞點數: 吉爾",
+        "_TYPE":"quest"
+    },
+
+    "gaintKiller":{
+        "questName":"[刷怪]要塞7f刷巨人",
+        "_TYPE":"quest",
+        "_SPELLSEQUENCE":{
+            "LACONES":["LACONES","LACONES","LACONES","defend"],
+            "居合":["defend","居合"]
+        }
+	},
+    "TestMinimapStair":{
+        "_TYPE":"dungeon",
+        "questName":"[測試]小地圖樓梯偵測",
+        "_TARGETINFOLIST":[
+            ["minimap_stair","右上",[285,235],"DH-R6-minimap"],
+            ["minimap_stair","右下",[88,1242],"DH-R5-minimap"],			
+            ["harken","左上",null]
+        ],
+        "_EOT":[
+            ["press","DH",["EdgeOfTown",[1,1]],1],
+            ["press","DH-R5","input swipe 650 250 650 900",1]
+        ]
+    }
+
+}
