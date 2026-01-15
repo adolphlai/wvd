@@ -1517,9 +1517,14 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_editor, text="※ 先在 editor/ 目錄執行 npm run dev，然後連接 ws://localhost:8765", foreground="gray").grid(
             row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
 
+        # --- Debug 截圖 ---
         row += 1
-        ttk.Label(tab, text="注意：\n1. 點擊測試按鈕會自動連接 ADB\n2. 測試小地圖偵測：請確保遊戲在地城中\n3. 不需要啟動主任務",
-                  foreground="gray", justify=tk.LEFT).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
+        self.debug_screenshot_check = ttk.Checkbutton(
+            tab, text="debug截圖",
+            variable=self.debug_screenshot_var, command=self.save_config,
+            style="Custom.TCheckbutton"
+        )
+        self.debug_screenshot_check.grid(row=row, column=0, sticky=tk.W, pady=5)
 
 
     def _on_editor_server_stopped(self):

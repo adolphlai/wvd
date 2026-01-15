@@ -330,6 +330,8 @@ CONFIG_VAR_LIST = [
             ["auto_refill_var",              tk.BooleanVar, "_AUTO_REFILL",               True],  # 自動補給
             ["current_skill_preset_index_var", tk.IntVar,    "_CURRENT_SKILL_PRESET_INDEX", 0],
             ["skill_preset_names_var",       tk.Variable,   "_SKILL_PRESET_NAMES",        ["配置 " + str(i+1) for i in range(10)]],
+            # Debug 截圖（測試用）
+            ["debug_screenshot_var",         tk.BooleanVar, "_DEBUG_SCREENSHOT",          False],
             ]
 
 
@@ -1543,23 +1545,24 @@ def Factory():
                         if is_valid:
                             logger.info(f"[異常恢復] 偵測到異常狀態 {display_name} (匹配度 {max_val:.2f})")
 
-                            # [Debug] 偵測到異常狀態時，保存截圖證據
-                            try:
-                                debug_dir = "debug_screens"
-                                if not os.path.exists(debug_dir):
-                                    os.makedirs(debug_dir)
-                                ts = datetime.now().strftime("%H%M%S_%f")[:9] 
-                                save_path = f"{debug_dir}/abnormal_detected_{tmpl_name}_{idx}_{ts}.png"
-                                abs_path = os.path.abspath(save_path)
-                                success, n = cv2.imencode('.png', screenImage)
-                                if success:
-                                    with open(save_path, mode='wb') as f:
-                                        n.tofile(f)
-                                else:
-                                    logger.error(f"編碼圖片失敗")
-                                logger.debug(f"[異常恢復] 已保存異常狀態截圖: {abs_path}")
-                            except Exception as e:
-                                logger.error(f"[異常恢復] 保存截圖失敗: {e}")
+                            # [Debug] 偵測到異常狀態時，保存截圖證據（需開啟 debug截圖 選項）
+                            if setting._DEBUG_SCREENSHOT:
+                                try:
+                                    debug_dir = "debug_screens"
+                                    if not os.path.exists(debug_dir):
+                                        os.makedirs(debug_dir)
+                                    ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                                    save_path = f"{debug_dir}/abnormal_detected_{tmpl_name}_{idx}_{ts}.png"
+                                    abs_path = os.path.abspath(save_path)
+                                    success, n = cv2.imencode('.png', screenImage)
+                                    if success:
+                                        with open(save_path, mode='wb') as f:
+                                            n.tofile(f)
+                                    else:
+                                        logger.error(f"編碼圖片失敗")
+                                    logger.debug(f"[異常恢復] 已保存異常狀態截圖: {abs_path}")
+                                except Exception as e:
+                                    logger.error(f"[異常恢復] 保存截圖失敗: {e}")
 
                             # 記錄偵測到的狀態類型（避免重複）
                             if display_name not in detected_types:
@@ -2442,15 +2445,16 @@ def Factory():
                         logger.debug("[AUTO] 執行恢復條件判斷...")
                         scn_recover = ScreenShot()
                         
-                        # [Debug] 進入檢查即刻拍照
-                        try:
-                            debug_dir = "debug_screens"
-                            if not os.path.exists(debug_dir): os.makedirs(debug_dir)
-                            ts = datetime.now().strftime("%H%M%S_%f")[:9] 
-                            save_path = f"{debug_dir}/auto_vanish_check_{ts}.png"
-                            cv2.imwrite(save_path, scn_recover)
-                            logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
-                        except Exception as e: logger.error(f"截圖失敗: {e}")
+                        # [Debug] 進入檢查即刻拍照（需開啟 debug截圖 選項）
+                        if setting._DEBUG_SCREENSHOT:
+                            try:
+                                debug_dir = "debug_screens"
+                                if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                                ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                                save_path = f"{debug_dir}/auto_vanish_check_{ts}.png"
+                                cv2.imwrite(save_path, scn_recover)
+                                logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
+                            except Exception as e: logger.error(f"截圖失敗: {e}")
                         
                         # 1. 異常狀態
                         if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
@@ -2484,15 +2488,16 @@ def Factory():
                     logger.debug("[AUTO] 執行恢復條件判斷 (Timeout)...")
                     scn_recover = ScreenShot()
                     
-                    # [Debug] 進入檢查即刻拍照
-                    try:
-                        debug_dir = "debug_screens"
-                        if not os.path.exists(debug_dir): os.makedirs(debug_dir)
-                        ts = datetime.now().strftime("%H%M%S_%f")[:9] 
-                        save_path = f"{debug_dir}/auto_timeout_check_{ts}.png"
-                        cv2.imwrite(save_path, scn_recover)
-                        logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
-                    except Exception as e: logger.error(f"截圖失敗: {e}")
+                    # [Debug] 進入檢查即刻拍照（需開啟 debug截圖 選項）
+                    if setting._DEBUG_SCREENSHOT:
+                        try:
+                            debug_dir = "debug_screens"
+                            if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                            ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                            save_path = f"{debug_dir}/auto_timeout_check_{ts}.png"
+                            cv2.imwrite(save_path, scn_recover)
+                            logger.debug(f"[AUTO] 恢復檢查前截圖: {save_path}")
+                        except Exception as e: logger.error(f"截圖失敗: {e}")
                     
                     # 1. 異常狀態
                     if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
@@ -5523,15 +5528,16 @@ def Factory():
                         logger.debug("[StateChest] 執行恢復條件判斷...")
                         scn_recover = ScreenShot()
                         
-                        # [Debug] 進入檢查即刻拍照
-                        try:
-                            debug_dir = "debug_screens"
-                            if not os.path.exists(debug_dir): os.makedirs(debug_dir)
-                            ts = datetime.now().strftime("%H%M%S_%f")[:9] 
-                            save_path = f"{debug_dir}/chest_auto_check_{ts}.png"
-                            cv2.imwrite(save_path, scn_recover)
-                            logger.debug(f"[StateChest] 恢復檢查前截圖: {save_path}")
-                        except Exception as e: logger.error(f"截圖失敗: {e}")
+                        # [Debug] 進入檢查即刻拍照（需開啟 debug截圖 選項）
+                        if setting._DEBUG_SCREENSHOT:
+                            try:
+                                debug_dir = "debug_screens"
+                                if not os.path.exists(debug_dir): os.makedirs(debug_dir)
+                                ts = datetime.now().strftime("%H%M%S_%f")[:9] 
+                                save_path = f"{debug_dir}/chest_auto_check_{ts}.png"
+                                cv2.imwrite(save_path, scn_recover)
+                                logger.debug(f"[StateChest] 恢復檢查前截圖: {save_path}")
+                            except Exception as e: logger.error(f"截圖失敗: {e}")
                         
                         # 1. 異常狀態
                         if (setting._RECOVER_POISON or setting._RECOVER_VENOM or 
