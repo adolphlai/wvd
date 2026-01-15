@@ -4235,10 +4235,12 @@ def Factory():
         
         def __init__(self):
             self.consecutive_map_open_failures = 0
+            self.global_retry_count = 0  # 新增：全域重試計數
+            self.global_retry_start_time = None  # 新增：全域計時起點
             self.reset()
         
         def reset(self):
-            """重置所有狀態"""
+            """重置單次移動狀態（不重置全域計數）"""
             self.move_start_time = time.time()
             self.last_screen = None
             self.still_count = 0
@@ -4751,6 +4753,10 @@ def Factory():
             
             logger.info(f"[DungeonMover] 進入監控循環: target={target}, is_gohome={self.is_gohome_mode}")
             
+            # 初始化全域計時（如果是第一次進入）
+            if self.global_retry_start_time is None:
+                self.global_retry_start_time = time.time()
+            
             while True:
                 # 檢查停止信號（使用統一機制）
                 try:
@@ -4759,6 +4765,12 @@ def Factory():
                     return self._cleanup_exit(DungeonState.Quit)
                 
                 Sleep(self.POLL_INTERVAL)
+
+                # === 新增：全域硬超時檢查 ===
+                global_elapsed = time.time() - self.global_retry_start_time
+                if global_elapsed > 180:  # 3 分鐘全域超時
+                    logger.error(f"[DungeonMover] 全域硬超時 (180s)，強制重啟")
+                    restartGame()
 
                 # [新增] 臨時導航完成檢測 (Only for chest_search visibility resume)
                 # waiting_for_arrival_after_resume 是一個臨時標誌，表示我們點擊了 Resume
@@ -4916,9 +4928,13 @@ def Factory():
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
+                    self.global_retry_count = 0  # 新增：成功，重置計數
+                    self.global_retry_start_time = None
                     return self._cleanup_exit(DungeonState.Combat)
                 if state == DungeonState.Chest:
                     logger.info("[DungeonMover] 進入寶箱")
+                    self.global_retry_count = 0  # 新增：成功，重置計數
+                    self.global_retry_start_time = None
                     return self._cleanup_exit(DungeonState.Chest)
                 if state == DungeonState.Quit:
                     return self._cleanup_exit(DungeonState.Quit)
@@ -5024,12 +5040,16 @@ def Factory():
                                 return self._cleanup_exit(DungeonState.Map)
                             elif CheckIf(screen, 'mapFlag'):
                                 # 已在地圖狀態
-                                logger.info(f"[DungeonMover] chest_auto: 靜止且在地圖狀態，PressReturn 退出")
+                                logger.warning("[DungeonMover] chest_auto: 卡在地圖，導航失敗，重試")
                                 PressReturn()
                                 Sleep(0.5)
-                                if targetInfoList and targetInfoList[0].target == 'chest_auto':
-                                    targetInfoList.pop(0)
-                                return self._cleanup_exit(DungeonState.Map)
+                                self.global_retry_count += 1
+                                if self.global_retry_count >= 10:
+                                    logger.error("[DungeonMover] 重試達上限，觸發 GoHome")
+                                    self.is_gohome_mode = True
+                                    return self._fallback_gohome(targetInfoList, ctx)
+                                self.still_count = 0
+                                continue  # 不 pop，繼續監控
                             else:
                                 # === 在地城中 (dungflag)，未檢測到 notresure，不 pop，打開地圖 ===
                                 logger.info(f"[DungeonMover] chest_auto: 靜止 {self.still_count} 次但無 notresure，不 pop，打開地圖檢查")
@@ -5065,21 +5085,31 @@ def Factory():
                                             self.still_count = 0
                                             continue
                                     # 未檢測到 visibility，返回 Dungeon
-                                    logger.info("[DungeonMover] chest_auto: 無法打開地圖且無 visibility，返回 Dungeon")
-                                    return self._cleanup_exit(DungeonState.Dungeon)
+                                    self.global_retry_count += 1
+                                    logger.warning(f"[DungeonMover] 無法打開地圖 ({self.global_retry_count}/10)")
+                                    if self.global_retry_count >= 10:
+                                        logger.error("[DungeonMover] 重試達上限，觸發 GoHome")
+                                        self.is_gohome_mode = True
+                                        return self._fallback_gohome(targetInfoList, ctx)
+                                    self.still_count = 0
+                                    continue
 
                         if self.still_count >= self.STILL_REQUIRED:
                             logger.info(f"[DungeonMover] 連續靜止 {self.STILL_REQUIRED} 次")
 
                             # 檢查是否已在地圖
                             if CheckIf(screen, 'mapFlag'):
-                                logger.warning("[DungeonMover] 已在地圖狀態且靜止，嘗試關閉地圖並觸發 GoHome")
+                                logger.warning("[DungeonMover] 卡在地圖，嘗試關閉地圖並重試")
                                 PressReturn()
                                 Sleep(0.5)
-                                if targetInfoList:
-                                    targetInfoList.pop(0)
-                                self.is_gohome_mode = True
-                                MonitorState.is_gohome_mode = True
+                                self.global_retry_count += 1
+                                if self.global_retry_count >= 10:
+                                    logger.error("[DungeonMover] 重試達上限，觸發 GoHome")
+                                    if targetInfoList:
+                                        targetInfoList.pop(0)
+                                    self.is_gohome_mode = True
+                                    MonitorState.is_gohome_mode = True
+                                    return self._fallback_gohome(targetInfoList, ctx)
                                 self.still_count = 0
                                 continue
                             
