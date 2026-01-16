@@ -2527,13 +2527,60 @@ def Factory():
                         'ignorethequest', 'dontGiveAntitoxin', 'pass',
                     ]
                     found_any_option = False
-                    for op in dialogOption:
-                        if Press(CheckIf(screen, op)):
-                            logger.info(f"[AUTO] 偵測到對話選項 {op}，點擊處理")
+                    
+                    # NOTE: 優先處理善惡選擇，根據 _KARMAADJUST 設定決定行為
+                    # 偵測到 ambush（伏擊）且設定為負數 → 點擊伏擊（變惡）
+                    if (pos := CheckIf(screen, 'ambush')) and setting._KARMAADJUST.startswith('-'):
+                        num_str = setting._KARMAADJUST[1:]
+                        if num_str.isdigit():
+                            num = int(num_str)
+                            if num != 0:
+                                new_str = f"-{num - 1}"
+                            else:
+                                new_str = "+0"
+                            logger.info(f"[AUTO] 善惡調整: 選擇伏擊. 剩餘次數:{new_str}")
+                            AddImportantInfo(f"善惡調整:{new_str}")
+                            setting._KARMAADJUST = new_str
+                            SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
+                            Press(pos)
                             Sleep(2)
-                            counter += 1
                             found_any_option = True
-                            break
+                    # 偵測到 ignore（忽略）且設定為正數 → 點擊忽略（變善）
+                    elif (pos := CheckIf(screen, 'ignore')) and setting._KARMAADJUST.startswith('+'):
+                        num_str = setting._KARMAADJUST[1:]
+                        if num_str.isdigit():
+                            num = int(num_str)
+                            if num != 0:
+                                new_str = f"+{num - 1}"
+                            else:
+                                new_str = "-0"
+                            logger.info(f"[AUTO] 善惡調整: 選擇忽略. 剩餘次數:{new_str}")
+                            AddImportantInfo(f"善惡調整:{new_str}")
+                            setting._KARMAADJUST = new_str
+                            SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
+                            Press(pos)
+                            Sleep(2)
+                            found_any_option = True
+                    # 偵測到善惡選項但設定為 0，選擇預設行為（忽略優先）
+                    elif (pos := CheckIf(screen, 'ignore')):
+                        logger.info("[AUTO] 善惡調整: 設定為 0，選擇忽略")
+                        Press(pos)
+                        Sleep(2)
+                        found_any_option = True
+                    elif (pos := CheckIf(screen, 'ambush')):
+                        logger.info("[AUTO] 善惡調整: 設定為 0，選擇伏擊")
+                        Press(pos)
+                        Sleep(2)
+                        found_any_option = True
+                    
+                    if not found_any_option:
+                        for op in dialogOption:
+                            if Press(CheckIf(screen, op)):
+                                logger.info(f"[AUTO] 偵測到對話選項 {op}，點擊處理")
+                                Sleep(2)
+                                counter += 1
+                                found_any_option = True
+                                break
                     
                     if found_any_option:
                         continue
