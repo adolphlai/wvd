@@ -2534,49 +2534,41 @@ def Factory():
                     found_any_option = False
                     
                     # NOTE: 優先處理善惡選擇，根據 _KARMAADJUST 設定決定行為
-                    # 偵測到 ambush（伏擊）且設定為負數 → 點擊伏擊（變惡）
-                    if (pos := CheckIf(screen, 'ambush')) and setting._KARMAADJUST.startswith('-'):
-                        num_str = setting._KARMAADJUST[1:]
-                        if num_str.isdigit():
-                            num = int(num_str)
-                            if num != 0:
-                                new_str = f"-{num - 1}"
-                            else:
-                                new_str = "+0"
-                            logger.info(f"[AUTO] 善惡調整: 選擇伏擊. 剩餘次數:{new_str}")
-                            AddImportantInfo(f"善惡調整:{new_str}")
-                            setting._KARMAADJUST = new_str
-                            SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
-                            Press(pos)
-                            Sleep(2)
-                            found_any_option = True
-                    # 偵測到 ignore（忽略）且設定為正數 → 點擊忽略（變善）
-                    elif (pos := CheckIf(screen, 'ignore')) and setting._KARMAADJUST.startswith('+'):
-                        num_str = setting._KARMAADJUST[1:]
-                        if num_str.isdigit():
-                            num = int(num_str)
-                            if num != 0:
-                                new_str = f"+{num - 1}"
-                            else:
-                                new_str = "-0"
-                            logger.info(f"[AUTO] 善惡調整: 選擇忽略. 剩餘次數:{new_str}")
-                            AddImportantInfo(f"善惡調整:{new_str}")
-                            setting._KARMAADJUST = new_str
-                            SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
-                            Press(pos)
-                            Sleep(2)
-                            found_any_option = True
-                    # 偵測到善惡選項但設定為 0，選擇預設行為（忽略優先）
-                    elif (pos := CheckIf(screen, 'ignore')):
-                        logger.info("[AUTO] 善惡調整: 設定為 0，選擇忽略")
-                        Press(pos)
-                        Sleep(2)
-                        found_any_option = True
-                    elif (pos := CheckIf(screen, 'ambush')):
-                        logger.info("[AUTO] 善惡調整: 設定為 0，選擇伏擊")
-                        Press(pos)
-                        Sleep(2)
-                        found_any_option = True
+                    # 只有當「嘗試調整因果」(ACTIVE_CSC) 啟用時才執行善惡調整
+                    if setting.ACTIVE_CSC:
+                        # 偵測到 ambush（伏擊）且設定為負數 → 點擊伏擊（變惡）
+                        if (pos := CheckIf(screen, 'ambush')) and setting._KARMAADJUST.startswith('-'):
+                            num_str = setting._KARMAADJUST[1:]
+                            if num_str.isdigit():
+                                num = int(num_str)
+                                if num != 0:
+                                    new_str = f"-{num - 1}"
+                                else:
+                                    new_str = "+0"
+                                logger.info(f"[AUTO] 善惡調整: 選擇伏擊. 剩餘次數:{new_str}")
+                                AddImportantInfo(f"善惡調整:{new_str}")
+                                setting._KARMAADJUST = new_str
+                                SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
+                                Press(pos)
+                                Sleep(2)
+                                found_any_option = True
+                        # 偵測到 ignore（忽略）且設定為正數 → 點擊忽略（變善）
+                        elif (pos := CheckIf(screen, 'ignore')) and setting._KARMAADJUST.startswith('+'):
+                            num_str = setting._KARMAADJUST[1:]
+                            if num_str.isdigit():
+                                num = int(num_str)
+                                if num != 0:
+                                    new_str = f"+{num - 1}"
+                                else:
+                                    new_str = "-0"
+                                logger.info(f"[AUTO] 善惡調整: 選擇忽略. 剩餘次數:{new_str}")
+                                AddImportantInfo(f"善惡調整:{new_str}")
+                                setting._KARMAADJUST = new_str
+                                SetOneVarInConfig("_KARMAADJUST", setting._KARMAADJUST)
+                                Press(pos)
+                                Sleep(2)
+                                found_any_option = True
+                    # NOTE: 當 ACTIVE_CSC 關閉或設定為 0 時，不主動選擇善惡選項
                     
                     if not found_any_option:
                         for op in dialogOption:
@@ -2860,42 +2852,44 @@ def Factory():
                 if (CheckIf(screen,'cursedWheel_timeLeap')):
                     setting._MSGQUEUE.put(('turn_to_7000G',""))
                     raise SystemExit
-                if (pos:=CheckIf(screen,'ambush')) and setting._KARMAADJUST.startswith('-'):
-                    new_str = None
-                    num_str = setting._KARMAADJUST[1:]
-                    if num_str.isdigit():
-                        num = int(num_str)
-                        if num != 0:
-                            new_str = f"-{num - 1}"
-                        else:
-                            new_str = f"+0"
-                    if new_str is not None:
-                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
-                        AddImportantInfo(f"新的善惡:{new_str}")
-                        setting._KARMAADJUST = new_str
-                        SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
-                        Press(pos)
-                        logger.info("伏擊起手!")
-                        # logger.info("Ambush! Always starts with Ambush.")
-                        Sleep(2)
-                if (pos:=CheckIf(screen,'ignore')) and setting._KARMAADJUST.startswith('+'):
-                    new_str = None
-                    num_str = setting._KARMAADJUST[1:]
-                    if num_str.isdigit():
-                        num = int(num_str)
-                        if num != 0:
-                            new_str = f"+{num - 1}"
-                        else:
-                            new_str = f"-0"
-                    if new_str is not None:
-                        logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
-                        AddImportantInfo(f"新的善惡:{new_str}")
-                        setting._KARMAADJUST = new_str
-                        SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
-                        Press(pos)
-                        logger.info("積善行德!")
-                        # logger.info("")
-                        Sleep(2)
+                # NOTE: 只有當「嘗試調整因果」(ACTIVE_CSC) 啟用時才執行善惡調整
+                if setting.ACTIVE_CSC:
+                    if (pos:=CheckIf(screen,'ambush')) and setting._KARMAADJUST.startswith('-'):
+                        new_str = None
+                        num_str = setting._KARMAADJUST[1:]
+                        if num_str.isdigit():
+                            num = int(num_str)
+                            if num != 0:
+                                new_str = f"-{num - 1}"
+                            else:
+                                new_str = f"+0"
+                        if new_str is not None:
+                            logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
+                            AddImportantInfo(f"新的善惡:{new_str}")
+                            setting._KARMAADJUST = new_str
+                            SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
+                            Press(pos)
+                            logger.info("伏擊起手!")
+                            # logger.info("Ambush! Always starts with Ambush.")
+                            Sleep(2)
+                    if (pos:=CheckIf(screen,'ignore')) and setting._KARMAADJUST.startswith('+'):
+                        new_str = None
+                        num_str = setting._KARMAADJUST[1:]
+                        if num_str.isdigit():
+                            num = int(num_str)
+                            if num != 0:
+                                new_str = f"+{num - 1}"
+                            else:
+                                new_str = f"-0"
+                        if new_str is not None:
+                            logger.info(f"即將進行善惡值調整. 剩餘次數:{new_str}")
+                            AddImportantInfo(f"新的善惡:{new_str}")
+                            setting._KARMAADJUST = new_str
+                            SetOneVarInConfig("_KARMAADJUST",setting._KARMAADJUST)
+                            Press(pos)
+                            logger.info("積善行德!")
+                            # logger.info("")
+                            Sleep(2)
 
                 dialogOption = [
                     'adventurersbones',
@@ -4816,6 +4810,11 @@ def Factory():
                 except StopSignalException:
                     return self._cleanup_exit(DungeonState.Quit)
                 
+                # NOTE: 檢查異常狀態恢復標誌，若設置則跳出監控循環讓 StateDungeon 處理恢復
+                if runtimeContext._FORCE_ABNORMAL_RECOVER:
+                    logger.info("[DungeonMover] 偵測到異常狀態恢復標誌，跳出監控循環")
+                    return self._cleanup_exit(DungeonState.Dungeon)
+                
                 Sleep(self.POLL_INTERVAL)
 
                 # === 新增：全域硬超時檢查 ===
@@ -5823,20 +5822,35 @@ def Factory():
                             dunflag_result = CheckIf(ScreenShot(),'dungflag')
                             logger.debug(f"[圖片偵測] dungflag: {dunflag_result}")
                             if dunflag_result and (counter_trychar <=20):
-                                Press([36+(counter_trychar%3)*286,1425])
-                                Sleep(0.5)
+                                # NOTE: 連點三次，每次間隔 0.3 秒，避免點進二級菜單後誤點其他東西
+                                char_pos = [36+(counter_trychar%3)*286, 1425]
+                                trait_result = None
+                                for click_attempt in range(3):
+                                    Press(char_pos)
+                                    Sleep(0.3)
+                                    scn = ScreenShot()
+                                    trait_result = CheckIf(scn, 'trait')
+                                    if trait_result:
+                                        logger.debug(f"[圖片偵測] trait 在第 {click_attempt+1} 次點擊後偵測到")
+                                        break
+                                if trait_result:
+                                    # 成功進入角色頁面，跳到恢復邏輯
+                                    pass
+                                else:
+                                    # 三次點擊後仍未進入角色頁面，繼續偵測 trait
+                                    Sleep(0.2)
                             else:
                                 logger.info("自動回覆失敗, 暫不進行回覆.")
                                 break
                             # NOTE: 連續偵測 trait 最多 10 次，適應慢機器角色頁面打開較慢的情況
-                            trait_result = None
-                            for trait_attempt in range(10):
-                                scn = ScreenShot()
-                                trait_result = CheckIf(scn, 'trait')
-                                logger.debug(f"[圖片偵測] trait (嘗試 {trait_attempt+1}/10): {trait_result}")
-                                if trait_result:
-                                    break
-                                Sleep(0.5)
+                            if not trait_result:
+                                for trait_attempt in range(10):
+                                    scn = ScreenShot()
+                                    trait_result = CheckIf(scn, 'trait')
+                                    logger.debug(f"[圖片偵測] trait (嘗試 {trait_attempt+1}/10): {trait_result}")
+                                    if trait_result:
+                                        break
+                                    Sleep(0.5)
                             if trait_result:
                                 story_result = CheckIf(scn,'story', [[676,800,220,108]])
                                 logger.debug(f"[圖片偵測] story: {story_result}")
