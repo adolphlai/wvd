@@ -2086,7 +2086,7 @@ def Factory():
         pass
     def RestartableSequenceExecution(*operations):
         MonitorState.current_state = "Starting"
-        MAX_RESTART_RETRIES = 50# 最大重啟次數
+        MAX_RESTART_RETRIES = 100# 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
             # NOTE: 每次循環開始時都檢查 GameMonitor 是否存活
@@ -5776,12 +5776,12 @@ def Factory():
                             else:
                                 logger.info("自動回覆失敗, 暫不進行回覆.")
                                 break
-                            # NOTE: 連續偵測 trait 最多 5 次，適應慢機器角色頁面打開較慢的情況
+                            # NOTE: 連續偵測 trait 最多 10 次，適應慢機器角色頁面打開較慢的情況
                             trait_result = None
-                            for trait_attempt in range(5):
+                            for trait_attempt in range(10):
                                 scn = ScreenShot()
                                 trait_result = CheckIf(scn, 'trait')
-                                logger.debug(f"[圖片偵測] trait (嘗試 {trait_attempt+1}/5): {trait_result}")
+                                logger.debug(f"[圖片偵測] trait (嘗試 {trait_attempt+1}/10): {trait_result}")
                                 if trait_result:
                                     break
                                 Sleep(0.5)
@@ -6906,6 +6906,7 @@ def Factory():
                     # 獲取主 Activity
                     mainAct = DeviceShell(f"cmd package resolve-activity --brief {package_name}").strip().split('\n')[-1]
                     # 啟動遊戲
+                    Sleep(5)
                     logger.info("巫術, 啓動!")
                     logger.debug(DeviceShell(f"am start -n {mainAct}"))
                     # 等待遊戲載入
