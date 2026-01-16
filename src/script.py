@@ -2024,6 +2024,10 @@ def Factory():
         runtimeContext._RESTART_PENDING_BATTLE_RESET = True  # 重啓後待重置戰鬥計數器
         reset_ae_caster_flags()  # 重啓後重置 AE 手旗標
         runtimeContext._RESTART_SKIP_INTERVAL_THIS_DUNGEON = True  # [關鍵] 必須在重置後設置，否則會被 reset_ae_caster_flags 清除
+        
+        # NOTE: 重置 DungeonMover 全域硬超時計時器，避免重啟後立即再次觸發超時
+        dungeon_mover.global_retry_start_time = None
+        dungeon_mover.global_retry_count = 0
 
         if not skipScreenShot:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")  # 格式：20230825_153045
