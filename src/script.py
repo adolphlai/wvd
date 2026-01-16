@@ -580,6 +580,7 @@ class TargetInfo:
         # 注意 roi校驗需要target的值. 請嚴格保證roi在最後.
         self.roi = roi
         self.extra = extra  # 用於打王預設索引 (swipe) 或樓層圖片 (harken)
+        self.floorImage = extra # 映射 floorImage 到 extra，解決 harken/minimap_stair 存取問題
         self.wait = wait
     @property
     def swipeDir(self):
