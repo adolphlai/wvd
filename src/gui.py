@@ -1545,7 +1545,9 @@ class ConfigPanelApp(tk.Toplevel):
         self.bgremove_dir_label.grid(row=0, column=1, padx=5, sticky=tk.W)
         
         def select_bgremove_dir():
-            path = filedialog.askdirectory(title="選擇圖片目錄")
+            # 預設開啟 spellskill 資料夾
+            default_dir = ResourcePath("resources/images/spellskill")
+            path = filedialog.askdirectory(title="選擇圖片目錄", initialdir=default_dir)
             if path:
                 self.bgremove_dir_var.set(path)
                 # 掃描目錄下的 PNG 檔案
