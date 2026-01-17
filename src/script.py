@@ -4427,7 +4427,7 @@ def Factory():
             target_info = targetInfoList[0]
             action = target_info.swipeDir
             extra = target_info.extra
-            wait_time = getattr(target_info, 'wait', 1)
+            wait_time = getattr(target_info, 'wait', 1) or 1
             
             # 1. 處理技能預設切換 (打王支援)
             if isinstance(extra, int) and 0 <= extra < 10:
