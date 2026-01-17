@@ -1314,62 +1314,7 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(tab, textvariable=self.test_adb_status).grid(row=row, column=1, sticky=tk.W, pady=2)
         row += 1
 
-        # --- 測試按鈕區域 ---
-        frame_test = ttk.LabelFrame(tab, text="Inn 流程測試", padding=5)
-        frame_test.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
-
-        # 測試整理背包按鈕
-        self.test_organize_btn = ttk.Button(
-            frame_test,
-            text="測試整理背包",
-            command=self._test_organize_backpack_standalone
-        )
-        self.test_organize_btn.grid(row=0, column=0, padx=5, pady=5)
-
-        # 測試住宿流程按鈕
-        self.test_state_inn_btn = ttk.Button(
-            frame_test,
-            text="測試住宿流程",
-            command=self._test_state_inn_standalone
-        )
-        self.test_state_inn_btn.grid(row=0, column=1, padx=5, pady=5)
-
-        # --- 小地圖樓梯偵測測試 ---
-        row += 1
-        frame_minimap = ttk.LabelFrame(tab, text="小地圖樓梯偵測測試", padding=5)
-        frame_minimap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
-
-        # 第一行：樓層圖片名稱
-        ttk.Label(frame_minimap, text="樓層圖片:").grid(row=0, column=0, padx=5, sticky=tk.W)
-        self.minimap_floor_image_var = tk.StringVar(value="DH-R5-minimap")
-        self.minimap_floor_image_entry = ttk.Entry(frame_minimap, textvariable=self.minimap_floor_image_var, width=18)
-        self.minimap_floor_image_entry.grid(row=0, column=1, padx=5)
-
-        # 第二行：樓梯座標
-        ttk.Label(frame_minimap, text="樓梯座標:").grid(row=1, column=0, padx=5, sticky=tk.W)
-        self.minimap_stair_coords_var = tk.StringVar(value="294,239")
-        self.minimap_stair_coords_entry = ttk.Entry(frame_minimap, textvariable=self.minimap_stair_coords_var, width=10)
-        self.minimap_stair_coords_entry.grid(row=1, column=1, padx=5, sticky=tk.W)
-
-        # 第三行：滑動方向
-        ttk.Label(frame_minimap, text="滑動方向:").grid(row=2, column=0, padx=5, sticky=tk.W)
-        self.minimap_swipe_dir_var = tk.StringVar(value="右上")
-        self.minimap_swipe_dir_combo = ttk.Combobox(frame_minimap, textvariable=self.minimap_swipe_dir_var,
-                                                     values=["左上", "右上", "左下", "右下", "無"], state="readonly", width=8)
-        self.minimap_swipe_dir_combo.grid(row=2, column=1, padx=5, sticky=tk.W)
-
-        # 測試按鈕
-        self.test_minimap_stair_btn = ttk.Button(
-            frame_minimap,
-            text="測試完整流程",
-            command=self._test_minimap_stair_standalone
-        )
-        self.test_minimap_stair_btn.grid(row=0, column=2, rowspan=3, padx=10, pady=5)
-
-        ttk.Label(frame_minimap, text="流程：開地圖→滑動→點樓梯→監控小地圖", foreground="gray").grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
-
         # --- 串流截圖功能 ---
-        row += 1
         frame_screenshot = ttk.LabelFrame(tab, text="串流截圖", padding=5)
         frame_screenshot.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
 
