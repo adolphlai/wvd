@@ -1292,6 +1292,13 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.active_triumph.grid(row=0, column=0, sticky=tk.W)
 
+        self.active_ore_jump = ttk.Checkbutton(
+            frame_other, variable=self.active_ore_jump_var,
+            text="跳躍到\"美麗礦石的真相\"",
+            command=checkcommand, style="Custom.TCheckbutton"
+        )
+        self.active_ore_jump.grid(row=0, column=1, sticky=tk.W, padx=10)
+
     def _create_test_tab(self):
         """測試分頁：提供快速測試功能（完全獨立運行）"""
         tab = self.tab_test

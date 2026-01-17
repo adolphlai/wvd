@@ -319,6 +319,7 @@ CONFIG_VAR_LIST = [
             # 系統設定
             ["active_royalsuite_rest_var",  tk.BooleanVar, "_ACTIVE_ROYALSUITE_REST",    False],
             ["active_triumph_var",          tk.BooleanVar, "_ACTIVE_TRIUMPH",            False],
+            ["active_ore_jump_var",         tk.BooleanVar, "_ACTIVE_ORE_JUMP",           False],
             ["karma_adjust_var",            tk.StringVar,  "_KARMAADJUST",               "+0"],
             ["emu_path_var",                tk.StringVar,  "_EMUPATH",                   ""],
             ["adb_port_var",                tk.StringVar,  "_ADBPORT",                   5555],
@@ -2176,12 +2177,20 @@ def Factory():
             target = tar
         if setting._ACTIVE_TRIUMPH:
             target = "Triumph"
+        if setting._ACTIVE_ORE_JUMP:
+            target = "trueofthebeautifulore"
 
         logger.info(f"開始時間跳躍, 本次跳躍目標:{target}")
 
         # 調整條目以找到跳躍目標
         Press(FindCoordsOrElseExecuteFallbackAndWait('cursedWheel',['ruins',[1,1]],1))
-        Press(FindCoordsOrElseExecuteFallbackAndWait('cursedwheel_impregnableFortress',['cursedWheelTapRight','cursedWheel',[1,1]],1))
+        # 導航搜尋邏輯分支
+        if setting._ACTIVE_ORE_JUMP:
+            # 開啟美麗礦石時，使用更廣泛的標籤識別以防卡死
+            Press(FindCoordsOrElseExecuteFallbackAndWait([target, 'deepsnowhinterlands', 'GhostsOfYore'],['cursedWheelTapRight','cursedWheel',[1,1]],1))
+        else:
+            # 一般情況，維持原本穩定的單一目標檢查
+            Press(FindCoordsOrElseExecuteFallbackAndWait('cursedwheel_impregnableFortress',['cursedWheelTapRight','cursedWheel',[1,1]],1))
         if not Press(CheckIf(ScreenShot(),target)):
             DeviceShell(f"input swipe 450 1200 450 200")
             Sleep(2)
@@ -3904,6 +3913,7 @@ def Factory():
             logger.info("[打王模式] 等待 flee 出現...")
             flee_seen = False
             for wait_count in range(30):
+                check_stop_signal()  # 確保能快速響應停止信號
                 screen = ScreenShot()
                 update_combat_flag(screen)
                 
@@ -4058,6 +4068,7 @@ def Factory():
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
         logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(30):  # 最多等待 15 秒
+            check_stop_signal()  # 確保能快速響應停止信號
             screen = ScreenShot()
             update_combat_flag(screen)
 
@@ -4111,9 +4122,8 @@ def Factory():
                 MAX_SPAM_CLICKS = 20
                 
                 while spam_click_count < MAX_SPAM_CLICKS:
-                    # 檢查停止信號
-                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        return
+                    # 檢查停止信號（使用統一機制確保快速響應）
+                    check_stop_signal()
 
                     # 1. 點擊加速
                     Press([1, 1])
@@ -5454,9 +5464,8 @@ def Factory():
         ]
 
         while True:
-            # 檢查停止信號
-            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                return None
+            # 檢查停止信號（使用統一機制確保快速響應）
+            check_stop_signal()
 
             chest_wait_count += 1
             logger.debug(f"[StateChest] === 循環 #{chest_wait_count} 開始 === dungFlag計數={dungflag_consecutive_count}")
@@ -5527,8 +5536,8 @@ def Factory():
             if CheckIf(scn, 'whowillopenit'):
                 logger.info("[StateChest] 選擇開箱角色")
                 while True:
-                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        return None
+                    # 檢查停止信號（使用統一機制確保快速響應）
+                    check_stop_signal()
                     pointSomeone = setting._WHOWILLOPENIT - 1
                     if (pointSomeone != -1) and (pointSomeone in availableChar) and (not haveBeenTried):
                         whowillopenit = pointSomeone 
@@ -5593,8 +5602,8 @@ def Factory():
                 logger.info(f"[StateChest] 偵測到 AUTO (匹配度={auto_match:.0f}%)，開始連續點擊")
                 auto_click_count = 0
                 while auto_click_count < 10:
-                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        return None
+                    # 檢查停止信號（使用統一機制確保快速響應）
+                    check_stop_signal()
                     # 連點 3 下清對話
                     for _ in range(3):
                         Press(disarm)
@@ -6109,8 +6118,7 @@ def Factory():
         match setting._FARMTARGET:
             case '7000G':
                 while 1:
-                    if setting._FORCESTOPING.is_set():
-                        break
+                    check_stop_signal()  # 確保快速響應停止信號
 
                     starttime = time.time()
                     runtimeContext._COUNTERDUNG += 1
@@ -6124,8 +6132,7 @@ def Factory():
                             Press(FindCoordsOrElseExecuteFallbackAndWait('FortressArrival','input swipe 50 1200 50 1300',1))
 
                         while pos:= CheckIf(ScreenShot(), 'leap'):
-                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                                return
+                            check_stop_signal()  # 確保快速響應停止信號
                             Press(pos)
                             Sleep(2)
                             Press(CheckIf(ScreenShot(),'FortressArrival'))
@@ -6196,8 +6203,7 @@ def Factory():
             case 'fordraig':
                 quest._SPECIALDIALOGOPTION = ['fordraig/thedagger','fordraig/InsertTheDagger']
                 while 1:
-                    if setting._FORCESTOPING.is_set():
-                        break
+                    check_stop_signal()  # 確保快速響應停止信號
                     runtimeContext._COUNTERDUNG += 1
                     setting._SYSTEMAUTOCOMBAT = True
                     starttime = time.time()
@@ -6733,15 +6739,18 @@ def Factory():
                         )
 
                     Sleep(10)
-                    logger.info("第二步: 返回要塞...")
-                    RestartableSequenceExecution(
-                        lambda: FindCoordsOrElseExecuteFallbackAndWait('Inn',['returntotown','returnText','leaveDung','blessing',[1,1]],2)
-                        )
+                    if not setting._ACTIVE_ORE_JUMP:
+                        logger.info("第二步: 返回要塞...")
+                        RestartableSequenceExecution(
+                            lambda: FindCoordsOrElseExecuteFallbackAndWait('Inn',['returntotown','returnText','leaveDung','blessing',[1,1]],2)
+                            )
 
-                    logger.info("第三步: 前往王城...")
-                    RestartableSequenceExecution(
-                        lambda:TeleportFromCityToWorldLocation('RoyalCityLuknalia','input swipe 450 150 500 150'),
-                        )
+                        logger.info("第三步: 前往王城...")
+                        RestartableSequenceExecution(
+                            lambda:TeleportFromCityToWorldLocation('RoyalCityLuknalia','input swipe 450 150 500 150'),
+                            )
+                    else:
+                        logger.info("跳過第二步與第三步 (已在王城)...")
 
                     logger.info("第四步: 懸賞揭榜")
                     RestartableSequenceExecution(
