@@ -47,13 +47,5 @@ def test_matching(template_path, screenshot_path):
     _, max_val_mask, _, max_loc_mask = cv2.minMaxLoc(res_mask)
     print(f"Masked Match (CCORR_NORMED): {max_val_mask:.2%}")
 
-    # Method 5: Masked Match (CCOEFF_NORMED)
-    try:
-        res_mask_coeff = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED, mask=mask)
-        _, max_val_mask_coeff, _, max_loc_mask_coeff = cv2.minMaxLoc(res_mask_coeff)
-        print(f"Masked Match (CCOEFF_NORMED): {max_val_mask_coeff:.2%}")
-    except Exception as e:
-        print(f"CCOEFF_NORMED mask error: {e}")
-
 if __name__ == "__main__":
     test_matching("d:/Project/wvd/test/template.png", "d:/Project/wvd/test/screenshot.png")
