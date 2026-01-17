@@ -240,7 +240,18 @@ def LoadJson(path):
         return {}
 def LoadImage(path):
     try:
-        # 使用 IMREAD_UNCHANGED 以支援 Alpha 通道 (透明)
+        # 標準讀取：使用 IMREAD_COLOR (3 通道 BGR)
+        img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError(f"[OpenCV 錯誤] 圖片加載失敗: {path}")
+    except Exception as e:
+        logger.error(f"加載圖片失敗: {str(e)}")
+        return None
+    return img
+
+def LoadImageWithAlpha(path):
+    """讀取圖片並保留 Alpha 通道（用於技能圖片等需要透明度的場景）"""
+    try:
         img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
         if img is None:
             raise ValueError(f"[OpenCV 錯誤] 圖片加載失敗: {path}")
@@ -411,7 +422,11 @@ def LoadTemplateImage(shortPathOfTarget):
     pathOfTarget = ResourcePath(os.path.join(IMAGE_FOLDER + f"{shortPathOfTarget}.png"))
     
     # 2. 讀取並解碼
-    img = LoadImage(pathOfTarget)
+    # NOTE: 僅技能圖片使用 Alpha 通道讀取，其他圖片使用標準 BGR 讀取
+    if "spellskill" in shortPathOfTarget:
+        img = LoadImageWithAlpha(pathOfTarget)
+    else:
+        img = LoadImage(pathOfTarget)
     
     # 3. 存入快取 (即使是 None 也可以存，避免重複嘗試讀取不存在的檔案)
     if img is not None:
