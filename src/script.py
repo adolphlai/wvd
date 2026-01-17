@@ -106,12 +106,18 @@ class ScrcpyStreamManager:
         if not self.running or self.client is None:
             return False
         try:
-            # 檢查客戶端是否仍在運行（pyscrcpy 內部狀態）
+            # 檢查線程是否存活 (pyscrcpy 內部線程崩潰會反映在 client 狀態)
             if hasattr(self.client, 'alive') and not self.client.alive:
-                logger.debug("pyscrcpy 客戶端已停止")
+                logger.debug("pyscrcpy 客戶端線程已終止")
                 self.running = False
                 return False
-            return self.client.last_frame is not None
+            
+            # 檢查最後一幀是否過舊 (10秒未更新視為失效)
+            if hasattr(self.client, 'last_frame'):
+                if self.client.last_frame is None:
+                    return False
+                return True
+            return False
         except:
             self.running = False
             return False
@@ -800,16 +806,19 @@ def CheckRestartConnectADB(setting: FarmConfig):
             logger.debug(f"adb鏈接返回(錯誤信息):{result.stderr}")
 
             if ("daemon not running" in result.stderr) or ("offline" in result.stdout):
-                logger.info("adb服務未啓動!\n啓動adb服務...")
+                logger.warning(f"偵測到 ADB 異常狀態 (offline={('offline' in result.stdout)})")
+                
+                # 如果是 offline，通常代表模擬器底層當機
+                if "offline" in result.stdout and attempt >= 1:
+                    logger.error("模擬器長時間處於 offline 狀態，判定為當機，準備強制重啟...")
+                    KillEmulator(setting)
+                    KillAdb(setting)
+                    time.sleep(2)
+                    continue
+
+                logger.info("重啟 ADB 服務...")
                 CMDLine(f"\"{adb_path}\" kill-server")
                 CMDLine(f"\"{adb_path}\" start-server")
-
-                # 檢查停止信號的 sleep
-                for _ in range(4):  # 2秒拆成4次0.5秒
-                    if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        logger.info("啟動 ADB 服務時檢測到停止信號")
-                        return None
-                    time.sleep(0.5)
 
             logger.debug(f"嘗試連接到adb...")
             result = CMDLine(f"\"{adb_path}\" connect 127.0.0.1:{setting._ADBPORT}")
@@ -2661,14 +2670,15 @@ def Factory():
                     else:
                         # 跳過回城，繼續刷地城
                         # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
-                        for info in quest._EOT:
-                            if info[1] == "intoWorldMap":
-                                logger.info(f"跳過 intoWorldMap 步驟")
-                                continue
-                            else:
-                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
-                                if info[0] == "press":
-                                    Press(pos)
+                        if quest._EOT:
+                            for info in quest._EOT:
+                                if info[1] == "intoWorldMap":
+                                    logger.info(f"跳過 intoWorldMap 步驟")
+                                    continue
+                                else:
+                                    pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                                    if info[0] == "press":
+                                        Press(pos)
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
@@ -2703,14 +2713,15 @@ def Factory():
                     reset_ae_caster_flags()
                     runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
                     # 跳過回城時，執行 _EOT 中非 intoWorldMap 的步驟（例如選樓層）
-                    for info in quest._EOT:
-                        if info[1] == "intoWorldMap":
-                            logger.info(f"跳過 intoWorldMap 步驟")
-                            continue
-                        else:
-                            pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
-                            if info[0] == "press":
-                                Press(pos)
+                    if quest._EOT:
+                        for info in quest._EOT:
+                            if info[1] == "intoWorldMap":
+                                logger.info(f"跳過 intoWorldMap 步驟")
+                                continue
+                            else:
+                                pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
+                                if info[0] == "press":
+                                    Press(pos)
                     Sleep(2)
                     runtimeContext._RESET_TARGETS_PENDING = True  # [關鍵修復] 標記需要重置目標列表
                     runtimeContext._RESTART_OPEN_MAP_PENDING = True  # [新增] 跳過 Resume 優化，強制重新開地圖
@@ -3565,6 +3576,11 @@ def Factory():
             bool: True = 跳過回城繼續刷，False = 需要回城
         """
         nonlocal runtimeContext
+        
+        # NOTE: Quest 模式（如蠍女、7000G、鋼試練等）有自己的流程控制，不應觸發連續刷地城
+        QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
+        if setting._FARMTARGET in QUEST_TARGETS:
+            return False
         
         # 如果沒有遇到寶箱或戰鬥，總是跳過回城
         if not runtimeContext._MEET_CHEST_OR_COMBAT:
@@ -4639,15 +4655,17 @@ def Factory():
             """啟動一般移動 (position, harken, stair)"""
             target_info = targetInfoList[0]
             
+            # NOTE: Quest 任務（如蠍女、7000G、鋼試練）直接使用標準導航，跳過 Resume 優化
+            # 這些任務有自己的流程控制，Resume 優化會導致多次重試浪費時間
+            QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
+            is_quest_task = setting._FARMTARGET in QUEST_TARGETS
+            
             # [Resume 優化] 條件（所有條件需同時滿足）：
-            # 1. 已完成防轉圈或不需要 (ctx._STEPAFTERRESTART = True)
-            # 2. 非重啟後待開地圖狀態 (not ctx._RESTART_OPEN_MAP_PENDING)
-            # 3. 曾經遇到過戰鬥/寶箱 (ctx._MEET_CHEST_OR_COMBAT)
-            # 這樣確保：
-            # - 重啟後第一次：不執行（需要防轉圈）
-            # - 地城內啟動：不執行（沒遇到過戰鬥/寶箱）
-            # - 開箱/戰鬥後：執行（正常恢復移動）
-            if ctx._STEPAFTERRESTART and (not ctx._RESTART_OPEN_MAP_PENDING) and ctx._MEET_CHEST_OR_COMBAT:
+            # 1. 非 Quest 任務類型
+            # 2. 已完成防轉圈或不需要 (ctx._STEPAFTERRESTART = True)
+            # 3. 非重啟後待開地圖狀態 (not ctx._RESTART_OPEN_MAP_PENDING)
+            # 4. 曾經遇到過戰鬥/寶箱 (ctx._MEET_CHEST_OR_COMBAT)
+            if (not is_quest_task) and ctx._STEPAFTERRESTART and (not ctx._RESTART_OPEN_MAP_PENDING) and ctx._MEET_CHEST_OR_COMBAT:
                 logger.info("[DungeonMover] 嘗試 Resume 優化...")
                 # 嘗試檢測 Resume 按鈕 (最多 3 次)
                 for retry in range(3):
@@ -4989,6 +5007,14 @@ def Factory():
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
+                    # NOTE: 僅 Quest 任務類型（蠍女等）的 position 目標在戰鬥觸發時即視為完成
+                    # 因為這些任務的 position 意義是「走到座標並擊殺目標」，觸發戰鬥即完成
+                    # 一般刷圖任務不適用此邏輯（可能有多次戰鬥在同一目標點）
+                    QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
+                    if setting._FARMTARGET in QUEST_TARGETS:
+                        if targetInfoList and targetInfoList[0].target == 'position':
+                            targetInfoList.pop(0)
+                            logger.info(f"[DungeonMover] Quest 任務 position 目標因戰鬥觸發而完成，剩餘目標數: {len(targetInfoList)}")
                     self.global_retry_count = 0  # 新增：成功，重置計數
                     self.global_retry_start_time = None
                     return self._cleanup_exit(DungeonState.Combat)
@@ -5587,7 +5613,7 @@ def Factory():
 
             # 黑幕檢測：如果畫面太暗，可能正在進入戰鬥，停止點擊
             screen_brightness = scn.mean()
-            if screen_brightness < 30:
+            if screen_brightness < 15:
                 logger.info(f"[StateChest] 偵測到黑幕 (亮度={screen_brightness:.1f})，可能正在進入戰鬥，停止點擊")
                 return DungeonState.Combat
 
@@ -6767,10 +6793,11 @@ def Factory():
                         lambda:StateDungeon([TargetInfo('position','左下',[505,760]),
                                              TargetInfo('position','左上',[506,821])]),
                         )
+
                     
-                    logger.info("第六步: 提交懸賞")
+                    logger.info("第六步: 提交懸賞") 
                     RestartableSequenceExecution(
-                        lambda:FindCoordsOrElseExecuteFallbackAndWait("guild",['return',[1,1]],1),
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait("guild",['return','returntotown','returnText',[1,1]],2),
                     )
                     RestartableSequenceExecution(
                         lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['guild','guildRequest','input swipe 600 1400 300 1400','Bounties',[1,1]],1))
