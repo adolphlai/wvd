@@ -1656,14 +1656,30 @@ def Factory():
 
             screenshot = screenImage.copy()
             search_area = CutRoI(screenshot, roi)
+
+            # [優化] 針對技能面板透明背景的邊緣匹配模式
+            is_skill = "spellskill" in shortPathOfTarget
+            
             try:
-                result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+                if is_skill:
+                    # 邊緣化預處理：轉灰階 -> Canny 邊緣檢測
+                    # 邊緣檢測能有效過濾掉半透明面板背景紋理的干擾，只保留技能文字與框線
+                    gray_tpl = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+                    gray_scn = cv2.cvtColor(search_area, cv2.COLOR_BGR2GRAY)
+                    
+                    # 提取模板與場景的邊緣
+                    edges_tpl = cv2.Canny(gray_tpl, 50, 150)
+                    edges_scn = cv2.Canny(gray_scn, 50, 150)
+                    
+                    # 對邊緣圖進行匹配
+                    result = cv2.matchTemplate(edges_scn, edges_tpl, cv2.TM_CCOEFF_NORMED)
+                else:
+                    # 原始 BGR 匹配邏輯 (保持地城旗標、確認鈕、對話框等的穩定性)
+                    result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
             except Exception as e:
-                logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}): {e}")
-                logger.info(f"{e}")
+                logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}, EdgeMode: {is_skill}): {e}")
                 if isinstance(e, (cv2.error)):
-                    logger.info(f"cv2異常.")
-                    continue  # 嘗試下一個模板
+                    continue 
 
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
             
@@ -3174,6 +3190,22 @@ def Factory():
                         
                         # 檢查是否還能找到剛才點擊的圖（如果還在，說明點擊沒生效）
                         scn = ScreenShot()
+                        
+                        # 點擊後，先檢查是否已進入地城
+                        if CheckIf(scn, 'dungFlag'):
+                            logger.info(f"[StateEoT] ✓ 偵測到 dungFlag，已進入地城")
+                            click_success = True
+                            break  # 跳出重試循環並結束 EOT
+                        
+                        # 或者檢查下一步目標是否出現
+                        if idx < len(quest._EOT) - 1:
+                            next_target = quest._EOT[idx + 1][1]
+                            if CheckIf(scn, next_target):
+                                logger.info(f"[StateEoT] ✓ 偵測到下一步目標 {next_target}")
+                                click_success = True
+                                break
+                        
+                        # 最後才檢查當前目標是否消失
                         still_there = CheckIf(scn, info[1])
                         
                         if not still_there:
