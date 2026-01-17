@@ -1658,15 +1658,23 @@ def Factory():
             search_area = CutRoI(screenshot, roi)
 
             try:
-                # 智慧偵測：如果模板帶有 Alpha 通道 (4 通道)，則自動啟動遮罩比對模式
-                if template.shape[2] == 4:
+                # NOTE: 僅對技能圖片 (spellskill) 啟用透明遮罩比對模式
+                # 其他圖片（dungFlag, mapFlag 等）維持標準 BGR 比對
+                is_skill = "spellskill" in template_name
+                
+                if is_skill and len(template.shape) == 3 and template.shape[2] == 4:
+                    # 技能圖片且帶有 Alpha 通道，使用遮罩比對
                     tpl_bgr = template[:, :, :3]
                     tpl_mask = template[:, :, 3]
-                    # 使用 TM_CCOEFF_NORMED 配合 mask 是目前 OpenCV 最強的去背比對方案
                     result = cv2.matchTemplate(search_area, tpl_bgr, cv2.TM_CCOEFF_NORMED, mask=tpl_mask)
                 else:
-                    # 傳統 3 通道圖片，使用標準比對
-                    result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
+                    # 一般圖片或無 Alpha 通道，使用標準比對
+                    # 如果是 4 通道但非技能圖，僅取 BGR 部分
+                    if len(template.shape) == 3 and template.shape[2] == 4:
+                        tpl_bgr = template[:, :, :3]
+                        result = cv2.matchTemplate(search_area, tpl_bgr, cv2.TM_CCOEFF_NORMED)
+                    else:
+                        result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
             except Exception as e:
                 logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}): {e}")
                 if isinstance(e, (cv2.error)):
