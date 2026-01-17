@@ -1657,23 +1657,18 @@ def Factory():
             screenshot = screenImage.copy()
             search_area = CutRoI(screenshot, roi)
 
-            # [優化] 針對技能面板透明背景的自動遮罩匹配模式
-            is_skill = "spellskill" in shortPathOfTarget
-            
             try:
-                if is_skill:
-                    # 自動生成遮罩：轉灰階 -> 高門檻二值化 (提取亮色文字/框線)
-                    gray_tpl = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-                    # 門檻設為 160，有效過濾掉半透明的暗背景，保留白色/亮灰色文字
-                    _, mask = cv2.threshold(gray_tpl, 160, 255, cv2.THRESH_BINARY)
-                    
-                    # 使用遮罩匹配 (TM_CCORR_NORMED 支援遮罩且對文字特徵辨識穩定)
-                    result = cv2.matchTemplate(search_area, template, cv2.TM_CCORR_NORMED, mask=mask)
+                # 智慧偵測：如果模板帶有 Alpha 通道 (4 通道)，則自動啟動遮罩比對模式
+                if template.shape[2] == 4:
+                    tpl_bgr = template[:, :, :3]
+                    tpl_mask = template[:, :, 3]
+                    # 使用 TM_CCOEFF_NORMED 配合 mask 是目前 OpenCV 最強的去背比對方案
+                    result = cv2.matchTemplate(search_area, tpl_bgr, cv2.TM_CCOEFF_NORMED, mask=tpl_mask)
                 else:
-                    # 原始 BGR 匹配邏輯 (保持地城旗標、確認鈕、對話框等的穩定性)
+                    # 傳統 3 通道圖片，使用標準比對
                     result = cv2.matchTemplate(search_area, template, cv2.TM_CCOEFF_NORMED)
             except Exception as e:
-                logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}, MaskMode: {is_skill}): {e}")
+                logger.error(f"[CheckIf] 匹配異常 (Template: {template_name}): {e}")
                 if isinstance(e, (cv2.error)):
                     continue 
 

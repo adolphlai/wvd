@@ -240,11 +240,10 @@ def LoadJson(path):
         return {}
 def LoadImage(path):
     try:
-        # 嘗試讀取圖片
-        img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        # 使用 IMREAD_UNCHANGED 以支援 Alpha 通道 (透明)
+        img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
         if img is None:
-        # 手動拋出異常
-            raise ValueError(f"[OpenCV 錯誤] 圖片加載失敗，路徑可能不存在或圖片損壞: {path}")
+            raise ValueError(f"[OpenCV 錯誤] 圖片加載失敗: {path}")
     except Exception as e:
         logger.error(f"加載圖片失敗: {str(e)}")
         return None
@@ -442,6 +441,64 @@ def get_combat_active_templates():
     _COMBAT_ACTIVE_TEMPLATES_CACHE = templates
     logger.debug(f"掃描到 combatActive 圖片: {templates}")
     return templates
+
+def smart_clean_image(input_path, output_path=None, threshold=50):
+    """對圖片進行智慧去背處理（亮度門檻 + 四角背景色排除）
+    
+    Args:
+        input_path: 原始圖片路徑
+        output_path: 輸出路徑，若為 None 則覆蓋原檔
+        threshold: 背景色差閥值，越大則去背範圍越廣
+        
+    Returns:
+        bool: 處理成功與否
+    """
+    try:
+        img = cv2.imdecode(np.fromfile(input_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            logger.error(f"[去背] 無法讀取圖片: {input_path}")
+            return False
+        
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # 1. 亮度門檻：文字通常是白色（高亮），背景亮度較低
+        lumi_mask = np.where(gray > 90, 255, 0).astype(np.uint8)
+        
+        # 2. 多點背景色排除：偵測四個角落的背景色
+        corners = [img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]]
+        color_masks = []
+        for bg_color in corners:
+            diff = np.sqrt(np.sum((img.astype(float) - bg_color.astype(float))**2, axis=2))
+            color_masks.append(np.where(diff < threshold, 0, 255).astype(np.uint8))
+        
+        # 合併遮罩：必須同時滿足「非背景色」且「具有一定亮度」
+        final_mask = lumi_mask
+        for c_mask in color_masks:
+            final_mask = cv2.bitwise_and(final_mask, c_mask)
+        
+        # 平滑處理
+        final_mask = cv2.GaussianBlur(final_mask, (3, 3), 0)
+        
+        # 轉為 BGRA 並設定 Alpha 通道
+        bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+        bgra[:, :, 3] = final_mask
+        
+        # 輸出
+        save_path = output_path if output_path else input_path
+        success, encoded = cv2.imencode('.png', bgra)
+        if success:
+            with open(save_path, 'wb') as f:
+                encoded.tofile(f)
+            logger.info(f"[去背] 完成: {save_path}")
+            return True
+        else:
+            logger.error(f"[去背] 編碼失敗: {save_path}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"[去背] 處理失敗: {e}")
+        return False
+
 ###########################################
 class Tooltip:
     def __init__(self, widget, text):

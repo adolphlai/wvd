@@ -1533,6 +1533,63 @@ class ConfigPanelApp(tk.Toplevel):
         )
         self.debug_screenshot_check.grid(row=row, column=0, sticky=tk.W, pady=5)
 
+        # --- 圖片去背工具 ---
+        row += 1
+        frame_bgremove = ttk.LabelFrame(tab, text="圖片去背工具", padding=5)
+        frame_bgremove.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
+
+        # 目錄選擇
+        ttk.Label(frame_bgremove, text="目錄:").grid(row=0, column=0, padx=5, sticky=tk.W)
+        self.bgremove_dir_var = tk.StringVar(value="")
+        self.bgremove_dir_label = ttk.Label(frame_bgremove, textvariable=self.bgremove_dir_var, width=30, anchor=tk.W)
+        self.bgremove_dir_label.grid(row=0, column=1, padx=5, sticky=tk.W)
+        
+        def select_bgremove_dir():
+            path = filedialog.askdirectory(title="選擇圖片目錄")
+            if path:
+                self.bgremove_dir_var.set(path)
+                # 掃描目錄下的 PNG 檔案
+                png_files = [f for f in os.listdir(path) if f.lower().endswith('.png')]
+                self.bgremove_file_combo['values'] = png_files
+                if png_files:
+                    self.bgremove_file_combo.current(0)
+                else:
+                    self.bgremove_file_var.set("")
+                self.bgremove_status_var.set(f"找到 {len(png_files)} 個 PNG 檔案")
+        
+        ttk.Button(frame_bgremove, text="選擇目錄", command=select_bgremove_dir, width=10).grid(row=0, column=2, padx=5)
+
+        # 檔案選擇
+        ttk.Label(frame_bgremove, text="檔案:").grid(row=1, column=0, padx=5, sticky=tk.W)
+        self.bgremove_file_var = tk.StringVar(value="")
+        self.bgremove_file_combo = ttk.Combobox(frame_bgremove, textvariable=self.bgremove_file_var, state="readonly", width=28)
+        self.bgremove_file_combo.grid(row=1, column=1, padx=5, sticky=tk.W)
+
+        def do_bgremove():
+            dir_path = self.bgremove_dir_var.get()
+            filename = self.bgremove_file_var.get()
+            if not dir_path or not filename:
+                self.bgremove_status_var.set("請先選擇目錄和檔案")
+                return
+            
+            full_path = os.path.join(dir_path, filename)
+            self.bgremove_status_var.set("處理中...")
+            self.update_idletasks()
+            
+            # 呼叫去背函數
+            success = smart_clean_image(full_path)
+            if success:
+                self.bgremove_status_var.set(f"✓ 完成: {filename}")
+            else:
+                self.bgremove_status_var.set(f"✗ 失敗: {filename}")
+
+        ttk.Button(frame_bgremove, text="去背並替換", command=do_bgremove, width=10).grid(row=1, column=2, padx=5)
+
+        # 狀態顯示
+        self.bgremove_status_var = tk.StringVar(value="")
+        ttk.Label(frame_bgremove, textvariable=self.bgremove_status_var, foreground="green").grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=2)
+
+        ttk.Label(frame_bgremove, text="※ 去背後將直接覆蓋原檔，建議先備份", foreground="gray").grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
 
     def _on_editor_server_stopped(self):
         """EditorServer 停止後的回調，用於更新 GUI 狀態"""
