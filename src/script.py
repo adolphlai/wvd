@@ -1387,6 +1387,9 @@ def Factory():
         best_val = 0
         
         for template_name in templates_to_try:
+            # 停止信號檢查：在遍歷大量模板時確保能快速響應停止請求
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return 0
             template = _get_cached_template(template_name)
             if template is None:
                 continue
@@ -1648,6 +1651,9 @@ def Factory():
         match_details = []  # 收集匹配詳情用於摘要
         
         for template_name in templates_to_try:
+            # 停止信號檢查：在遍歷大量模板時確保能快速響應停止請求
+            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                return None
             template = _get_cached_template(template_name)  # [優化] 使用緩存
             if template is None:
                 # 如果模板加載失敗（例如文件不存在），跳過該模板
@@ -2395,6 +2401,9 @@ def Factory():
             
             if combat_templates:
                 for t in combat_templates:
+                    # 停止信號檢查：在遍歷模板時確保能快速響應停止請求
+                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        return State.Quit, DungeonState.Quit, screen
                     template = _get_cached_template(t)
                     if template is None: continue
                     
