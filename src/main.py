@@ -67,13 +67,16 @@ class AppController(tk.Tk):
                 # 3. 我們會立即調用 os._exit(0) 強制終止
                 logger.info('跳過等待線程，daemon 線程會隨主程序退出')
 
-            # 2. 停止 pyscrcpy 串流（關鍵：避免卡死）
-            logger.info('正在停止 pyscrcpy 串流...')
-            try:
-                from script import cleanup_scrcpy_stream
-                cleanup_scrcpy_stream()
-            except Exception as e:
-                print(f"停止 pyscrcpy 串流失敗: {e}")
+            # 2. 停止 pyscrcpy 串流（異步執行，防止阻塞 GUI）
+            logger.info('正在停止 pyscrcpy 串流 (異步)...')
+            def async_cleanup():
+                try:
+                    from script import cleanup_scrcpy_stream
+                    cleanup_scrcpy_stream()
+                except Exception as e:
+                    print(f"異步停止 pyscrcpy 串流失敗: {e}")
+            
+            self.run_in_thread(async_cleanup)
 
             # 3. 停止日誌監聽器
             logger.info('正在停止日誌監聯器...')
@@ -128,12 +131,14 @@ class AppController(tk.Tk):
                     if hasattr(self, 'quest_threading') and self.quest_threading.is_alive():
                         if hasattr(self.quest_setting, '_FORCESTOPING'):
                             self.quest_setting._FORCESTOPING.set()
-                    # 停止 pyscrcpy 串流以釋放資源
-                    try:
-                        from script import cleanup_scrcpy_stream
-                        cleanup_scrcpy_stream()
-                    except Exception as e:
-                        logger.warning(f"停止 pyscrcpy 串流失敗: {e}")
+                    # 停止 pyscrcpy 串流以釋放資源 (異步)
+                    def async_cleanup():
+                        try:
+                            from script import cleanup_scrcpy_stream
+                            cleanup_scrcpy_stream()
+                        except Exception as e:
+                            logger.warning(f"異步停止 pyscrcpy 串流失敗: {e}")
+                    self.run_in_thread(async_cleanup)
 
                 case 'task_finished':
                     # 從主線程調用 finishingcallback，避免 Tkinter 線程安全問題

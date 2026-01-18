@@ -213,12 +213,15 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 ## 停止信號機制規範（wvd 專案）
 
+> [!IMPORTANT]
+> 所有循環 (`while`/`for`) 開頭 **必須** 調用 `check_stop_signal()`，這是不可省略的強制要求。
+
 ### `@stoppable` 裝飾器
 
 **用途**：自動在函數入口檢查停止信號，確保程式能優雅停止
 
 **使用時機**：
-- 所有包含 `while` 循環的函數
+- 所有包含 `while` 或 `for` 循環的函數
 - 長時間執行的狀態處理函數（如 `StateXxx`）
 - 遞歸調用的函數（如狀態機）
 - 任何新增的業務邏輯函數
@@ -231,11 +234,26 @@ def NewFunction():
     ...
 ```
 
-**循環內檢查**：`while` 循環開頭調用 `check_stop_signal()`
+### 循環內檢查（強制）
+
+**所有** `while` 和 `for` 循環開頭 **必須** 調用 `check_stop_signal()`：
+
 ```python
 while True:
-    check_stop_signal()
+    check_stop_signal()  # 必須加入
+    ...
+
+for item in items:
+    check_stop_signal()  # 必須加入
     ...
 ```
 
-**禁止事項**：禁止直接使用 `if setting._FORCESTOPING.is_set(): return`，必須通過統一機制處理
+### 禁止事項
+
+禁止直接使用 `if setting._FORCESTOPING.is_set(): return`，必須通過統一機制處理
+
+### 代碼修改後自檢清單
+
+每次修改 `script.py` 後，**必須** 確認：
+- [ ] 新增的 `while`/`for` 循環是否已加入 `check_stop_signal()`
+- [ ] 新增的函數是否需要 `@stoppable` 裝飾器

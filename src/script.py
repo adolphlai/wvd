@@ -91,13 +91,32 @@ class ScrcpyStreamManager:
         return None
     
     def stop(self):
-        """停止串流"""
+        """停止串流（帶超時保護，防止阻塞）"""
         self.running = False
         if self.client:
             try:
-                self.client.stop()
-                logger.info("pyscrcpy 串流已停止")
-            except:
+                # NOTE: pyscrcpy.client.stop() 可能會阻塞
+                # 使用線程和超時機制確保不會無限等待
+                import threading
+                stop_event = threading.Event()
+                
+                def _stop_client():
+                    try:
+                        self.client.stop()
+                    except Exception:
+                        pass
+                    finally:
+                        stop_event.set()
+                
+                stop_thread = threading.Thread(target=_stop_client, daemon=True)
+                stop_thread.start()
+                
+                # 最多等待 2 秒
+                if stop_event.wait(timeout=2.0):
+                    logger.info("pyscrcpy 串流已停止")
+                else:
+                    logger.warning("pyscrcpy 串流停止超時，強制跳過")
+            except Exception:
                 pass
         self.client = None
     
@@ -1650,18 +1669,19 @@ def Factory():
         best_template_name = None
         match_details = []  # 收集匹配詳情用於摘要
         
+        # [優化] 預先處理截圖，避免在多模板循環中重複執行
+        screenshot = screenImage.copy()
+        search_area = CutRoI(screenshot, roi)
+
         for template_name in templates_to_try:
             # 停止信號檢查：在遍歷大量模板時確保能快速響應停止請求
-            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                return None
+            check_stop_signal() 
+            
             template = _get_cached_template(template_name)  # [優化] 使用緩存
             if template is None:
                 # 如果模板加載失敗（例如文件不存在），跳過該模板
                 logger.trace(f"[CheckIf] 模板加載失敗或為 None: {template_name}，跳過")
                 continue
-
-            screenshot = screenImage.copy()
-            search_area = CutRoI(screenshot, roi)
 
             try:
                 # NOTE: 僅對技能圖片 (spellskill) 啟用透明遮罩比對模式
@@ -2125,6 +2145,7 @@ def Factory():
         MAX_RESTART_RETRIES = 100# 最大重啟次數
         restart_count = 0
         while restart_count < MAX_RESTART_RETRIES:
+            check_stop_signal()  # 循環開頭檢查停止信號
             # NOTE: 每次循環開始時都檢查 GameMonitor 是否存活
             # 修復：之前只在循環外檢查一次，導致重啟後 GameMonitor 沒有重新啟動
             if not hasattr(setting, '_GAME_CRASHED') or not (_game_monitor_thread and _game_monitor_thread.is_alive()):
@@ -2346,8 +2367,7 @@ def Factory():
                     click_count = 0
                     # 在黑屏期間持續點擊打斷
                     while IsScreenBlack(ScreenShot()):
-                        if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                            return State.Quit, DungeonState.Quit, screen
+                        check_stop_signal()  # 使用統一機制
                         Press([1, 1])
                         click_count += 1
                         Sleep(0.1)  # 快速點擊
@@ -2402,18 +2422,32 @@ def Factory():
             if combat_templates:
                 for t in combat_templates:
                     # 停止信號檢查：在遍歷模板時確保能快速響應停止請求
-                    if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                        return State.Quit, DungeonState.Quit, screen
+                    check_stop_signal()
+
                     template = _get_cached_template(t)
                     if template is None: continue
                     
                     try:
-                        res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+                        # [修復] 支援技能圖片的透明遮罩比對
+                        is_skill = "spellskill" in t
+                        if is_skill and len(template.shape) == 3 and template.shape[2] == 4:
+                            tpl_bgr = template[:, :, :3]
+                            tpl_mask = template[:, :, 3]
+                            res = cv2.matchTemplate(screen, tpl_bgr, cv2.TM_CCOEFF_NORMED, mask=tpl_mask)
+                        else:
+                            # 即使是 4 通道，如果不是技能圖或一般比對，也只取 BGR
+                            if len(template.shape) == 3 and template.shape[2] == 4:
+                                tpl_bgr = template[:, :, :3]
+                                res = cv2.matchTemplate(screen, tpl_bgr, cv2.TM_CCOEFF_NORMED)
+                            else:
+                                res = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+
                         _, val, _, loc = cv2.minMaxLoc(res)
                         if val > max_combat_val:
                             max_combat_val = val
                             best_combat_pos = [loc[0] + template.shape[1]//2, loc[1] + template.shape[0]//2]
-                    except:
+                    except Exception as e:
+                        logger.trace(f"[IdentifyState] 戰鬥模板 {t} 比對異常: {e}")
                         continue
             
 
@@ -3618,7 +3652,7 @@ def Factory():
         nonlocal runtimeContext
         
         # NOTE: Quest 模式（如蠍女、7000G、鋼試練等）有自己的流程控制，不應觸發連續刷地城
-        QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
+        QUEST_TARGETS = ['Scorpionesses', 'Giant', '7000G', 'steeltrail']
         if setting._FARMTARGET in QUEST_TARGETS:
             return False
         
@@ -3782,6 +3816,7 @@ def Factory():
                 # AOE 類技能：等待並點擊 OK 確認
                 ok_pos = None
                 for wait_ok in range(6):  # 最多等待 3 秒 (6 × 0.5s)
+                    check_stop_signal()  # 確保能快速響應停止信號
                     ok_pos = CheckIf(scn, 'OK')
                     if ok_pos:
                         break
@@ -3859,6 +3894,7 @@ def Factory():
             # 等待 OK 按鈕出現 (最多 3 秒)
             ok_pos = None
             for wait_ok in range(6):
+                check_stop_signal()  # 確保能快速響應停止信號
                 # [網路重試] 檢測網路波動
                 if TryPressRetry(scn):
                     logger.info("[戰鬥] 等待 OK 按鈕時偵測到 Retry 選項，點擊重試")
@@ -4697,7 +4733,7 @@ def Factory():
             
             # NOTE: Quest 任務（如蠍女、7000G、鋼試練）直接使用標準導航，跳過 Resume 優化
             # 這些任務有自己的流程控制，Resume 優化會導致多次重試浪費時間
-            QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
+            QUEST_TARGETS = ['Scorpionesses', 'Giant', '7000G', 'steeltrail']
             is_quest_task = setting._FARMTARGET in QUEST_TARGETS
             
             # [Resume 優化] 條件（所有條件需同時滿足）：
@@ -4780,6 +4816,7 @@ def Factory():
 
                     auto_retry_count = 0
                     while auto_retry_count < 15:
+                        check_stop_signal()  # 確保停止信號能被響應
                         screen_retry = ScreenShot()
                         if CheckIf(screen_retry, 'AUTO'):
                             logger.info(f"[DungeonMover] 地圖重試中偵測到 AUTO，瘋狂連點清理中 (嘗試 {auto_retry_count+1}/15)...")
@@ -5047,14 +5084,9 @@ def Factory():
                 # 狀態轉換
                 if state == DungeonState.Combat:
                     logger.info("[DungeonMover] 進入戰鬥")
-                    # NOTE: 僅 Quest 任務類型（蠍女等）的 position 目標在戰鬥觸發時即視為完成
-                    # 因為這些任務的 position 意義是「走到座標並擊殺目標」，觸發戰鬥即完成
-                    # 一般刷圖任務不適用此邏輯（可能有多次戰鬥在同一目標點）
-                    QUEST_TARGETS = ['Scorpionesses', '7000G', 'steeltrail']
-                    if setting._FARMTARGET in QUEST_TARGETS:
-                        if targetInfoList and targetInfoList[0].target == 'position':
-                            targetInfoList.pop(0)
-                            logger.info(f"[DungeonMover] Quest 任務 position 目標因戰鬥觸發而完成，剩餘目標數: {len(targetInfoList)}")
+                    # NOTE: 移除 Quest 任務戰鬥觸發即完成的邏輯
+                    # 避免在前往王關座標的路上遇到隨機小怪戰鬥時，導致座標點被誤刪除
+                    pass
                     self.global_retry_count = 0  # 新增：成功，重置計數
                     self.global_retry_start_time = None
                     return self._cleanup_exit(DungeonState.Combat)
@@ -5107,15 +5139,33 @@ def Factory():
                             Press(pos)
                         self.last_resume_click_time = time.time()
                 elif not is_chest_auto:
-                    # 非 chest_auto 時，固定間隔嘗試 Resume（不管靜止狀態）
-                    if time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL:
+                    # 非 chest_auto 時，間隔嘗試 Resume
+                    QUEST_TARGETS = ['Scorpionesses', 'Giant', '7000G', 'steeltrail']
+                    is_quest_task = setting._FARMTARGET in QUEST_TARGETS
+                    
+                    # 決定是否執行定期 Resume 檢查：
+                    # 1. 一般任務：固定間隔檢查（包含移動中，確保不斷點）
+                    # 2. 任務型地城：只有在靜止 (still_count >= 1) 時才定時檢查，避免移動中誤觸導致回城邏輯衝突
+                    should_check_periodic = False
+                    if not is_quest_task:
+                        should_check_periodic = (time.time() - self.last_resume_click_time > self.RESUME_CLICK_INTERVAL)
+                    else:
+                        # 任務型地城：靜止且達一定間隔(3s)才檢查
+                        should_check_periodic = (self.still_count >= 1) and (time.time() - self.last_resume_click_time > 3.0)
+
+                    if should_check_periodic:
                         resume_pos_periodic = CheckIf(screen, 'resume')
                         if resume_pos_periodic:
                             logger.info(f"[DungeonMover] 定期檢查 Resume，點擊: {resume_pos_periodic}")
                             Press(resume_pos_periodic)
+                            self.still_count = 0 # 點擊後重置靜止計數
+                            
+                            # NOTE: 對於所有任務類型，Resume 點擊後都應檢查 RouteNotFound
+                            # 這表示角色已到達目的地（無論是否觸發戰鬥）
                             # 點擊後短暫等待並多次檢查是否已到達
                             Sleep(0.5)
                             for _ in range(3):
+                                check_stop_signal()  # 確保停止信號能被響應
                                 if CheckIf(ScreenShot(), 'routenotfound'):
                                     logger.info("[DungeonMover] Resume 後檢測到 RouteNotFound，到達目的地")
                                     if target in ['position', 'minimap_stair'] or (target and target.startswith('stair')):
@@ -5489,8 +5539,7 @@ def Factory():
                         Sleep(0.5)
                         PressReturn()
                         while 1:
-                            if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
-                                return None, targetInfoList
+                            check_stop_signal()  # 使用統一機制
                             if setting._DUNGWAITTIMEOUT-time.time()+waitTimer<0:
                                 logger.info("等得夠久了. 目標地點完成.")
                                 targetInfoList.pop(0)
@@ -6831,16 +6880,91 @@ def Factory():
                     )
                     RestartableSequenceExecution(
                         lambda:StateDungeon([TargetInfo('position','左下',[505,760]),
-                                             TargetInfo('position','左上',[506,821])]),
+                                             TargetInfo('harken', [None], None, 'B5Fwarpedonesnest')]),
                         )
 
+                    RestartableSequenceExecution(
+                        lambda:StateDungeon([TargetInfo('position','左上',[463,778]),
+                                             TargetInfo('position', [None], [137,725])])
+                        )
                     
                     logger.info("第六步: 提交懸賞") 
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait("guild",['return','returntotown','returnText',[1,1]],2),
                     )
+                    logger.info("執行第一次交賞金") 
                     RestartableSequenceExecution(
-                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['guild','guildRequest','input swipe 600 1400 300 1400','Bounties',[1,1]],1))
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['guild','guildRequest','input swipe 600 1400 300 1400','Bounties',[1,1]],1)),
+                        )
+                 
+                    logger.info("執行第二次交賞金") 
+                    RestartableSequenceExecution(
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait('Bountiesselected',['return',[1,1]],2)
+                        )
+                    RestartableSequenceExecution(
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['return',[1,1]],2))
+                        )                        
+                    RestartableSequenceExecution(
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
+                        )                                               
+
+
+
+                    logger.info("第七步: 休息")
+                    # 每 N 次地城後回旅店休息
+                    if (runtimeContext._COUNTERDUNG % max(setting._DUNGEON_REPEAT_LIMIT, 1) == 0):
+                        RestartableSequenceExecution(
+                            lambda:StateInn()
+                            )
+                        
+                    costtime = time.time()-starttime
+                    total_time = total_time + costtime
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"懸賞:蠍女\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
+                            extra={"summary": True})
+            case 'Giant':
+                total_time = 0
+                while 1:
+                    check_stop_signal()
+
+                    starttime = time.time()
+                    runtimeContext._COUNTERDUNG += 1
+
+                    RestartableSequenceExecution(
+                        lambda: CursedWheelTimeLeap()
+                        )
+
+                    Sleep(10)
+                    if not setting._ACTIVE_ORE_JUMP:
+                        logger.info("第二步: 返回要塞...")
+                        RestartableSequenceExecution(
+                            lambda: Press(FindCoordsOrElseExecuteFallbackAndWait('guildofguardafortres',['returntotown','returnText','leaveDung','blessing',[1,1]],2))
+                            )
+
+
+
+                    logger.info("第四步: 懸賞揭榜")
+                    RestartableSequenceExecution(
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('guildRequest',['guild',[1,1]],1)),
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('Bounties',['guild','guildRequest','input swipe 600 1400 300 1400',[1,1]],1)),
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
+                        )
+
+                    logger.info("第五步: 擊殺巨人")
+                    RestartableSequenceExecution(
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait('dungFlag',['EdgeOfTown','impregnableFortress','fortressb10f','GotoDung',[1,1]],1),
+                    )
+                    RestartableSequenceExecution(
+                        lambda:StateDungeon([TargetInfo('position','右下',[162,1010]),
+                                             TargetInfo('position','左下',[739,749])]),
+                        )
+
+                    
+                    logger.info("第六步: 提交懸賞") 
+                    RestartableSequenceExecution(
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait("guildofguardafortres",['return','returntotown','returnText',[1,1]],2),
+                    )
+                    RestartableSequenceExecution(
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['guildofguardafortres','guildRequest','input swipe 600 1400 300 1400','Bounties',[1,1]],1))
                         )
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
@@ -6855,7 +6979,7 @@ def Factory():
                         
                     costtime = time.time()-starttime
                     total_time = total_time + costtime
-                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"懸賞:蠍女\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
+                    logger.info(f"第{runtimeContext._COUNTERDUNG}次\"懸賞:巨人\"完成. \n該次花費時間{costtime:.2f}s.\n總計用時{total_time:.2f}s.\n平均用時{total_time/runtimeContext._COUNTERDUNG:.2f}",
                             extra={"summary": True})
             case 'steeltrail':
                 total_time = 0
