@@ -162,17 +162,45 @@ def cleanup_scrcpy_stream():
     
     在程序關閉時調用，確保視頻串流正確停止，
     避免因為 pyscrcpy 內部線程阻塞導致程序卡死。
+    
+    NOTE: 添加鎖機制防止多線程同時調用導致的競爭阻塞
     """
     global _scrcpy_stream
-    if _scrcpy_stream is not None:
-        try:
+    global _scrcpy_cleanup_lock
+    global _scrcpy_cleanup_done
+    
+    # 初始化鎖（如果不存在）
+    if '_scrcpy_cleanup_lock' not in globals():
+        import threading
+        globals()['_scrcpy_cleanup_lock'] = threading.Lock()
+        globals()['_scrcpy_cleanup_done'] = False
+    
+    # 快速檢查：如果已經清理過，直接返回
+    if _scrcpy_cleanup_done:
+        logger.info("pyscrcpy 串流已清理過，跳過")
+        return
+    
+    # 嘗試獲取鎖（非阻塞），如果其他線程正在清理則跳過
+    if not _scrcpy_cleanup_lock.acquire(blocking=False):
+        logger.info("pyscrcpy 串流正在被其他線程清理，跳過")
+        return
+    
+    try:
+        # 再次檢查（雙重檢查鎖定）
+        if _scrcpy_cleanup_done:
+            return
+        
+        if _scrcpy_stream is not None:
             logger.info("正在停止 pyscrcpy 串流...")
             _scrcpy_stream.stop()
             logger.info("pyscrcpy 串流已清理")
-        except Exception as e:
-            logger.warning(f"清理 pyscrcpy 串流時發生異常: {e}")
-        finally:
             _scrcpy_stream = None
+        
+        _scrcpy_cleanup_done = True
+    except Exception as e:
+        logger.warning(f"清理 pyscrcpy 串流時發生異常: {e}")
+    finally:
+        _scrcpy_cleanup_lock.release()
 
 
 # ==================== 技能分類與載入 ====================
@@ -6901,8 +6929,9 @@ def Factory():
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('Bountiesselected',['return',[1,1]],2)
                         )
+
                     RestartableSequenceExecution(
-                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['return',[1,1]],2))
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['Bountiesselected',[1,1]],2))
                         )                        
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)

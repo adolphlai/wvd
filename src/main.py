@@ -50,64 +50,12 @@ class AppController(tk.Tk):
         self.after(3600000, self.schedule_periodic_update_check)
 
     def on_closing(self):
-        """處理窗口關閉事件，確保所有資源正確清理"""
-        try:
-            logger.info('=== 開始關閉程序 ===')
-
-            # 1. 停止正在運行的任務
-            if hasattr(self, 'quest_threading') and self.quest_threading and self.quest_threading.is_alive():
-                logger.info('正在停止任務線程...')
-                if hasattr(self.quest_setting, '_FORCESTOPING'):
-                    self.quest_setting._FORCESTOPING.set()
-                    logger.info('已設置停止信號')
-
-                # 不等待線程結束，因為：
-                # 1. 線程已設置為 daemon，主程序退出時會自動終止
-                # 2. join() 可能會阻塞導致關閉緩慢
-                # 3. 我們會立即調用 os._exit(0) 強制終止
-                logger.info('跳過等待線程，daemon 線程會隨主程序退出')
-
-            # 2. 停止 pyscrcpy 串流（異步執行，防止阻塞 GUI）
-            logger.info('正在停止 pyscrcpy 串流 (異步)...')
-            def async_cleanup():
-                try:
-                    from script import cleanup_scrcpy_stream
-                    cleanup_scrcpy_stream()
-                except Exception as e:
-                    print(f"異步停止 pyscrcpy 串流失敗: {e}")
-            
-            self.run_in_thread(async_cleanup)
-
-            # 3. 停止日誌監聽器
-            logger.info('正在停止日誌監聯器...')
-            try:
-                StopLogListener()
-            except Exception as e:
-                print(f"停止日誌監聽器失敗: {e}")
-
-            # 4. 清理消息隊列
-            try:
-                while not self.msg_queue.empty():
-                    self.msg_queue.get_nowait()
-            except:
-                pass
-
-            logger.info('資源清理完成，程序即將退出')
-
-        except Exception as e:
-            print(f"清理過程中發生錯誤: {e}")
-        finally:
-            # 5. 銷毀 GUI
-            try:
-                self.destroy()
-            except:
-                pass
-
-            # 6. 強制退出（確保進程完全終止）
-            # 使用 os._exit() 而不是 sys.exit()，因為它會立即終止進程
-            # 包括所有 daemon 線程，不會等待任何清理
-            print('強制終止進程')  # 使用 print 因為 logger 可能已關閉
-            os._exit(0)
+        """處理窗口關閉事件"""
+        # NOTE: 直接強制退出，避免任何清理操作阻塞
+        # daemon 線程會自動終止
+        if hasattr(self, 'quest_setting') and self.quest_setting and hasattr(self.quest_setting, '_FORCESTOPING'):
+            self.quest_setting._FORCESTOPING.set()
+        os._exit(0)
 
     def check_queue(self):
         """處理來自AutoUpdater和其他服務的消息"""
