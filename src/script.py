@@ -6927,11 +6927,12 @@ def Factory():
                  
                     logger.info("執行第二次交賞金") 
                     RestartableSequenceExecution(
-                        lambda:FindCoordsOrElseExecuteFallbackAndWait('Bountiesselected',['return',[1,1]],2)
+                        lambda:FindCoordsOrElseExecuteFallbackAndWait('Bountiesselected',['return',[1,1]],2),
+                        lambda:Sleep(2)
                         )
-
                     RestartableSequenceExecution(
-                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['Bountiesselected',[1,1]],2))
+                        lambda:Press(FindCoordsOrElseExecuteFallbackAndWait('CompletionReported',['Bountiesselected',[1,1]],2)),
+                        lambda:Sleep(2)
                         )                        
                     RestartableSequenceExecution(
                         lambda:FindCoordsOrElseExecuteFallbackAndWait('EdgeOfTown',['return',[1,1]],1)
