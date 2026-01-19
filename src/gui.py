@@ -529,12 +529,17 @@ class ConfigPanelApp(tk.Toplevel):
         self.emu_path_var.trace_add("write", lambda *args: update_adb_status())
         update_adb_status()
 
-        ttk.Label(frame_adb, text="端口:").grid(row=0, column=2, padx=(10, 2))
+        ttk.Label(frame_adb, text="序號:").grid(row=0, column=2, padx=(10, 2))
+        self.emu_index_entry = ttk.Entry(frame_adb, textvariable=self.emu_index_var, width=3)
+        self.emu_index_entry.grid(row=0, column=3)
+        CreateToolTip(self.emu_index_entry, "多開序號 (0=主視窗, 1=第一個分身...)")
+
+        ttk.Label(frame_adb, text="端口:").grid(row=0, column=4, padx=(10, 2))
         self.adb_port_entry = ttk.Entry(frame_adb, textvariable=self.adb_port_var, validate="key",
                                         validatecommand=(vcmd_non_neg, '%P'), width=6)
-        self.adb_port_entry.grid(row=0, column=3)
+        self.adb_port_entry.grid(row=0, column=5)
         self.button_save_adb_port = ttk.Button(frame_adb, text="儲存", command=self.save_config, width=5)
-        self.button_save_adb_port.grid(row=0, column=4, padx=2)
+        self.button_save_adb_port.grid(row=0, column=6, padx=2)
 
         # --- 地下城目標 ---
         row += 1

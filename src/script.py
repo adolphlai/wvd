@@ -376,6 +376,7 @@ CONFIG_VAR_LIST = [
             ["karma_adjust_var",            tk.StringVar,  "_KARMAADJUST",               "+0"],
             ["emu_path_var",                tk.StringVar,  "_EMUPATH",                   ""],
             ["adb_port_var",                tk.StringVar,  "_ADBPORT",                   5555],
+            ["emu_index_var",               tk.StringVar,  "_EMU_INDEX",                   "0"],
             ["last_version",                tk.StringVar,  "LAST_VERSION",               ""],
             ["latest_version",              tk.StringVar,  "LATEST_VERSION",             None],
             ["active_csc_var",              tk.BooleanVar, "ACTIVE_CSC",                 True],
@@ -794,9 +795,24 @@ def StartEmulator(setting):
         return False
 
     try:
-        logger.info(f"啓動模擬器: {hd_player_path}")
+        logger.info(f"啟動模擬器: {hd_player_path}")
+        
+        # 構建啟動命令
+        cmd = f'"{hd_player_path}"'
+        
+        # 處理多開參數
+        if hasattr(setting, '_EMU_INDEX'):
+            try:
+                idx = int(setting._EMU_INDEX)
+                if idx >= 0:
+                    # 針對 MuMu 模擬器使用 -v 參數
+                    cmd += f" -v {idx}"
+                    logger.info(f"指定模擬器序號: {idx}")
+            except (ValueError, TypeError):
+                pass
+
         subprocess.Popen(
-            hd_player_path, 
+            cmd, 
             shell=True,
             stdout=subprocess.DEVNULL, 
             stderr=subprocess.DEVNULL,
