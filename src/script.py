@@ -2765,8 +2765,13 @@ def Factory():
                                     pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
                                     if info[0] == "press":
                                         Press(pos)
-                        # 點擊 GotoDung 進入地城（與 StateEoT 保持一致）
-                        Press(CheckIf(ScreenShot(), 'GotoDung'))
+                        # 點擊 GotoDung 進入地城（重試最多 5 次以應對動畫延遲）
+                        for _ in range(5):
+                            if pos_goto := CheckIf(ScreenShot(), 'GotoDung'):
+                                Press(pos_goto)
+                                logger.info("✓ 已點擊 GotoDung")
+                                break
+                            Sleep(1)
                         Sleep(2)
                         reset_ae_caster_flags()  # 重新進入地城，重置 AE 手旗標
                         runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True  # 跳過黑屏檢測
@@ -2810,8 +2815,13 @@ def Factory():
                                 pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
                                 if info[0] == "press":
                                     Press(pos)
-                    # 點擊 GotoDung 進入地城（與 StateEoT 保持一致）
-                    Press(CheckIf(ScreenShot(), 'GotoDung'))
+                    # 點擊 GotoDung 進入地城（重試最多 5 次以應對動畫延遲）
+                    for _ in range(5):
+                        if pos_goto := CheckIf(ScreenShot(), 'GotoDung'):
+                            Press(pos_goto)
+                            logger.info("✓ 已點擊 GotoDung")
+                            break
+                        Sleep(1)
                     Sleep(2)
                     runtimeContext._RESET_TARGETS_PENDING = True  # [關鍵修復] 標記需要重置目標列表
                     runtimeContext._RESTART_OPEN_MAP_PENDING = True  # [新增] 跳過 Resume 優化，強制重新開地圖
@@ -2895,8 +2905,13 @@ def Factory():
                             else:
                                 pos = FindCoordsOrElseExecuteFallbackAndWait(info[1], info[2], info[3])
                                 if info[0] == "press": Press(pos)
-                        # 點擊 GotoDung 進入地城（與 StateEoT 保持一致）
-                        Press(CheckIf(ScreenShot(), 'GotoDung'))
+                        # 點擊 GotoDung 進入地城（重試最多 5 次以應對動畫延遲）
+                        for _ in range(5):
+                            if pos_goto := CheckIf(ScreenShot(), 'GotoDung'):
+                                Press(pos_goto)
+                                logger.info("✓ 已點擊 GotoDung")
+                                break
+                            Sleep(1)
                         Sleep(2)
                         MonitorState.current_state = "Dungeon"
                         MonitorState.current_dungeon_state = None
@@ -3308,7 +3323,13 @@ def Factory():
                         
             Sleep(1)  # 每個操作後等待遊戲響應
         Sleep(1)
-        Press(CheckIf(ScreenShot(), 'GotoDung'))
+        # 點擊 GotoDung 進入地城（重試最多 5 次以應對動畫延遲）
+        for _ in range(5):
+            if pos_goto := CheckIf(ScreenShot(), 'GotoDung'):
+                Press(pos_goto)
+                logger.info("✓ 已點擊 GotoDung")
+                break
+            Sleep(1)
     def useForcedPhysicalSkill(screen, doubleConfirmCastSpell_func, reason=""):
         """
         強制使用強力單體技能（用於 AE 手非 AE 角色）
