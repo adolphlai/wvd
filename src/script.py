@@ -4213,6 +4213,7 @@ def Factory():
             logger.trace("[計時器] 戰鬥計時開始")
 
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
+        flee_seen = False  # 標記是否已看過戰鬥介面（flee 出現），用於黑屏判定
         logger.info("[戰鬥] 等待 flee 出現...")
         for wait_count in range(30):  # 最多等待 15 秒
             check_stop_signal()  # 確保能快速響應停止信號
@@ -4252,18 +4253,21 @@ def Factory():
                 return DungeonState.Dungeon
             
             # [新增] 避免誤判：如果已經進入戰鬥介面 (combatActive) 就不用等 flee 了
-            if CheckIf(screen, 'combatActive', threshold=0.75):
+            # 使用所有 combatActive 模板來檢測，與 IdentifyState 保持一致
+            if any(CheckIf(screen, t, threshold=0.75) for t in get_combat_active_templates()):
                  # logger.debug("[戰鬥] 發現 combatActive，標記戰鬥進行中")
                  pass
 
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
-            match_combat = GetMatchValue(screen, 'combatActive')
+            # 使用所有 combatActive 模板的最大匹配值，與 IdentifyState 保持一致
+            combat_templates = get_combat_active_templates()
+            match_combat = max(GetMatchValue(screen, t) for t in combat_templates) if combat_templates else GetMatchValue(screen, 'combatActive')
             
             # [除錯日誌] 使用 error 級別以紅色顯示關鍵數值
             logger.error(f"[戰鬥監控] 嘗試 {wait_count+1}/30, IsBlack={is_black}, combatActive={match_combat}%")
             
-            if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
+            if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black and flee_seen:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
                 runtimeContext._COMBAT_ACTION_COUNT = 0
@@ -4292,7 +4296,8 @@ def Factory():
                         
                     # 3. 檢查下一狀態標誌 (優先級: 戰鬥 > 寶箱 > 地城 > 其它)
                     # 這些標誌出現意味著過場結束，應立即交回主循環處理
-                    next_state_markers = ['chestFlag', 'dungFlag', 'combatActive', 'mapFlag']
+                    # 使用所有 combatActive 模板，與 IdentifyState 保持一致
+                    next_state_markers = ['chestFlag', 'dungFlag', 'mapFlag'] + get_combat_active_templates()
                     if any(CheckIf(scn, marker) for marker in next_state_markers):
                         logger.info(f"[戰後加速] 偵測到下一狀態標誌 (點擊 {spam_click_count} 次)，結束等待")
                         break
@@ -4308,6 +4313,7 @@ def Factory():
                 return
             
             if CheckIf(screen, 'flee'):
+                flee_seen = True  # 標記已看過戰鬥介面
                 logger.info(f"[戰鬥] flee 出現，等待 {wait_count + 1} 次")
                 # 角色比對（flee 偵測成功後執行，節流避免過於頻繁）
                 now = time.time()
@@ -4706,6 +4712,7 @@ def Factory():
                     if CheckIf(screen, 'notresure'):
                         logger.info("[DungeonMover] 偵測到 notresure，無寶箱")
                         targetInfoList.pop(0)
+                        ctx._RESTART_OPEN_MAP_PENDING = True  # 強制下一目標開地圖，避免 Resume 指向舊目的地
                         return DungeonState.Map
                     # 圖片匹配失敗，直接點擊預設座標
                     logger.info("[DungeonMover] chest_auto 圖片匹配失敗，點擊預設座標 [459, 1248]")
@@ -5173,6 +5180,7 @@ def Factory():
                                 Press([1, 1])
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
+                                ctx._RESTART_OPEN_MAP_PENDING = True  # 強制下一目標開地圖，避免 Resume 指向舊目的地
                                 return self._cleanup_exit(DungeonState.Map)
                         self.last_chest_auto_click_time = time.time()
                 
@@ -5274,6 +5282,7 @@ def Factory():
                                 Press([1, 1])
                                 if targetInfoList and targetInfoList[0].target == 'chest_auto':
                                     targetInfoList.pop(0)
+                                ctx._RESTART_OPEN_MAP_PENDING = True  # 強制下一目標開地圖，避免 Resume 指向舊目的地
                                 return self._cleanup_exit(DungeonState.Map)
                             elif CheckIf(screen, 'mapFlag'):
                                 # 已在地圖狀態
@@ -5763,8 +5772,8 @@ def Factory():
             # 黑幕檢測：如果畫面太暗，可能正在進入戰鬥，停止點擊
             screen_brightness = scn.mean()
             if screen_brightness < 15:
-                logger.info(f"[StateChest] 偵測到黑幕 (亮度={screen_brightness:.1f})，可能正在進入戰鬥，停止點擊")
-                return DungeonState.Combat
+                logger.info(f"[StateChest] 偵測到黑幕 (亮度={screen_brightness:.1f})，停止點擊，交由 IdentifyState 判斷")
+                return None  # 讓 IdentifyState 做最終判斷，它有更完整的黑屏處理邏輯
 
             logger.debug(f"[StateChest] 執行 Burst Click (3次) - has_interaction={has_interaction}")
             for _ in range(3):
