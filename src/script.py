@@ -2217,6 +2217,9 @@ def Factory():
         # [修正] 不在 restartGame 中啟動 GameMonitor
         # GameMonitor 應在主循環 (RestartableSequenceExecution) 開始時才啟動
         # 這樣可以避免遊戲尚未完全啟動時就被誤判為「進程已死亡」
+
+        # 設置重啟後寬限期，避免載入期間黑屏被誤判觸發重啟
+        runtimeContext._POST_RESTART_GRACE = time.time()
         raise RestartSignal()
     class RestartSignal(Exception):
         pass
@@ -3114,10 +3117,15 @@ def Factory():
                 mean_diff = cv2.absdiff(black, screen).mean()/255
                 if mean_diff<0.02:
                     logger.info(f"警告: 遊戲畫面長時間處於黑屏中, 即將重啓({25-counter})")
-            if counter>= 25:
-                logger.info("看起來遇到了一些非同尋常的情況...重啓遊戲.")
-                restartGame()
-                counter = 0
+            if counter >= 25:
+                grace_time = getattr(runtimeContext, '_POST_RESTART_GRACE', 0)
+                if time.time() - grace_time < 60:  # 重啟後 60 秒內不觸發黑屏重啟
+                    logger.debug(f"[黑屏檢測] 重啟後寬限期內，跳過（已過 {time.time()-grace_time:.0f}s）")
+                    counter = 0  # 重置 counter 避免持續警告
+                else:
+                    logger.info("看起來遇到了一些非同尋常的情況...重啓遊戲.")
+                    restartGame()
+                    counter = 0
             if counter>=4:
                 Press([1,1])
                 Sleep(0.25)
