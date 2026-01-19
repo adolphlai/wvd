@@ -2194,29 +2194,52 @@ def Factory():
         if hasattr(setting, '_GAME_CRASHED'):
             setting._GAME_CRASHED.clear() # 啟動後再次清除標記
         
-        # [修正] 等待遊戲進程啟動（使用 pidof，和 GameMonitor 相同方式）
-        # 僅固定等待 15 秒不足以應對模擬器冷啟動的情況
-        logger.info("等待遊戲載入...")
-        max_wait = 60  # 最多等待 60 秒
-        wait_interval = 3
+        # [修正] 等待遊戲進程啟動（使用 pidof + dumpsys window 檢查）
+        # 僅檢測到 PID 還不夠，必須等待視窗真正渲染並獲得焦點
+        logger.info("等待遊戲載入與視窗顯示...")
+        max_wait = 180  # 最多等待 180 秒 (包含遊戲 Logo 和讀取時間)
+        wait_interval = 2
         waited = 0
+        process_found = False
+        
         while waited < max_wait:
-            Sleep(wait_interval)
-            waited += wait_interval
+            # 1. 基礎進程檢查
             try:
-                result = DeviceShell(f"pidof {package_name}")
-                if result.strip():  # 有 PID 表示遊戲已啟動
-                    logger.info(f"遊戲進程已啟動 (等待了 {waited} 秒)")
+                pid_result = DeviceShell(f"pidof {package_name}")
+                if not pid_result.strip():
+                    # 如果進程都還沒出現，繼續等
+                    Sleep(wait_interval)
+                    waited += wait_interval
+                    continue
+            except:
+                 pass # ADB 錯誤忽略
+
+            if not process_found:
+                logger.info("遊戲進程已出現，等待視窗渲染...")
+                process_found = True
+
+            # 2. 視窗焦點檢查 (確保畫面已顯示)
+            try:
+                # 檢查 mCurrentFocus 是否包含遊戲包名
+                focus_result = DeviceShell("dumpsys window | grep mCurrentFocus")
+                if package_name in focus_result:
+                    logger.info(f"遊戲視窗已獲得焦點 (總耗時 {waited} 秒)")
                     break
             except:
-                pass  # ADB 錯誤時繼續等待
+                pass
+                
+            Sleep(wait_interval)
+            waited += wait_interval
         else:
-            logger.warning(f"等待遊戲超時 ({max_wait}s)，繼續執行...")
+            logger.warning(f"等待遊戲視窗超時 ({max_wait}s)，可能卡在 Loading 或黑屏，嘗試繼續...")
 
-        
-        # [修正] 不在 restartGame 中啟動 GameMonitor
-        # GameMonitor 應在主循環 (RestartableSequenceExecution) 開始時才啟動
-        # 這樣可以避免遊戲尚未完全啟動時就被誤判為「進程已死亡」
+        # 確保完全 Ready 後再給一點緩衝
+        Sleep(5)
+
+            
+            # [修正] 不在 restartGame 中啟動 GameMonitor
+            # GameMonitor 應在主循環 (RestartableSequenceExecution) 開始時才啟動
+            # 這樣可以避免遊戲尚未完全啟動時就被誤判為「進程已死亡」
 
         # 設置重啟後寬限期，避免載入期間黑屏被誤判觸發重啟
         runtimeContext._POST_RESTART_GRACE = time.time()
@@ -3318,6 +3341,16 @@ def Factory():
     @stoppable
     def StateEoT():
         MonitorState.current_state = "EoT"
+        
+        # [新增] 初始狀態確認：防止重啟後直接盲目執行
+        # 透過 IdentifyState 自動處理標題->村莊的流程，或檢測是否在地城中
+        logger.info("[StateEoT] 正在確認當前狀態...")
+        current_state, dungeon_state, scn = IdentifyState()
+        
+        if current_state == State.Dungeon:
+            logger.info("[StateEoT] 偵測到已在地城中，跳過村莊導航")
+            return # 直接結束，讓主循環接手進入 StateDungeon
+
         MonitorState.current_target = ""
         if quest._preEOTcheck:
             if Press(CheckIf(ScreenShot(),quest._preEOTcheck)):
