@@ -805,13 +805,15 @@ def StartEmulator(setting):
         logger.error(f"啓動模擬器失敗: {str(e)}")
         return False
     
-    logger.info("等待模擬器啓動...")
-    # NOTE: 使用分段 sleep 確保能響應停止信號（15秒 = 30 x 0.5秒）
-    for _ in range(30):
+    logger.info("模擬器已啟動，等待初始化...")
+    # NOTE: 等待模擬器初始化（10秒 = 20 x 0.5秒）
+    # 需要足夠時間讓模擬器和遊戲準備就緒，避免狀態檢測過早執行
+    for _ in range(20):
         if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
             logger.info("模擬器啓動等待中收到停止信號")
             return False
         time.sleep(0.5)
+    return True
 def GetADBPath(setting):
     adb_path = setting._EMUPATH
     adb_path = adb_path.replace("HD-Player.exe", "HD-Adb.exe") # 藍疊
@@ -876,15 +878,23 @@ def CheckRestartConnectADB(setting: FarmConfig):
                 logger.info("成功連接到模擬器")
                 break
             if ("refused" in result.stderr) or ("cannot connect" in result.stdout):
-                logger.info("模擬器未運行，嘗試啓動...")
+                logger.info("模擬器連接失敗，先確保舊實例已關閉...")
+                KillEmulator(setting)
+                KillAdb(setting)
+                # 等待進程關閉（2秒 = 4 x 0.5秒）
+                for _ in range(4):
+                    if hasattr(setting, '_FORCESTOPING') and setting._FORCESTOPING and setting._FORCESTOPING.is_set():
+                        logger.info("關閉模擬器等待時檢測到停止信號")
+                        return None
+                    time.sleep(0.5)
+                logger.info("嘗試啟動模擬器...")
                 StartEmulator(setting)
-                logger.info("模擬器(應該)啓動完畢.")
                 logger.info("嘗試連接到模擬器...")
                 result = CMDLine(f"\"{adb_path}\" connect 127.0.0.1:{setting._ADBPORT}")
                 if result.returncode == 0 and ("connected" in result.stdout or "already" in result.stdout):
                     logger.info("成功連接到模擬器")
                     break
-                logger.info("無法連接. 檢查adb端口.")
+                logger.info("連接失敗，將在下一輪重試...")
 
             logger.info(f"連接失敗: {result.stderr.strip()}")
 
@@ -1073,6 +1083,11 @@ def Factory():
                 else:
                     logger.warning("pyscrcpy 串流重啟失敗，將使用傳統 ADB 截圖")
             
+            # NOTE: ADB 重連後，清除舊的崩潰標記（避免舊 GameMonitor 線程的誤判）
+            if hasattr(setting, '_GAME_CRASHED'):
+                setting._GAME_CRASHED.clear()
+                logger.debug("[ADB重連] 已清除舊的崩潰標記")
+
             # NOTE: ADB 重連後，檢查並啟動遊戲進程
             # 修復：模擬器可能因崩潰重啟，遊戲進程需要重新啟動
             package_name = "jp.co.drecom.wizardry.daphne"
@@ -1087,6 +1102,11 @@ def Factory():
                     setting._ADBDEVICE.shell(f"am start -n {mainAct}")
                     logger.info("巫術, 啓動!")
                     time.sleep(5)  # 等待遊戲啟動
+                # 無論遊戲是否已在運行，都重新啟動 GameMonitor（舊線程可能已死）
+                if hasattr(setting, '_GAME_CRASHED'):
+                    setting._GAME_CRASHED.clear()
+                if hasattr(setting, '_start_game_monitor'):
+                    setting._start_game_monitor()
             except Exception as e:
                 logger.warning(f"檢查/啟動遊戲失敗: {e}")
     def DeviceShell(cmdStr):
@@ -2054,11 +2074,23 @@ def Factory():
         package_name = "jp.co.drecom.wizardry.daphne"
         while not (setting._FORCESTOPING and setting._FORCESTOPING.is_set()):
             try:
+                # 1. 檢查進程是否存在
                 result = setting._ADBDEVICE.shell(f"pidof {package_name}", timeout=3)
-                if not result.strip():
+                pid = result.strip()
+                if not pid:
                     logger.warning("[GameMonitor] 遊戲進程已死亡，設置崩潰標記")
                     setting._GAME_CRASHED.set()
                     return
+
+                # 2. 進程存在，檢查是否在前台
+                focus_result = setting._ADBDEVICE.shell("dumpsys window | grep mCurrentFocus", timeout=3)
+                if package_name not in focus_result:
+                    # 不在前台，嘗試拉回
+                    logger.warning(f"[GameMonitor] 遊戲不在前台，嘗試拉回... (當前: {focus_result.strip()})")
+                    setting._ADBDEVICE.shell(f"monkey -p {package_name} 1", timeout=3)
+                    time.sleep(2)  # 拉回後等待 2 秒再繼續檢測
+                else:
+                    logger.debug(f"[GameMonitor] 遊戲進程存活且在前台 (PID={pid})")
             except Exception as e:
                 # ADB 異常時不誤判（可能是暫時斷線）
                 logger.debug(f"[GameMonitor] ADB 檢查異常: {e}")
@@ -2070,8 +2102,12 @@ def Factory():
                 time.sleep(0.5)
         logger.debug("[GameMonitor] 監控線程結束（收到停止信號）")
 
-    def _start_game_monitor():
-        """啟動遊戲進程監控線程"""
+    def _start_game_monitor(grace_period=0):
+        """啟動遊戲進程監控線程
+
+        Args:
+            grace_period: 寬限期（秒）
+        """
         nonlocal _game_monitor_thread
         # 確保 Event 存在
         if not hasattr(setting, '_GAME_CRASHED'):
@@ -2083,9 +2119,9 @@ def Factory():
             logger.debug("[GameMonitor] 舊監控線程仍在運行，等待其結束...")
 
         # 啟動新的監控線程
-        _game_monitor_thread = Thread(target=_monitor_game_process, daemon=True, name="GameMonitor")
+        _game_monitor_thread = Thread(target=lambda: _monitor_game_process(grace_period), daemon=True, name="GameMonitor")
         _game_monitor_thread.start()
-        logger.info("[GameMonitor] 遊戲進程監控已啟動")
+        logger.info(f"[GameMonitor] 遊戲進程監控已啟動 (寬限期={grace_period}s)")
 
     def restartGame(skipScreenShot = False):
         nonlocal runtimeContext
@@ -7195,6 +7231,9 @@ def Factory():
                 setattr(runtimeContext, key, value)
 
         setting = set
+
+        # 將 _start_game_monitor 存到 setting 上，讓 ResetADBDevice 可以調用
+        setting._start_game_monitor = _start_game_monitor
 
         try:
             Sleep(1) # 沒有等utils初始化完成
