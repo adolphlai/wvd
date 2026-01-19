@@ -4300,8 +4300,7 @@ def Factory():
             combat_templates = get_combat_active_templates()
             match_combat = max(GetMatchValue(screen, t) for t in combat_templates) if combat_templates else GetMatchValue(screen, 'combatActive')
             
-            # [除錯日誌] 使用 error 級別以紅色顯示關鍵數值
-            logger.error(f"[戰鬥監控] 嘗試 {wait_count+1}/30, IsBlack={is_black}, combatActive={match_combat}%")
+
             
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black and flee_seen:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
