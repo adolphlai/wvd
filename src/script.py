@@ -4258,6 +4258,11 @@ def Factory():
 
             # 偵測黑屏：如果已有行動且偵測到黑屏，表示戰鬥結束，準備進入下一戰
             is_black = IsScreenBlack(screen)
+            match_combat = GetMatchValue(screen, 'combatActive')
+            
+            # [除錯日誌] 使用 error 級別以紅色顯示關鍵數值
+            logger.error(f"[戰鬥監控] 嘗試 {wait_count+1}/30, IsBlack={is_black}, combatActive={match_combat}%")
+            
             if runtimeContext._COMBAT_ACTION_COUNT > 0 and is_black:
                 logger.info(f"[戰鬥] 偵測到黑屏，第 {runtimeContext._COMBAT_BATTLE_COUNT} 戰結束，等待下一戰...")
                 # 只重置 action_count，讓 StateCombat 開頭統一處理 battle_count
