@@ -556,8 +556,8 @@ class MonitorState:
             cls.warnings.append("⚠️ 畫面長時間靜止")
         if cls.adb_retry_count > 0:
             cls.warnings.append(f"⚠️ ADB 重連 {cls.adb_retry_count} 次")
-        if cls.crash_counter > 3:
-            cls.warnings.append(f"🔴 連續崩潰 {cls.crash_counter} 次")
+        if cls.crash_counter > 0:
+            cls.warnings.append(f"🔴 累計崩潰 {cls.crash_counter} 次")
 
 class RuntimeContext:
     #### 統計信息
@@ -1026,9 +1026,19 @@ def Factory():
         pass
 
     def check_stop_signal():
-        """檢查停止信號，若已設置則拋出 StopSignalException"""
+        """檢查停止信號與遊戲崩潰標記"""
         if setting._FORCESTOPING and setting._FORCESTOPING.is_set():
             raise StopSignalException()
+        
+        # [新增] 全局崩潰偵測保護：如果遊戲已崩潰且不在重啟流程中，立即觸發重啟
+        # 這能解決在 IdentifyState 等密集圖像匹配循環中無法即時響應崩潰的問題
+        if hasattr(setting, '_GAME_CRASHED') and setting._GAME_CRASHED.is_set():
+            if not getattr(runtimeContext, '_IN_RESTART', False):
+                # 確保不是在停止過程中
+                if not (setting._FORCESTOPING and setting._FORCESTOPING.is_set()):
+                    logger.warning("[check_stop_signal] 偵測到遊戲進程已崩潰，執行緊急重啟")
+                    setting._GAME_CRASHED.clear()
+                    restartGame(skipScreenShot=True)
 
     def stoppable(func):
         """裝飾器：每次進入函數時自動檢查停止信號
@@ -1086,6 +1096,16 @@ def Factory():
     ##################################################################
     def ResetADBDevice():
         nonlocal setting # 修改device
+
+        # [Fix] 如果遊戲已崩潰，直接觸發重啟流程，不嘗試恢復 ADB
+        # 避免 ADB 重連過程清除崩潰標記，導致重啟流程無法正確觸發
+        if hasattr(setting, '_GAME_CRASHED') and setting._GAME_CRASHED.is_set():
+            if not getattr(runtimeContext, '_IN_RESTART', False):
+                logger.warning("[ResetADBDevice] 偵測到遊戲崩潰標記，跳過 ADB 重連，直接觸發重啟")
+                setting._GAME_CRASHED.clear()
+                restartGame(skipScreenShot=True)
+                return  # restartGame 會拋出 RestartSignal，此行不會執行
+
         MonitorState.current_state = "Connecting"
         if device := CheckRestartConnectADB(setting):
             setting._ADBDEVICE = device
@@ -1103,6 +1123,14 @@ def Factory():
             if hasattr(setting, '_GAME_CRASHED'):
                 setting._GAME_CRASHED.clear()
                 logger.debug("[ADB重連] 已清除舊的崩潰標記")
+
+            # NOTE: ADB 重連後，重置超時計時器（避免因 ADB 重連時間導致超時）
+            MonitorState.state_start_time = time.time()
+            try:
+                dungeon_mover.move_start_time = time.time()
+                logger.debug("[ADB重連] 已重置超時計時器")
+            except NameError:
+                pass  # dungeon_mover 尚未初始化
 
             # NOTE: ADB 重連後，檢查並啟動遊戲進程
             # 修復：模擬器可能因崩潰重啟，遊戲進程需要重新啟動
@@ -1123,6 +1151,13 @@ def Factory():
                     setting._GAME_CRASHED.clear()
                 if hasattr(setting, '_start_game_monitor'):
                     setting._start_game_monitor()
+                
+                # [Fix] ADB 重啟/重連後，設置寬限期防止黑屏誤判
+                if runtimeContext:
+                    runtimeContext._POST_RESTART_GRACE = time.time()
+                    runtimeContext._RESTART_OPEN_MAP_PENDING = True
+                    runtimeContext._DUNGEON_CONFIRMED = False
+                    logger.info("[ADB重連] 已重置黑屏寬限期與地城狀態")
             except Exception as e:
                 logger.warning(f"檢查/啟動遊戲失敗: {e}")
     def DeviceShell(cmdStr):
@@ -1169,6 +1204,7 @@ def Factory():
                     raise RuntimeError(f"ADB 連續失敗 {MAX_ADB_RETRIES} 次: {cmdStr}")
 
                 logger.info("嘗試重啓ADB服務...")
+                runtimeContext._COUNTERADBRETRY += 1
                 ResetADBDevice()
                 time.sleep(1)
 
@@ -1201,7 +1237,7 @@ def Factory():
                     time.sleep(min(interval, t - (elapsed-interval)))
                     continue
 
-                logger.warning("[Sleep] 檢測到遊戲崩潰，觸發重啟")
+                logger.warning("[Sleep] 偵測到遊戲崩潰標記，觸發重啟流程")
                 setting._GAME_CRASHED.clear()
                 restartGame(skipScreenShot=True)
                 return  # restartGame 會拋出 RestartSignal
@@ -1227,7 +1263,7 @@ def Factory():
                 MonitorState.combat_time_total = runtimeContext._TIME_COMBAT_TOTAL
                 
                 MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
-                MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+                MonitorState.crash_counter = runtimeContext._COUNTEREMULATORCRASH
                 MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
                 MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
                 MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
@@ -2095,6 +2131,7 @@ def Factory():
                 pid = result.strip()
                 if not pid:
                     logger.warning("[GameMonitor] 遊戲進程已死亡，設置崩潰標記")
+                    runtimeContext._COUNTEREMULATORCRASH += 1
                     setting._GAME_CRASHED.set()
                     return
 
@@ -2171,7 +2208,6 @@ def Factory():
             logger.info(f"跳過了重啓前截圖.\n崩潰計數器: {runtimeContext._CRASHCOUNTER}\n崩潰計數器超過5次後會重啓模擬器.")
             if runtimeContext._CRASHCOUNTER > 5:
                 runtimeContext._CRASHCOUNTER = 0
-                runtimeContext._COUNTEREMULATORCRASH += 1
                 KillEmulator(setting)
                 CheckRestartConnectADB(setting)
 
@@ -2246,7 +2282,20 @@ def Factory():
         raise RestartSignal()
     class RestartSignal(Exception):
         pass
-    def RestartableSequenceExecution(*operations):
+    class StateChangedException(Exception):
+        """狀態已改變，需要返回主循環重新處理"""
+        def __init__(self, new_state):
+            self.new_state = new_state
+            super().__init__(f"狀態已改變為 {new_state}")
+
+    def RestartableSequenceExecution(*operations, expected_state=None):
+        """
+        可重啟的操作序列執行器
+
+        Args:
+            *operations: 要執行的操作 (lambdas)
+            expected_state: 預期的遊戲狀態 (State enum)，重啟後若狀態改變則退出
+        """
         MonitorState.current_state = "Starting"
         MAX_RESTART_RETRIES = 100# 最大重啟次數
         restart_count = 0
@@ -2269,6 +2318,20 @@ def Factory():
                 logger.info(f"任務進度重置中... (第 {restart_count}/{MAX_RESTART_RETRIES} 次)")
                 # 重置前也檢查停止信號
                 check_stop_signal()
+                # [Fix] 重啟後先識別狀態，處理登入畫面等異常情況
+                try:
+                    logger.info("[RestartableSequenceExecution] 重啟後識別當前狀態...")
+                    identified_state, _, _ = IdentifyState()
+                    # 如果指定了預期狀態，檢查是否符合
+                    if expected_state is not None and identified_state != expected_state:
+                        logger.info(f"[RestartableSequenceExecution] 狀態已改變: 預期 {expected_state}, 實際 {identified_state}，返回主循環")
+                        raise StateChangedException(identified_state)
+                except RestartSignal:
+                    logger.info("[RestartableSequenceExecution] 狀態識別觸發重啟，繼續重試循環")
+                except StateChangedException:
+                    raise  # 向上傳播，讓主循環處理
+                except Exception as e:
+                    logger.warning(f"[RestartableSequenceExecution] 狀態識別失敗: {e}")
                 continue
             except StopSignalException:
                 logger.info("RestartableSequenceExecution 收到停止信號，優雅退出")
@@ -3129,6 +3192,9 @@ def Factory():
                     logger.info("確認, 下載, 確認.")
                     # logger.info("")
                     Sleep(2)
+                    runtimeContext._POST_RESTART_GRACE = time.time() # 給予下載寬限期
+                    counter = 0
+                    continue
                 if Press(CheckIf(screen,'totitle')):
                     logger.info("網絡故障警報! 網絡故障警報! 返回標題, 重複, 返回標題!")
                     return IdentifyState()
@@ -6291,7 +6357,7 @@ def Factory():
             else:
                 MonitorState.total_time = runtimeContext._TOTALTIME
             MonitorState.adb_retry_count = runtimeContext._COUNTERADBRETRY
-            MonitorState.crash_counter = runtimeContext._CRASHCOUNTER
+            MonitorState.crash_counter = runtimeContext._COUNTEREMULATORCRASH
             MonitorState.battle_count = runtimeContext._COMBAT_BATTLE_COUNT
             MonitorState.action_count = runtimeContext._COMBAT_ACTION_COUNT
             MonitorState.aoe_triggered = runtimeContext._AOE_TRIGGERED_THIS_DUNGEON
@@ -6333,7 +6399,7 @@ def Factory():
                         if runtimeContext._COUNTERCOMBAT > 0:
                             summary_text += f"累計戰鬥{runtimeContext._COUNTERCOMBAT}次.戰鬥平均用時{round(runtimeContext._TIME_COMBAT_TOTAL/runtimeContext._COUNTERCOMBAT,2)}秒.\n"
                         if runtimeContext._COUNTERADBRETRY > 0 or runtimeContext._COUNTEREMULATORCRASH > 0:
-                            summary_text += f"ADB重啓{runtimeContext._COUNTERADBRETRY}次,模擬器崩潰{runtimeContext._COUNTEREMULATORCRASH}次."
+                            summary_text += f"ADB重啓{runtimeContext._COUNTERADBRETRY}次,遊戲崩潰{runtimeContext._COUNTEREMULATORCRASH}次."
                         logger.info(f"{runtimeContext._IMPORTANTINFO}{summary_text}",extra={"summary": True})
                     runtimeContext._LAPTIME = time.time()
                     runtimeContext._COUNTERDUNG+=1
@@ -6346,14 +6412,26 @@ def Factory():
                         # 重置連續刷地城計數器（在執行完 StateInn 之後）
                         runtimeContext._DUNGEON_REPEAT_COUNT = 0
                         targetInfoList = None  # 進入村莊時清除目標列表，確保下回合重新加載
-                        RestartableSequenceExecution(
-                        lambda:StateInn()
-                        )
+                        try:
+                            RestartableSequenceExecution(
+                                lambda:StateInn(),
+                                expected_state=State.Inn
+                            )
+                        except StateChangedException as e:
+                            logger.info(f"[主循環] StateInn 中狀態改變，重新識別: {e.new_state}")
+                            state = e.new_state if e.new_state else None
+                            continue
                     state = State.EoT
                 case State.EoT:
-                    RestartableSequenceExecution(
-                        lambda:StateEoT()
+                    try:
+                        RestartableSequenceExecution(
+                            lambda:StateEoT(),
+                            expected_state=State.EoT
                         )
+                    except StateChangedException as e:
+                        logger.info(f"[主循環] StateEoT 中狀態改變，重新識別: {e.new_state}")
+                        state = e.new_state if e.new_state else None
+                        continue
                     state = State.Dungeon
                 case State.Dungeon:
                     # 只有在正常進入地城時才重置，地城內啟動不重置（已在 case None 設定好）
@@ -6376,9 +6454,15 @@ def Factory():
 
                     # 傳遞 initial_dungState 避免重複檢測（如 Chest 狀態）
                     _initial = initial_dungState
-                    RestartableSequenceExecution(
-                        lambda: StateDungeon(targetInfoList, _initial)
+                    try:
+                        RestartableSequenceExecution(
+                            lambda: StateDungeon(targetInfoList, _initial),
+                            expected_state=State.Dungeon
                         )
+                    except StateChangedException as e:
+                        logger.info(f"[主循環] StateDungeon 中狀態改變，重新識別: {e.new_state}")
+                        state = e.new_state if e.new_state else None
+                        continue
                     initial_dungState = None  # 使用後清除
                     state = None
         # 停止時重置監控狀態，避免 GUI 超時進度條繼續計算
