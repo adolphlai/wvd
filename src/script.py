@@ -2773,7 +2773,7 @@ def Factory():
                     # 檢測各種對話框選項
                     dialogOption = [
                         'adventurersbones', 'halfBone', 'nothanks', 'strange_things',
-                        'blessing', 'DontBuyIt', 'donthelp', 'buyNothing', 'Nope',
+                        'blessing', 'lookathiswaves', 'oldfashionedhammer', 'DontBuyIt', 'donthelp', 'buyNothing', 'Nope',
                         'ignorethequest', 'dontGiveAntitoxin', 'pass',
                     ]
                     found_any_option = False
@@ -3165,6 +3165,8 @@ def Factory():
                     'nothanks',
                     'strange_things',
                     'blessing',
+                    'lookathiswaves',
+                    'oldfashionedhammer',
                     'DontBuyIt',
                     'donthelp',
                     'buyNothing',
@@ -3172,7 +3174,7 @@ def Factory():
                     'ignorethequest',
                     'dontGiveAntitoxin',
                     'pass',
-                                ]
+                ]
                 for op in dialogOption:
                     if Press(CheckIf(screen, op)):
                         Sleep(2)
@@ -3679,11 +3681,18 @@ def Factory():
             else:
                 # 找不到 next 時的固定座標保底
                 logger.info("[普攻] 找不到 next，使用固定座標保底")
+                Press([150, 750])
+                Sleep(0.1)
+                Press([300, 750])
+                Sleep(0.1)
                 Press([450, 750])
-                Sleep(0.2)
-                Press([450, 800])
-                Sleep(0.2)
-                Press([450, 900])
+                Sleep(0.1)
+                Press([550, 750])
+                Sleep(0.1)
+                Press([650, 750])
+                Sleep(0.1)
+                Press([750, 750])
+                Sleep(0.1)
             
             Sleep(0.5)
             return True
@@ -3801,11 +3810,18 @@ def Factory():
                 else:
                     # 如果找不到 next，使用固定座標
                     logger.info(f"[順序 {caster_type}] 找不到 next 按鈕，使用固定座標點擊敵人")
+                    Press([150, 750])
+                    Sleep(0.1)
+                    Press([300, 750])
+                    Sleep(0.1)
                     Press([450, 750])
-                    Sleep(0.2)
-                    Press([450, 800])
-                    Sleep(0.2)
-                    Press([450, 900])
+                    Sleep(0.1)
+                    Press([550, 750])
+                    Sleep(0.1)
+                    Press([650, 750])
+                    Sleep(0.1)
+                    Press([750, 750])
+                    Sleep(0.1)
                 logger.info(f"[順序 {caster_type}] 等待技能動畫完成...")
                 Sleep(2)  # 增加等待時間，讓遊戲完成動畫並切換角色
             else:
@@ -4075,11 +4091,18 @@ def Factory():
                 else:
                     # 使用固定座標
                     logger.info(f"[技能施放] 找不到 next，使用固定座標點擊敵人")
+                    Press([150, 750])
+                    Sleep(0.1)
+                    Press([300, 750])
+                    Sleep(0.1)
                     Press([450, 750])
-                    Sleep(0.2)
-                    Press([450, 800])
-                    Sleep(0.2)
-                    Press([450, 900])
+                    Sleep(0.1)
+                    Press([550, 750])
+                    Sleep(0.1)
+                    Press([650, 750])
+                    Sleep(0.1)
+                    Press([750, 750])
+                    Sleep(0.1)
                 
             Sleep(0.5)
             # scn = ScreenShot() # 移除多餘截圖
@@ -4484,14 +4507,12 @@ def Factory():
             logger.warning("[戰鬥] flee 等待超時，共等待 30 次，跳過本次行動")
             return
 
-        if not runtimeContext._COMBATSPD:
-            # 檢查並啟用 2 倍速 (使用較低閾值以適應串流)
-            if Press(CheckIf(screen, 'combatSpd', threshold=0.70)):
-                runtimeContext._COMBATSPD = True
-                logger.info("[戰鬥] 啟用 2 倍速")
-                Sleep(0.5)
-                # 點擊後重新截圖，以免影響後續判斷
-                screen = ScreenShot()
+        # 每次進入戰鬥都檢查 2 倍速 (避免遊戲異常重置後無法恢復)
+        if Press(CheckIf(screen, 'combatSpd', threshold=0.70)):
+            logger.info("[戰鬥] 啟用 2 倍速")
+            Sleep(0.5)
+            # 點擊後重新截圖，以免影響後續判斷
+            screen = ScreenShot()
 
         # === 技能施放設定 ===
         # 檢查是否有任何角色設定了技能（首戰或二戰後）
