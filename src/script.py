@@ -1128,6 +1128,8 @@ def Factory():
             MonitorState.state_start_time = time.time()
             try:
                 dungeon_mover.move_start_time = time.time()
+                dungeon_mover.global_retry_start_time = None  # 重置全域硬超時計時器
+                dungeon_mover.global_retry_count = 0
                 logger.debug("[ADB重連] 已重置超時計時器")
             except NameError:
                 pass  # dungeon_mover 尚未初始化
@@ -4653,19 +4655,24 @@ def Factory():
         
         def _cleanup_exit(self, next_state):
             """退出移動監控時的統一清理
-            
+
             所有 _monitor_move 的退出點都應調用此方法
             """
             # 重置本地狀態
             self.is_gohome_mode = False
-            
+
             # 重置 MonitorState（GUI 顯示）
             MonitorState.current_target = ""
             MonitorState.state_start_time = 0
             MonitorState.is_gohome_mode = False
             MonitorState.still_count = 0
             MonitorState.resume_count = 0
-            
+
+            # NOTE: 離開地城時重置全域硬超時計時器，避免下次進入地城時累計舊時間
+            if next_state == DungeonState.Quit:
+                self.global_retry_start_time = None
+                self.global_retry_count = 0
+
             return next_state
         
         def initiate_move(self, targetInfoList: list, ctx):
