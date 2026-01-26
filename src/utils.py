@@ -567,3 +567,283 @@ class Tooltip:
 def CreateToolTip(widget, text):
     toolTip = Tooltip(widget, text)
     return toolTip
+
+###########################################
+# ===== Minimap 移動安全判斷 =====
+###########################################
+
+# 小地圖 ROI（用於 harken 避讓偵測）
+MINIMAP_HARKEN_ROI = [722, 92, 802, 180]  # [x1, y1, x2, y2]
+
+# 相似度閾值，> 0.8 判定為撞牆（小地圖沒變）
+MINIMAP_SIMILARITY_THRESHOLD = 0.8
+
+# 全域模板快取
+_MINIMAP_AVOID_TEMPLATES = None
+_MINIMAP_DIRECTION_TEMPLATES = None
+
+def load_minimap_templates():
+    """載入小地圖模板（harken 和方向圖標）
+
+    Returns:
+        tuple: (avoid_templates, direction_templates)
+            - avoid_templates: list of (filename, image) for harken icons
+            - direction_templates: dict {direction: image} for direction icons
+    """
+    global _MINIMAP_AVOID_TEMPLATES, _MINIMAP_DIRECTION_TEMPLATES
+
+    # 如果已載入，直接返回快取
+    if _MINIMAP_AVOID_TEMPLATES is not None and _MINIMAP_DIRECTION_TEMPLATES is not None:
+        return _MINIMAP_AVOID_TEMPLATES, _MINIMAP_DIRECTION_TEMPLATES
+
+    minimap_dir = ResourcePath("resources/images/minimap")
+
+    # 載入 harken 模板
+    avoid_files = ["minimap-bharken.png", "minimap-mharken.png", "minimap-sharken.png"]
+    avoid_templates = []
+
+    logger.debug("[Minimap] 載入 Harken 避讓圖案...")
+    for fname in avoid_files:
+        path = os.path.join(minimap_dir, fname)
+        if os.path.exists(path):
+            img = LoadImage(path)
+            if img is not None:
+                avoid_templates.append((fname, img))
+                logger.debug(f"  - {fname} (已載入)")
+            else:
+                logger.warning(f"  - {fname} (讀取失敗)")
+        else:
+            logger.warning(f"  - {fname} (不存在: {path})")
+
+    # 載入方向圖標
+    direction_files = {
+        "上": "minimap-up.png",
+        "下": "minimap-down.png",
+        "左": "minimap-left.png",
+        "右": "minimap-right.png"
+    }
+    direction_templates = {}
+
+    logger.debug("[Minimap] 載入方向圖標...")
+    for direction, fname in direction_files.items():
+        path = os.path.join(minimap_dir, fname)
+        if os.path.exists(path):
+            img = LoadImage(path)
+            if img is not None:
+                direction_templates[direction] = img
+                logger.debug(f"  - {fname} ({direction}) (已載入)")
+            else:
+                logger.warning(f"  - {fname} (讀取失敗)")
+        else:
+            logger.warning(f"  - {fname} (不存在: {path})")
+
+    # 快取結果
+    _MINIMAP_AVOID_TEMPLATES = avoid_templates
+    _MINIMAP_DIRECTION_TEMPLATES = direction_templates
+
+    logger.info(f"[Minimap] 模板載入完成: {len(avoid_templates)} 個 Harken, {len(direction_templates)} 個方向")
+    return avoid_templates, direction_templates
+
+
+def get_minimap_roi(screen_image):
+    """從截圖中提取小地圖 ROI 區域
+
+    Args:
+        screen_image: 完整螢幕截圖
+
+    Returns:
+        numpy.ndarray: 小地圖區域圖像
+    """
+    x1, y1, x2, y2 = MINIMAP_HARKEN_ROI
+    return screen_image[y1:y2, x1:x2].copy()
+
+
+def detect_character_direction(minimap_img, direction_templates=None):
+    """偵測角色當前朝向（方向圖標）
+
+    Args:
+        minimap_img: 小地圖圖像
+        direction_templates: 方向模板字典，若為 None 則自動載入
+
+    Returns:
+        str or None: "上" / "下" / "左" / "右" / None
+    """
+    if minimap_img is None:
+        return None
+
+    if direction_templates is None:
+        _, direction_templates = load_minimap_templates()
+
+    if not direction_templates:
+        return None
+
+    best_direction = None
+    best_score = 0.0
+
+    for direction, template in direction_templates.items():
+        if template.shape[0] > minimap_img.shape[0] or template.shape[1] > minimap_img.shape[1]:
+            continue
+
+        res = cv2.matchTemplate(minimap_img, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(res)
+
+        if max_val > best_score:
+            best_score = max_val
+            best_direction = direction
+
+    if best_score > 0.8:
+        return best_direction
+    return None
+
+
+def get_harken_absolute_direction(minimap_img, avoid_templates=None):
+    """偵測 harken 相對於小地圖中心的絕對方位
+
+    Args:
+        minimap_img: 小地圖圖像
+        avoid_templates: harken 模板列表，若為 None 則自動載入
+
+    Returns:
+        str or None: "上" / "下" / "左" / "右" / None
+    """
+    if minimap_img is None:
+        return None
+
+    if avoid_templates is None:
+        avoid_templates, _ = load_minimap_templates()
+
+    h, w = minimap_img.shape[:2]
+    center_x, center_y = w // 2, h // 2
+
+    for name, template in avoid_templates:
+        if template.shape[0] > h or template.shape[1] > w:
+            continue
+
+        res = cv2.matchTemplate(minimap_img, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(res)
+
+        if max_val > 0.9:
+            # max_loc 是模板匹配的左上角，計算模板中心
+            th, tw = template.shape[:2]
+            harken_cx = max_loc[0] + tw // 2
+            harken_cy = max_loc[1] + th // 2
+
+            # 計算相對偏移
+            dx = harken_cx - center_x
+            dy = harken_cy - center_y
+
+            # 判斷主要方位（取絕對值較大的軸）
+            if abs(dx) > abs(dy):
+                return "右" if dx > 0 else "左"
+            else:
+                return "下" if dy > 0 else "上"
+
+    return None
+
+
+def absolute_to_relative_direction(absolute_dir, facing):
+    """將絕對方位轉換成相對於角色面向的方位
+
+    移動方向是相對於角色面向的：
+    - 角色面向「上」時，按「上」會往地圖上方走
+    - 角色面向「下」時，按「上」會往地圖下方走（180度旋轉）
+    - 角色面向「左」時，按「上」會往地圖左方走（90度逆時針）
+    - 角色面向「右」時，按「上」會往地圖右方走（90度順時針）
+
+    Args:
+        absolute_dir: harken 的絕對方位（小地圖座標系）
+        facing: 角色面向
+
+    Returns:
+        str or None: 會碰到 harken 的移動按鍵方向
+    """
+    if absolute_dir is None or facing is None:
+        return None
+
+    # 轉換表：facing -> {absolute_dir -> 會碰到的移動按鍵}
+    transform = {
+        "上": {"上": "上", "下": "下", "左": "左", "右": "右"},
+        "下": {"上": "下", "下": "上", "左": "右", "右": "左"},
+        "左": {"上": "右", "下": "左", "左": "上", "右": "下"},
+        "右": {"上": "左", "下": "右", "左": "下", "右": "上"},
+    }
+
+    return transform.get(facing, {}).get(absolute_dir)
+
+
+def is_safe_to_move(minimap_img, direction, avoid_templates=None, direction_templates=None):
+    """檢查移動方向是否安全（避免進入 harken）
+
+    邏輯：
+    1. 偵測 harken 的絕對方位
+    2. 偵測角色面向
+    3. 計算哪個移動按鍵會碰到 harken
+    4. 阻止該方向的移動
+
+    Args:
+        minimap_img: 小地圖圖像
+        direction: 欲移動的方向（"上"/"下"/"左"/"右"）
+        avoid_templates: harken 模板列表
+        direction_templates: 方向模板字典
+
+    Returns:
+        tuple: (is_safe: bool, danger_direction: str or None)
+    """
+    if minimap_img is None:
+        return False, None
+
+    # 自動載入模板
+    if avoid_templates is None or direction_templates is None:
+        avoid_templates, direction_templates = load_minimap_templates()
+
+    # 偵測 harken 絕對方位
+    harken_abs = get_harken_absolute_direction(minimap_img, avoid_templates)
+
+    if harken_abs is None:
+        return True, None  # 沒有 harken，安全
+
+    # 偵測角色面向
+    facing = detect_character_direction(minimap_img, direction_templates)
+    logger.debug(f"[Harken避讓] Harken 在絕對 {harken_abs} 方，角色面向 {facing}")
+
+    if facing is None:
+        logger.warning("[Harken避讓] 無法偵測角色面向，預設阻止移動")
+        return False, harken_abs
+
+    # 計算哪個按鍵會碰到 harken
+    danger_direction = absolute_to_relative_direction(harken_abs, facing)
+    logger.debug(f"[Harken避讓] 按「{danger_direction}」會碰到 harken")
+
+    if danger_direction == direction:
+        logger.info(f"[Harken避讓] 移動方向 ({direction}) 會碰到 harken，阻止")
+        return False, danger_direction
+    else:
+        logger.debug(f"[Harken避讓] 移動方向 ({direction}) 不會碰到 harken，允許")
+        return True, danger_direction
+
+
+def compare_minimap_images(img1, img2):
+    """比較兩張小地圖的相似度（SSIM）
+
+    Args:
+        img1: 第一張圖像
+        img2: 第二張圖像
+
+    Returns:
+        float: 相似度 0.0-1.0，1.0 為完全相同
+    """
+    try:
+        from skimage.metrics import structural_similarity as ssim
+    except ImportError:
+        logger.warning("[Minimap] skimage 未安裝，使用簡易比較")
+        # 簡易比較：計算像素差異
+        diff = cv2.absdiff(img1, img2)
+        return 1.0 - (np.mean(diff) / 255.0)
+
+    # 轉為灰階
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+
+    # 計算 SSIM
+    score, _ = ssim(gray1, gray2, full=True)
+    return score

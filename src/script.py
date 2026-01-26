@@ -6269,24 +6269,24 @@ def Factory():
                     has_chest_auto = any(t.target == 'chest_auto' for t in targetInfoList) if targetInfoList else False
                     
                     if not runtimeContext._STEPAFTERRESTART:
-                        # 防止轉圈：前後左右平移一次（僅重啟後執行）
-                        logger.info("防止轉圈: 左右平移一次")
+                        # 防止轉圈：左右平移一次（僅重啟後執行）
+                        # 使用 Harken 避讓邏輯，避免往 harken 方向移動
+                        logger.info("防止轉圈: 使用 Harken 避讓邏輯進行左右平移")
 
-                        # # 前平移 (改為上滑，前進)
-                        # Swipe([450,700], [450, 500])
-                        # Sleep(1)
+                        # 取得小地圖 ROI
+                        minimap_roi = get_minimap_roi(ScreenShot())
 
-                        # # 後平移 (改為下滑，後退)
-                        # Swipe([450,700], [450, 900])
-                        # Sleep(1)
-
-                        # 左平移
-                        Press([27,950])
-                        Sleep(1)
-
-                        # 右平移
-                        Press([853,950])
-                        Sleep(1)
+                        # 判斷安全方向並移動
+                        for direction in ["左", "右"]:
+                            is_safe, danger_dir = is_safe_to_move(minimap_roi, direction)
+                            if is_safe:
+                                if direction == "左":
+                                    Press([27, 950])
+                                else:
+                                    Press([853, 950])
+                                Sleep(1)
+                            else:
+                                logger.info(f"[Harken避讓] 跳過 {direction} 方向移動 (危險方向: {danger_dir})")
 
                         runtimeContext._STEPAFTERRESTART = True
 
