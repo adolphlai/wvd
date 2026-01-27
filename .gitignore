@@ -76,3 +76,6 @@ detect/
 editor-lite/DungeonEditor.exe
 editor-lite/build/
 editor-lite/*.spec
+
+# 測試文件
+test/
