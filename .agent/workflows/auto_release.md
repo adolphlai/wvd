@@ -15,6 +15,7 @@ description: 自動更新版本、生成 AI Changelog 並推送 Tag 觸發 GitHu
 3.  **格式與風格**：
     - 參考文件中 v1.9.xx 或更早以前的**原作者簡潔風格**。
     - 將總結內容寫入 `CHANGES_LOG.md` 的頂部，保留歷史紀錄。
+    - **同步更新 `README.md`**：將本次更新的精簡摘要同步至 `README.md` 的「版本更新記錄」最上方。
     - **格式要求**：包含日期、新版本號、分類好的功能清單。
 
 ### 第三步：遞增版本號
@@ -23,11 +24,11 @@ description: 自動更新版本、生成 AI Changelog 並推送 Tag 觸發 GitHu
 
 ### 第四步：執行 Git 提交與打標籤 (關鍵步驟)
 1. 執行終端指令：
-   - `git add src/main.py CHANGES_LOG.md`
+   - `git add src/main.py CHANGES_LOG.md README.md`
    - `git commit -m "chore: release v[新版本號]"`
    - `git tag v[新版本號]`
 2. 提示用戶確認後執行推送：
-   - `git push origin main`
+   - `git push origin master`
    - `git push origin v[新版本號]`
 
 ### 第五步：通知
