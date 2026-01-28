@@ -4002,26 +4002,37 @@ def Factory():
         
         # 搜尋技能按鈕
         # CheckIf 內部會透過 get_multi_templates 自動掃描整個資料夾的所有技能
-        skill_pos = CheckIf(scn, image_path, threshold=0.70)
+        skill_pos = None
+        for wait_skill in range(10):  # 最多等待 3 秒 (10 × 0.3s)
+            check_stop_signal()
+            scn = ScreenShot()
+            skill_pos = CheckIf(scn, image_path, threshold=0.70)
+            if skill_pos:
+                break
+            Sleep(0.3)
         
         if skill_pos:
-            logger.info(f"[技能施放-DEBUG] 找到技能圖片 {image_path} 於 {skill_pos}")
+            logger.info(f"[技能施放-DEBUG] 找到技能圖片 {image_path} 於 {skill_pos} (等待 {wait_skill} 次)")
             logger.info(f"[技能施放] 使用技能: {skill_name} ({category})")
             Press(skill_pos)
-            Sleep(0.5)
-            scn = ScreenShot()
             
-            # 處理技能等級
-            # 處理技能等級
             # 處理技能等級
             SKILL_LEVEL_X = {"LV2": 251, "LV3": 378, "LV4": 500, "LV5": 625}
             if level != "關閉" and level in SKILL_LEVEL_X:
-                # 使用 spellskill/lv1，移除 ROI 以適應不同解析度 (原 ROI y只到1300，實際可能在1301+)
-                lv1_pos = CheckIf(scn, 'spellskill/lv1', threshold=0.8)
+                # 輪詢等級選擇介面
+                lv1_pos = None
+                for wait_lv in range(10):  # 最多等待 3 秒 (10 × 0.3s)
+                    check_stop_signal()
+                    Sleep(0.3)
+                    scn = ScreenShot()
+                    lv1_pos = CheckIf(scn, 'spellskill/lv1', threshold=0.8)
+                    if lv1_pos:
+                        break
+                
                 if lv1_pos:
-                    logger.info(f"[技能施放] 升級技能到 {level}")
+                    logger.info(f"[技能施放] 升級技能到 {level} (等待 {wait_lv} 次)")
                     Press([SKILL_LEVEL_X[level], lv1_pos[1]])
-                    Sleep(0.5)
+                    Sleep(0.3)
                     scn = ScreenShot()
             
             # 根據施放方式確認技能
@@ -4047,12 +4058,12 @@ def Factory():
             elif cast_type == "ok":
                 # AOE 類技能：等待並點擊 OK 確認
                 ok_pos = None
-                for wait_ok in range(6):  # 最多等待 3 秒 (6 × 0.5s)
+                for wait_ok in range(10):  # 最多等待 3 秒 (10 × 0.3s)
                     check_stop_signal()  # 確保能快速響應停止信號
                     ok_pos = CheckIf(scn, 'OK')
                     if ok_pos:
                         break
-                    Sleep(0.5)
+                    Sleep(0.3)
                     scn = ScreenShot()
 
                 if ok_pos:
@@ -4070,7 +4081,15 @@ def Factory():
                     logger.warning(f"[技能施放] OK 按鈕等待超時，可能技能施放失敗")
             else:
                 # 單體/橫排/群控技能：點擊敵人
-                next_pos = CheckIf(scn, 'next', threshold=0.70)
+                next_pos = None
+                for wait_next in range(10):  # 最多等待 3 秒 (10 × 0.3s)
+                    check_stop_signal()
+                    next_pos = CheckIf(scn, 'next', threshold=0.70)
+                    if next_pos:
+                        break
+                    Sleep(0.3)
+                    scn = ScreenShot()
+
                 if next_pos:
                     # 點擊多個位置覆蓋不同大小敵人
                     target_x1 = next_pos[0] - 15
@@ -4078,7 +4097,7 @@ def Factory():
                     target_y1 = next_pos[1] + 100
                     target_y2 = next_pos[1] + 170
                     target_y3 = next_pos[1] + 260
-                    logger.info(f"[技能施放] 點擊目標敵人")
+                    logger.info(f"[技能施放] 點擊目標敵人 (等待 {wait_next} 次)")
                     Press([target_x1, target_y1])
                     Sleep(0.1)
                     Press([target_x1, target_y2])
@@ -4106,10 +4125,7 @@ def Factory():
                     Press([750, 750])
                     Sleep(0.1)
                 
-            Sleep(0.5)
-            # scn = ScreenShot() # 移除多餘截圖
-            
-            Sleep(0.5)
+            Sleep(0.3)
             return True
         
         logger.warning(f"[技能施放] 找不到技能: {skill_name}，改用普攻")
@@ -4243,7 +4259,7 @@ def Factory():
             # 等待 flee 出現
             logger.info("[打王模式] 等待 flee 出現...")
             flee_seen = False
-            for wait_count in range(30):
+            for wait_count in range(50):  # 最多等待 15 秒 (50 × 0.3s)
                 check_stop_signal()  # 確保能快速響應停止信號
                 screen = ScreenShot()
                 update_combat_flag(screen)
@@ -4306,7 +4322,7 @@ def Factory():
                     logger.info(f"[打王模式] flee 出現，等待 {wait_count + 1} 次")
                     flee_seen = True # 標記已看到介面，後續的黑屏才有效
                     break
-                Sleep(0.5)
+                Sleep(0.3)
             else:
                 logger.warning("[打王模式] flee 等待超時，跳過本次行動")
                 return
@@ -4399,7 +4415,7 @@ def Factory():
         # 等待 flee 出現，確認玩家可控制角色（所有戰鬥邏輯的前提）
         flee_seen = False  # 標記是否已看過戰鬥介面（flee 出現），用於黑屏判定
         logger.info("[戰鬥] 等待 flee 出現...")
-        for wait_count in range(30):  # 最多等待 15 秒
+        for wait_count in range(50):  # 最多等待 15 秒 (50 × 0.3s)
             check_stop_signal()  # 確保能快速響應停止信號
             screen = ScreenShot()
             update_combat_flag(screen)
@@ -4504,9 +4520,9 @@ def Factory():
                     MonitorState.current_character = DetectCharacter(screen)
                     last_character_update = now
                 break
-            Sleep(0.5)
+            Sleep(0.3)
         else:
-            logger.warning("[戰鬥] flee 等待超時，共等待 30 次，跳過本次行動")
+            logger.warning("[戰鬥] flee 等待超時，共等待 50 次，跳過本次行動")
             return
 
         # 每次進入戰鬥都檢查 2 倍速 (避免遊戲異常重置後無法恢復)
