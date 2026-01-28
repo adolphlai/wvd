@@ -395,7 +395,7 @@ class FarmConfig:
         locals()[var_config_name] = var_default_value
 
     # 角色技能配置列表（動態載入）
-    # 格式: [{character, skill_first, level_first, skill_after, level_after}, ...]
+    # 格式: [{"character": "name", "battles": [{"skill", "level", "target"}, ...]}, ...]
     _CHARACTER_SKILL_CONFIG = []
 
     # 技能配置預設列表（10 組）
@@ -416,28 +416,29 @@ class FarmConfig:
 
         Args:
             char_name: 角色名稱
-            battle_num: 第幾戰 (1=首戰, 2+=二戰後)
+            battle_num: 第幾戰 (1=第1戰, 2=第2戰, ...)
 
         Returns:
-            tuple: (skill, level) 或 ("attack", "關閉") 若未配置
+            tuple: (skill, level, target) 或 ("attack", "關閉", None) 若未配置
         """
-        # 配置結構: [{character, skill_first, level_first, skill_after, level_after}, ...]
+        # 配置結構: [{"character": "name", "battles": [{"skill", "level", "target"}, ...]}, ...]
         config_list = self._CHARACTER_SKILL_CONFIG if isinstance(self._CHARACTER_SKILL_CONFIG, list) else []
 
         skill = ""
         level = "關閉"
+        target = None
 
         # 遍歷列表查找匹配的角色
         for char_config in config_list:
             if char_config.get("character") == char_name:
-                if battle_num == 1:
-                    skill = char_config.get("skill_first", "")
-                    level = char_config.get("level_first", "關閉")
-                    target = char_config.get("target_first")
-                else:
-                    skill = char_config.get("skill_after", "")
-                    level = char_config.get("level_after", "關閉")
-                    target = char_config.get("target_after")
+                battles = char_config.get("battles", [])
+                if battles:
+                    # 超出範圍時沿用最後一組設定
+                    idx = min(battle_num - 1, len(battles) - 1)
+                    battle_cfg = battles[idx]
+                    skill = battle_cfg.get("skill", "")
+                    level = battle_cfg.get("level", "關閉")
+                    target = battle_cfg.get("target")
                 break
 
         # 未配置時返回普攻
@@ -2529,7 +2530,7 @@ def Factory():
                 # 檢查是否需要首戰打斷（有設定任何角色的首戰技能）
                 skill_config_list = setting._CHARACTER_SKILL_CONFIG if isinstance(setting._CHARACTER_SKILL_CONFIG, list) else []
                 need_first_combat_interrupt = any(
-                    cfg.get("character") and cfg.get("skill_first")
+                    cfg.get("character") and cfg.get("battles", [{}])[0].get("skill")
                     for cfg in skill_config_list
                 )
 
@@ -4368,15 +4369,13 @@ def Factory():
                     config_list = skill_presets[preset_idx]
                     for cfg in config_list:
                         if cfg.get("character") == current_char:
-                            # [關鍵修改] 改用角色行動次數而非戰鬥場次
-                            if char_action_num == 1:
-                                skill = cfg.get("skill_first", "attack")
-                                level = cfg.get("level_first", "關閉")
-                                target_pos = cfg.get("target_first")
-                            else:  # 第 2 次及以後都用 skill_after
-                                skill = cfg.get("skill_after", "attack")
-                                level = cfg.get("level_after", "關閉")
-                                target_pos = cfg.get("target_after")
+                            battles = cfg.get("battles", [])
+                            if battles:
+                                idx = min(char_action_num - 1, len(battles) - 1)
+                                battle_cfg = battles[idx]
+                                skill = battle_cfg.get("skill", "attack")
+                                level = battle_cfg.get("level", "關閉")
+                                target_pos = battle_cfg.get("target")
                             break
             except Exception as e:
                 logger.error(f"[打王模式] 讀取預設配置失敗: {e}")
@@ -4548,11 +4547,11 @@ def Factory():
             screen = ScreenShot()
 
         # === 技能施放設定 ===
-        # 檢查是否有任何角色設定了技能（首戰或二戰後）
-        # 配置結構: [{character, skill_first, level_first, skill_after, level_after}, ...]
+        # 檢查是否有任何角色設定了技能
+        # 配置結構: [{"character": "name", "battles": [{"skill", "level", "target"}, ...]}, ...]
         skill_config_list = setting._CHARACTER_SKILL_CONFIG if isinstance(setting._CHARACTER_SKILL_CONFIG, list) else []
         has_skill_config = any(
-            cfg.get("character") and (cfg.get("skill_first") or cfg.get("skill_after"))
+            cfg.get("character") and any(b.get("skill") for b in cfg.get("battles", []))
             for cfg in skill_config_list
         )
         # 觸發間隔判斷
@@ -4599,7 +4598,7 @@ def Factory():
             # === 技能施放邏輯（按角色識別）===
             # 偵測當前角色
             current_char = DetectCharacter(screen)
-            skill_type = "首戰" if battle_num == 1 else "二戰後"
+            skill_type = f"第{battle_num}戰"
 
             # 取得角色技能配置
             if current_char == "未找到":

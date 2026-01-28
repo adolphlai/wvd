@@ -270,14 +270,40 @@ def SaveConfigToFile(config_data):
     except Exception as e:
         logger.error(f"保存配置時發生錯誤: {e}")
         return False
+def _migrate_to_battles_format(char_cfg):
+    """將單個角色的 skill_first/skill_after 格式轉為 battles 列表格式
+
+    Returns:
+        dict: 含 battles 列表的新格式角色配置，若已是新格式則原樣返回
+    """
+    if "battles" in char_cfg:
+        return char_cfg  # 已是新格式
+
+    battles = []
+    # 首戰
+    battles.append({
+        "skill": char_cfg.get("skill_first", ""),
+        "level": char_cfg.get("level_first", "關閉"),
+        "target": char_cfg.get("target_first"),
+    })
+    # 二戰後
+    battles.append({
+        "skill": char_cfg.get("skill_after", ""),
+        "level": char_cfg.get("level_after", "關閉"),
+        "target": char_cfg.get("target_after"),
+    })
+
+    new_cfg = {"character": char_cfg.get("character", ""), "battles": battles}
+    return new_cfg
+
 def migrate_skill_config(config):
     """遷移舊版配置到新版角色配置
 
-    新配置結構: {"first": {character, skill, level}, "after": {character, skill, level}}
+    新配置結構: {"character": "name", "battles": [{"skill", "level", "target"}, ...]}
     """
     needs_save = False
 
-    # 檢查是否有舊版順序配置
+    # 檢查是否有舊版順序配置 (最早期版本)
     has_old_order_config = any(
         f"_AE_CASTER_{i}_SKILL_FIRST" in config
         for i in range(1, 7)
@@ -287,11 +313,8 @@ def migrate_skill_config(config):
         logger.warning("[配置遷移] 偵測到舊版順序配置，已升級為角色配置模式")
         logger.warning("[配置遷移] 請重新設定技能配置")
 
-        # 初始化空的角色配置
-        config["_CHARACTER_SKILL_CONFIG"] = {
-            "first": {"character": "", "skill": "", "level": "關閉"},
-            "after": {"character": "", "skill": "", "level": "關閉"}
-        }
+        # 初始化空的角色配置 (新 battles 格式)
+        config["_CHARACTER_SKILL_CONFIG"] = []
 
         # 清理舊版欄位
         for i in range(1, 7):
@@ -302,16 +325,22 @@ def migrate_skill_config(config):
         config.pop("_AE_CASTER_COUNT", None)
         needs_save = True
 
-    # 若配置是舊版列表格式，轉換為新字典格式 - 已移除，因为 list 才是新格式
-    # if "_CHARACTER_SKILL_CONFIG" in config:
-    #    existing = config["_CHARACTER_SKILL_CONFIG"]
-    #    if isinstance(existing, list):
-    #        logger.warning("[配置遷移] 偵測到列表格式配置，已轉換為新格式")
-    #        config["_CHARACTER_SKILL_CONFIG"] = {
-    #            "first": {"character": "", "skill": "", "level": "關閉"},
-    #            "after": {"character": "", "skill": "", "level": "關閉"}
-    #        }
-    #        needs_save = True
+    # 遷移 _CHARACTER_SKILL_CONFIG: skill_first/skill_after → battles[]
+    existing = config.get("_CHARACTER_SKILL_CONFIG")
+    if isinstance(existing, list) and existing:
+        if any("skill_first" in c for c in existing):
+            logger.info("[配置遷移] 將 _CHARACTER_SKILL_CONFIG 從 skill_first/after 遷移為 battles 格式")
+            config["_CHARACTER_SKILL_CONFIG"] = [_migrate_to_battles_format(c) for c in existing]
+            needs_save = True
+
+    # 遷移 _SKILL_PRESETS 中的所有預設
+    presets = config.get("_SKILL_PRESETS")
+    if isinstance(presets, list):
+        for pi, preset in enumerate(presets):
+            if isinstance(preset, list) and any("skill_first" in c for c in preset):
+                logger.info(f"[配置遷移] 將 _SKILL_PRESETS[{pi}] 從 skill_first/after 遷移為 battles 格式")
+                presets[pi] = [_migrate_to_battles_format(c) for c in preset]
+                needs_save = True
 
     if needs_save:
         SaveConfigToFile(config)

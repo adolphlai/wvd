@@ -171,8 +171,11 @@ class ConfigPanelApp(tk.Toplevel):
             empty_preset = []
             for _ in range(6):
                 empty_preset.append({
-                    "character": "", "skill_first": "", "level_first": "關閉",
-                    "skill_after": "", "level_after": "關閉"
+                    "character": "",
+                    "battles": [
+                        {"skill": "", "level": "關閉", "target": None},
+                        {"skill": "", "level": "關閉", "target": None},
+                    ]
                 })
             self.character_skill_presets.append(empty_preset)
 
@@ -822,6 +825,14 @@ class ConfigPanelApp(tk.Toplevel):
         self.btn_save_preset.grid(row=0, column=3, padx=5)
 
         row += 1
+        # --- 戰鬥配置說明 ---
+        frame_combat_tips = ttk.LabelFrame(tab, text="💡 戰鬥配置說明", padding=5)
+        frame_combat_tips.grid(row=row, column=0, sticky="ew", pady=5)
+        ttk.Label(frame_combat_tips, text="※ 一般戰鬥：使用上方選擇的預設；戰鬥場次對應「第幾場遭遇戰」。", foreground="black").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(frame_combat_tips, text="※ 打王模式：強制使用「最後一組預設」；戰鬥場次對應「該角色的行動次數」。", foreground="blue", font=("微軟雅黑", 9, "bold")).grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(frame_combat_tips, text="※ 提示：打王技能設定第 10 組，並按 1、2、3 次行動順序分頁配置。", foreground="gray").grid(row=2, column=0, sticky=tk.W)
+
+        row += 1
 
         # --- 角色技能設定 ---
         row += 1
@@ -839,11 +850,33 @@ class ConfigPanelApp(tk.Toplevel):
         ttk.Label(frame_char_skill, text="※ 0=每場觸發，N=每N+1場觸發", foreground="gray").grid(
             row=0, column=2, columnspan=5, sticky=tk.W, padx=10)
 
-        # Row 1: 說明文字
-        ttk.Label(frame_char_skill,
-                  text="※ 未識別角色時使用單體技能\n新增角色請將頭像放入 resources/images/character/ 並重啟",
-                  foreground="gray").grid(row=1, column=0, columnspan=8, sticky=tk.W, pady=(2, 8))
+        # Row 1: 戰鬥頁選擇
+        self.current_battle_page = 0
+        battle_page_frame = ttk.Frame(frame_char_skill)
+        battle_page_frame.grid(row=1, column=0, columnspan=6, sticky=tk.W, pady=(2, 4))
 
+        ttk.Label(battle_page_frame, text="戰鬥場次:").pack(side=tk.LEFT)
+        self.battle_page_var = tk.StringVar(value="第1戰")
+        self.battle_page_combo = ttk.Combobox(
+            battle_page_frame, textvariable=self.battle_page_var,
+            values=["第1戰", "第2戰"], state="readonly", width=8
+        )
+        self.battle_page_combo.pack(side=tk.LEFT, padx=4)
+        self.battle_page_combo.bind("<<ComboboxSelected>>", self._on_battle_page_change)
+
+        self.btn_add_battle_page = ttk.Button(battle_page_frame, text="新增戰鬥頁", command=self._add_battle_page, width=10)
+        self.btn_add_battle_page.pack(side=tk.LEFT, padx=2)
+        self.btn_remove_battle_page = ttk.Button(battle_page_frame, text="刪除最後一頁", command=self._remove_battle_page, width=10)
+        self.btn_remove_battle_page.pack(side=tk.LEFT, padx=2)
+        ttk.Label(battle_page_frame, text="※ 超出設定的戰鬥沿用最後一頁", foreground="gray").pack(side=tk.LEFT, padx=6)
+
+        # Row 2 & 3: 說明文字
+        ttk.Label(frame_char_skill,
+                  text="※ 未識別角色時使用單體技能。",
+                  foreground="gray").grid(row=2, column=0, columnspan=8, sticky=tk.W, pady=(2, 0))
+        ttk.Label(frame_char_skill,
+                  text="※ 使用測試->頭像截圖來進行角色頭像新增(戰鬥中)，重啟後生效",
+                  foreground="gray").grid(row=3, column=0, columnspan=8, sticky=tk.W, pady=(0, 4))
         # 類別選項與等級選項
         category_options = ["", "普攻", "防禦", "輔助", "單體", "橫排", "全體", "秘術", "群控"]
         level_options = ["關閉", "LV2", "LV3", "LV4", "LV5", "LV6", "LV7", "LV8", "LV9"]
@@ -851,19 +884,18 @@ class ConfigPanelApp(tk.Toplevel):
         char_options = [""] + AVAILABLE_CHARACTERS
 
         # 表頭
-        header_row = 2
-        ttk.Label(frame_char_skill, text="", width=6).grid(row=header_row, column=0, sticky=tk.W)
-        ttk.Label(frame_char_skill, text="角色", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=1, sticky=tk.W, padx=2)
-        ttk.Label(frame_char_skill, text="類別", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=2, sticky=tk.W, padx=2)
-        ttk.Label(frame_char_skill, text="技能", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=3, sticky=tk.W, padx=2)
-        ttk.Label(frame_char_skill, text="等級", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=4, sticky=tk.W, padx=2)
-        ttk.Label(frame_char_skill, text="目標", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=5, sticky=tk.W, padx=2)
+        header_row = 4
+        ttk.Label(frame_char_skill, text="角色", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=0, sticky=tk.W, padx=2)
+        ttk.Label(frame_char_skill, text="類別", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=1, sticky=tk.W, padx=2)
+        ttk.Label(frame_char_skill, text="技能", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=2, sticky=tk.W, padx=2)
+        ttk.Label(frame_char_skill, text="等級", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=3, sticky=tk.W, padx=2)
+        ttk.Label(frame_char_skill, text="目標", font=("微軟雅黑", 9, "bold")).grid(row=header_row, column=4, sticky=tk.W, padx=2)
 
-        # 6 組角色配置，每組 2 行（首戰、二戰後）
+        # 6 組角色配置，每組 1 行
         self.character_skill_groups = []  # 儲存6組配置的控件引用
         self.skill_combos_all = []  # 用於 set_controls_state
 
-        def make_category_callback(group_idx, battle_type, category_var, skill_var, skill_combo, target_combo=None):
+        def make_category_callback(group_idx, category_var, skill_var, skill_combo, target_combo=None):
             """類別變更時更新技能下拉選單"""
             def callback(event=None):
                 category = category_var.get()
@@ -872,10 +904,10 @@ class ConfigPanelApp(tk.Toplevel):
                     skill_var.set("")
                 elif category == "普攻":
                     skill_options = ["", "attack"]
-                    skill_var.set("attack")  # 自動選擇普攻
+                    skill_var.set("attack")
                 elif category == "防禦":
                     skill_options = ["", "defend"]
-                    skill_var.set("defend")  # 自動選擇防禦
+                    skill_var.set("defend")
                 else:
                     skills_from_folder = SKILLS_BY_CATEGORY.get(category, [])
                     skill_options = [""] + skills_from_folder
@@ -884,14 +916,14 @@ class ConfigPanelApp(tk.Toplevel):
 
                 if skill_combo:
                     skill_combo['values'] = skill_options
-                
+
                 # 只有輔助類型可以選目標
                 if target_combo:
                     if category == "輔助":
                         target_combo.configure(state="readonly")
                     else:
                         target_combo.configure(state="disabled")
-                
+
                 self._save_skill_config()
             return callback
 
@@ -900,132 +932,86 @@ class ConfigPanelApp(tk.Toplevel):
                 self._save_skill_config()
             return callback
 
-        # 建立 6 組角色配置
+        # 建立 6 組角色配置（每組 1 行）
         for group_idx in range(6):
-            # 從配置載入此組的設定
             group_config = self.character_skill_config[group_idx] if group_idx < len(self.character_skill_config) else {}
+            # 從 battles[0] (當前頁=0) 載入初始值
+            battles = group_config.get("battles", [])
+            battle0 = battles[0] if battles else {}
 
             group_data = {
                 'char_var': tk.StringVar(value=group_config.get("character", "")),
-                'category_first_var': tk.StringVar(value=""),
-                'skill_first_var': tk.StringVar(value=group_config.get("skill_first", "")),
-                'level_first_var': tk.StringVar(value=group_config.get("level_first", "關閉")),
-                'target_first_var': tk.StringVar(value=str(group_config.get("target_first", "無"))),
-                'category_after_var': tk.StringVar(value=""),
-                'skill_after_var': tk.StringVar(value=group_config.get("skill_after", "")),
-                'level_after_var': tk.StringVar(value=group_config.get("level_after", "關閉")),
-                'target_after_var': tk.StringVar(value=str(group_config.get("target_after", "無"))),
+                'category_var': tk.StringVar(value=""),
+                'skill_var': tk.StringVar(value=battle0.get("skill", "")),
+                'level_var': tk.StringVar(value=battle0.get("level", "關閉")),
+                'target_var': tk.StringVar(value=str(battle0.get("target", "無")) if battle0.get("target") else "無"),
             }
 
-            # === 首戰行 ===
-            first_grid_row = header_row + 1 + group_idx * 2
-            ttk.Label(frame_char_skill, text="首戰", font=("微軟雅黑", 9)).grid(
-                row=first_grid_row, column=0, sticky=tk.W, pady=2)
+            grid_row = header_row + 1 + group_idx
 
-            # 角色下拉（只在首戰行顯示）
+            # 角色下拉
             char_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['char_var'],
                                       values=char_options, state="readonly", width=8)
-            char_combo.grid(row=first_grid_row, column=1, padx=2, sticky=tk.W, pady=2)
+            char_combo.grid(row=grid_row, column=0, padx=2, sticky=tk.W, pady=2)
             char_combo.bind("<<ComboboxSelected>>", make_save_callback())
             group_data['char_combo'] = char_combo
 
-            # 首戰類別
-            category_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['category_first_var'],
-                                                values=category_options, state="readonly", width=6)
-            category_first_combo.grid(row=first_grid_row, column=2, padx=2, sticky=tk.W, pady=2)
-            category_first_combo.bind("<<ComboboxSelected>>", make_category_callback(
-                group_idx, "first", group_data['category_first_var'],
-                group_data['skill_first_var'], None))  # skill_combo 稍後設定
-            group_data['category_first_combo'] = category_first_combo
+            # 類別
+            category_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['category_var'],
+                                          values=category_options, state="readonly", width=6)
+            category_combo.grid(row=grid_row, column=1, padx=2, sticky=tk.W, pady=2)
+            group_data['category_combo'] = category_combo
 
-            # 首戰技能
-            skill_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['skill_first_var'],
-                                             values=[""], state="readonly", width=16)
-            skill_first_combo.grid(row=first_grid_row, column=3, padx=2, sticky=tk.W, pady=2)
-            skill_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['skill_first_combo'] = skill_first_combo
+            # 技能
+            skill_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['skill_var'],
+                                       values=[""], state="readonly", width=16)
+            skill_combo.grid(row=grid_row, column=2, padx=2, sticky=tk.W, pady=2)
+            skill_combo.bind("<<ComboboxSelected>>", make_save_callback())
+            group_data['skill_combo'] = skill_combo
 
-            # 首戰等級
-            level_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['level_first_var'],
-                                             values=level_options, state="readonly", width=5)
-            level_first_combo.grid(row=first_grid_row, column=4, padx=2, sticky=tk.W, pady=2)
-            level_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['level_first_combo'] = level_first_combo
+            # 等級
+            level_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['level_var'],
+                                       values=level_options, state="readonly", width=5)
+            level_combo.grid(row=grid_row, column=3, padx=2, sticky=tk.W, pady=2)
+            level_combo.bind("<<ComboboxSelected>>", make_save_callback())
+            group_data['level_combo'] = level_combo
 
-            # 首戰目標
-            target_first_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['target_first_var'],
-                                              values=target_options, state="readonly", width=4)
-            target_first_combo.grid(row=first_grid_row, column=5, padx=2, sticky=tk.W, pady=2)
-            target_first_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['target_first_combo'] = target_first_combo
+            # 目標
+            target_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['target_var'],
+                                        values=target_options, state="readonly", width=4)
+            target_combo.grid(row=grid_row, column=4, padx=2, sticky=tk.W, pady=2)
+            target_combo.bind("<<ComboboxSelected>>", make_save_callback())
+            group_data['target_combo'] = target_combo
 
-            # 更新 category callback 的 skill_combo 與 target_combo 引用
-            category_first_combo.unbind("<<ComboboxSelected>>")
-            category_first_combo.bind("<<ComboboxSelected>>", make_category_callback(
-                group_idx, "first", group_data['category_first_var'],
-                group_data['skill_first_var'], skill_first_combo, target_first_combo))
-
-            # === 二戰後行 ===
-            after_grid_row = header_row + 2 + group_idx * 2
-            ttk.Label(frame_char_skill, text="二戰後", font=("微軟雅黑", 9)).grid(
-                row=after_grid_row, column=0, sticky=tk.W, pady=2)
-
-            # 二戰後沒有角色下拉（共用首戰的角色）
-            ttk.Label(frame_char_skill, text="", width=8).grid(
-                row=after_grid_row, column=1, padx=2, sticky=tk.W, pady=2)
-
-            # 二戰後類別
-            category_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['category_after_var'],
-                                                values=category_options, state="readonly", width=6)
-            category_after_combo.grid(row=after_grid_row, column=2, padx=2, sticky=tk.W, pady=2)
-            group_data['category_after_combo'] = category_after_combo
-
-            # 二戰後技能
-            skill_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['skill_after_var'],
-                                             values=[""], state="readonly", width=16)
-            skill_after_combo.grid(row=after_grid_row, column=3, padx=2, sticky=tk.W, pady=2)
-            skill_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['skill_after_combo'] = skill_after_combo
-
-            # 二戰後等級
-            level_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['level_after_var'],
-                                             values=level_options, state="readonly", width=5)
-            level_after_combo.grid(row=after_grid_row, column=4, padx=2, sticky=tk.W, pady=2)
-            level_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['level_after_combo'] = level_after_combo
-
-            # 二戰後目標
-            target_after_combo = ttk.Combobox(frame_char_skill, textvariable=group_data['target_after_var'],
-                                              values=target_options, state="readonly", width=4)
-            target_after_combo.grid(row=after_grid_row, column=5, padx=2, sticky=tk.W, pady=2)
-            target_after_combo.bind("<<ComboboxSelected>>", make_save_callback())
-            group_data['target_after_combo'] = target_after_combo
-
-            # 綁定二戰後類別 callback
-            category_after_combo.bind("<<ComboboxSelected>>", make_category_callback(
-                group_idx, "after", group_data['category_after_var'],
-                group_data['skill_after_var'], skill_after_combo, target_after_combo))
+            # 綁定類別 callback（含 skill_combo 和 target_combo 引用）
+            category_combo.bind("<<ComboboxSelected>>", make_category_callback(
+                group_idx, group_data['category_var'],
+                group_data['skill_var'], skill_combo, target_combo))
 
             self.character_skill_groups.append(group_data)
 
             # 收集所有 combo 控件供 set_controls_state 使用
             self.skill_combos_all.extend([
-                char_combo, category_first_combo, skill_first_combo, level_first_combo, target_first_combo,
-                category_after_combo, skill_after_combo, level_after_combo, target_after_combo
+                char_combo, category_combo, skill_combo, level_combo, target_combo
             ])
 
             # 初始化：反推類別
             self._init_skill_combo_from_saved(
-                group_config.get("skill_first", ""),
-                group_data['category_first_var'], skill_first_combo, target_first_combo)
-            self._init_skill_combo_from_saved(
-                group_config.get("skill_after", ""),
-                group_data['category_after_var'], skill_after_combo, target_after_combo)
+                battle0.get("skill", ""),
+                group_data['category_var'], skill_combo, target_combo)
+
+        # 將戰鬥頁按鈕也加入 skill_combos_all 以支援執行中禁用
+        self.skill_combos_all.extend([
+            self.battle_page_combo, self.btn_add_battle_page, self.btn_remove_battle_page
+        ])
+
+        # 初始化戰鬥頁下拉選單
+        self._update_battle_page_combo()
 
     def _migrate_old_skill_config(self, old_config):
-        """將舊版 dict 格式配置遷移到新版 list 格式"""
+        """將舊版 dict 格式配置遷移到新版 battles 列表格式"""
         # 舊格式: {"first": {character, skill, level}, "after": {character, skill, level}}
-        # 新格式: [{character, skill_first, level_first, skill_after, level_after}, ...]
+        # 新格式: [{"character": "name", "battles": [{"skill", "level", "target"}, ...]}, ...]
         result = []
 
         first_cfg = old_config.get("first", {})
@@ -1033,14 +1019,13 @@ class ConfigPanelApp(tk.Toplevel):
 
         # 如果舊配置有設定，轉換為第一組
         if first_cfg.get("character") or after_cfg.get("character"):
-            # 使用首戰的角色名稱，若無則使用二戰後的
             char_name = first_cfg.get("character") or after_cfg.get("character") or ""
             result.append({
                 "character": char_name,
-                "skill_first": first_cfg.get("skill", ""),
-                "level_first": first_cfg.get("level", "關閉"),
-                "skill_after": after_cfg.get("skill", ""),
-                "level_after": after_cfg.get("level", "關閉"),
+                "battles": [
+                    {"skill": first_cfg.get("skill", ""), "level": first_cfg.get("level", "關閉"), "target": None},
+                    {"skill": after_cfg.get("skill", ""), "level": after_cfg.get("level", "關閉"), "target": None},
+                ]
             })
 
         return result
@@ -1073,57 +1058,147 @@ class ConfigPanelApp(tk.Toplevel):
             else:
                 target_combo.configure(state="disabled")
 
-    def _save_skill_config(self):
-        """儲存技能配置（列表格式，共6組）"""
-        self.character_skill_config = []
-        for group_data in self.character_skill_groups:
+    def _save_current_battle_page(self):
+        """將 UI 目前的值寫回 character_skill_config[i]["battles"][current_page]"""
+        page = self.current_battle_page
+        # 確保 character_skill_config 有 6 組
+        while len(self.character_skill_config) < 6:
             self.character_skill_config.append({
-                "character": group_data['char_var'].get(),
-                "skill_first": group_data['skill_first_var'].get(),
-                "level_first": group_data['level_first_var'].get(),
-                "target_first": int(group_data['target_first_var'].get()) if group_data['target_first_var'].get().isdigit() else None,
-                "skill_after": group_data['skill_after_var'].get(),
-                "level_after": group_data['level_after_var'].get(),
-                "target_after": int(group_data['target_after_var'].get()) if group_data['target_after_var'].get().isdigit() else None,
+                "character": "",
+                "battles": [{"skill": "", "level": "關閉", "target": None}]
             })
-        # 更新預設列表中的對應項
-        idx = self.current_skill_preset_index_var.get()
-        if 0 <= idx < len(self.character_skill_presets):
-            self.character_skill_presets[idx] = self.character_skill_config
-            
-        self.save_config()
+        for i, group_data in enumerate(self.character_skill_groups):
+            cfg = self.character_skill_config[i]
+            cfg["character"] = group_data['char_var'].get()
+            battles = cfg.get("battles", [])
+            # 確保 battles 有足夠長度
+            while len(battles) <= page:
+                battles.append({"skill": "", "level": "關閉", "target": None})
+            cfg["battles"] = battles
+            target_val = group_data['target_var'].get()
+            battles[page] = {
+                "skill": group_data['skill_var'].get(),
+                "level": group_data['level_var'].get(),
+                "target": int(target_val) if target_val.isdigit() else None,
+            }
 
-    def _load_preset_to_ui(self):
-        """將 character_skill_config 的數據載入到 UI 控件中"""
+    def _load_battle_page(self, page_idx):
+        """從 battles[page_idx] 載入 UI 值並反推類別"""
         for i, group_data in enumerate(self.character_skill_groups):
             if i < len(self.character_skill_config):
                 cfg = self.character_skill_config[i]
                 group_data['char_var'].set(cfg.get("character", ""))
-                group_data['skill_first_var'].set(cfg.get("skill_first", ""))
-                group_data['level_first_var'].set(cfg.get("level_first", "關閉"))
-                group_data['target_first_var'].set(str(cfg.get("target_first", "無")) if cfg.get("target_first") else "無")
-                group_data['skill_after_var'].set(cfg.get("skill_after", ""))
-                group_data['level_after_var'].set(cfg.get("level_after", "關閉"))
-                group_data['target_after_var'].set(str(cfg.get("target_after", "無")) if cfg.get("target_after") else "無")
-                
-                # 初始化類別反推
+                battles = cfg.get("battles", [])
+                if page_idx < len(battles):
+                    b = battles[page_idx]
+                else:
+                    b = {}
+                group_data['skill_var'].set(b.get("skill", ""))
+                group_data['level_var'].set(b.get("level", "關閉"))
+                target = b.get("target")
+                group_data['target_var'].set(str(target) if target else "無")
+                # 反推類別
                 self._init_skill_combo_from_saved(
-                    cfg.get("skill_first", ""),
-                    group_data['category_first_var'], group_data['skill_first_combo'], group_data.get('target_first_combo'))
-                self._init_skill_combo_from_saved(
-                    cfg.get("skill_after", ""),
-                    group_data['category_after_var'], group_data['skill_after_combo'], group_data.get('target_after_combo'))
+                    b.get("skill", ""),
+                    group_data['category_var'], group_data['skill_combo'], group_data.get('target_combo'))
             else:
-                # 預設清空
                 group_data['char_var'].set("")
-                group_data['skill_first_var'].set("")
-                group_data['level_first_var'].set("關閉")
-                group_data['target_first_var'].set("無")
-                group_data['skill_after_var'].set("")
-                group_data['level_after_var'].set("關閉")
-                group_data['target_after_var'].set("無")
-                group_data['category_first_var'].set("")
-                group_data['category_after_var'].set("")
+                group_data['skill_var'].set("")
+                group_data['level_var'].set("關閉")
+                group_data['target_var'].set("無")
+                group_data['category_var'].set("")
+
+    def _get_battle_count(self):
+        """返回所有角色組中最大的 len(battles)"""
+        max_count = 0
+        for cfg in self.character_skill_config:
+            battles = cfg.get("battles", [])
+            if len(battles) > max_count:
+                max_count = len(battles)
+        return max(max_count, 1)
+
+    def _update_battle_page_combo(self):
+        """刷新戰鬥頁下拉選單選項與按鈕狀態"""
+        count = self._get_battle_count()
+        values = [f"第{i+1}戰" for i in range(count)]
+        self.battle_page_combo['values'] = values
+        # 確保當前頁在範圍內
+        if self.current_battle_page >= count:
+            self.current_battle_page = count - 1
+        self.battle_page_var.set(f"第{self.current_battle_page + 1}戰")
+        # 按鈕狀態
+        self.btn_add_battle_page.configure(state="normal" if count < 10 else "disabled")
+        self.btn_remove_battle_page.configure(state="normal" if count > 1 else "disabled")
+
+    def _on_battle_page_change(self, event=None):
+        """戰鬥頁下拉選單變更"""
+        selected = self.battle_page_combo.current()
+        if selected == -1:
+            return
+        # 儲存當前頁
+        self._save_current_battle_page()
+        # 切換並載入新頁
+        self.current_battle_page = selected
+        self._load_battle_page(selected)
+
+    def _add_battle_page(self):
+        """新增戰鬥頁（複製最後一頁設定，上限10）"""
+        count = self._get_battle_count()
+        if count >= 10:
+            return
+        # 先儲存當前頁
+        self._save_current_battle_page()
+        # 為每個角色組複製最後一頁
+        for cfg in self.character_skill_config:
+            battles = cfg.get("battles", [])
+            if battles:
+                last = dict(battles[-1])  # 複製最後一頁
+            else:
+                last = {"skill": "", "level": "關閉", "target": None}
+            battles.append(last)
+            cfg["battles"] = battles
+        # 切換到新頁
+        self.current_battle_page = count  # 新頁 index
+        self._update_battle_page_combo()
+        self._load_battle_page(self.current_battle_page)
+        self.save_config()
+
+    def _remove_battle_page(self):
+        """刪除最後一頁（下限1）"""
+        count = self._get_battle_count()
+        if count <= 1:
+            return
+        # 先儲存當前頁
+        self._save_current_battle_page()
+        # 移除最後一頁
+        for cfg in self.character_skill_config:
+            battles = cfg.get("battles", [])
+            if len(battles) > 1:
+                battles.pop()
+        # 如果當前頁是被刪除的頁，回到最後一頁
+        new_count = self._get_battle_count()
+        if self.current_battle_page >= new_count:
+            self.current_battle_page = new_count - 1
+        self._update_battle_page_combo()
+        self._load_battle_page(self.current_battle_page)
+        self.save_config()
+
+    def _save_skill_config(self):
+        """儲存技能配置（battles 格式，共6組）"""
+        # 先將當前頁的 UI 值寫回
+        self._save_current_battle_page()
+        # 更新預設列表中的對應項
+        idx = self.current_skill_preset_index_var.get()
+        if 0 <= idx < len(self.character_skill_presets):
+            self.character_skill_presets[idx] = self.character_skill_config
+
+        self.save_config()
+
+    def _load_preset_to_ui(self):
+        """將 character_skill_config 的數據載入到 UI 控件中"""
+        self.current_battle_page = 0
+        self._update_battle_page_combo()
+        self._load_battle_page(0)
 
 
     def _create_advanced_tab(self, vcmd_non_neg, checkcommand):
@@ -1471,7 +1546,7 @@ class ConfigPanelApp(tk.Toplevel):
         self.editor_toggle_btn = ttk.Button(frame_editor, text="啟動伺服器", command=toggle_editor_server)
         self.editor_toggle_btn.grid(row=0, column=2, padx=10, pady=5)
 
-        ttk.Label(frame_editor, text="※ 先在 editor/ 目錄執行 npm run dev，然後連接 ws://localhost:8765", foreground="gray").grid(
+        ttk.Label(frame_editor, text="※ 先在 editor-lite/ 目錄執行 DungeonEditor，然後連接 ws://localhost:8765", foreground="gray").grid(
             row=1, column=0, columnspan=3, sticky=tk.W, pady=2)
 
         # --- Debug 截圖 ---
@@ -1485,7 +1560,7 @@ class ConfigPanelApp(tk.Toplevel):
 
         # --- 圖片去背工具 ---
         row += 1
-        frame_bgremove = ttk.LabelFrame(tab, text="圖片去背工具", padding=5)
+        frame_bgremove = ttk.LabelFrame(tab, text="技能圖片去背工具", padding=5)
         frame_bgremove.grid(row=row, column=0, columnspan=2, sticky="ew", pady=5)
 
         # 目錄選擇
