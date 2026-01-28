@@ -3844,7 +3844,17 @@ def Factory():
         scn = ScreenShot()
         if not Press(CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])):
             Press(CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]]))
-        Sleep(2)
+        
+        # 動態等待自動戰鬥生效（偵測按鈕消失）
+        for _ in range(10): # 最多等待 3 秒
+            check_stop_signal()
+            Sleep(0.3)
+            current_scn = ScreenShot()
+            # 如果找不到自動戰鬥按鈕，表示已生效
+            if not CheckIf(WrapImage(current_scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]]) and \
+               not CheckIf(current_scn, 'combatAuto_2', [[700, 1000, 200, 200]]):
+                logger.debug("[順序] 自動戰鬥已生效")
+                break
 
     def reset_ae_caster_flags():
         """重置戰鬥相關旗標，用於新地城開始時"""
@@ -3945,7 +3955,7 @@ def Factory():
             return False
         return battle_count > manual_battles
 
-    def cast_skill_by_category(category, skill_name, level="關閉", target_pos=None):
+    def cast_skill_by_category(category, skill_name, level="關閉", target_pos=None, screen=None):
         """統一的技能施放函數
         
         根據技能類別自動判斷施放方式 (target/ok)，並處理技能等級升級。
@@ -3954,6 +3964,8 @@ def Factory():
             category: 技能類別 (普攻/單體/橫排/全體/秘術/群控)
             skill_name: 技能名稱
             level: 技能等級 (關閉/LV2~LV5)
+            target_pos: 目標位置 (支援類技能)
+            screen: 可選，外部傳入的當前截圖，避免重疊截圖
         Returns:
             bool: 是否成功施放技能
         """
@@ -3980,8 +3992,9 @@ def Factory():
         logger.info(f"[順序 {runtimeContext._COMBAT_ACTION_COUNT}] 搜尋技能: {image_path}")
 
         
-        # 確保技能欄可見
-        scn = ScreenShot()
+        # 優先使用傳入的 screen，若無則截圖
+        scn = screen if screen is not None else ScreenShot()
+        
         auto_btn = CheckIf(WrapImage(scn, 0.1, 0.3, 1), 'combatAuto', [[700, 1000, 200, 200]])
         auto_btn_2 = CheckIf(scn, 'combatAuto_2', [[700, 1000, 200, 200]])
         is_manual_mode = auto_btn or auto_btn_2
@@ -3992,13 +4005,15 @@ def Factory():
             for _ in range(3):
                 Press([1, 1])
                 Sleep(0.3)
-            Sleep(0.5)
+            Sleep(0.2)
+            scn = ScreenShot() # 打斷後必須重新截圖以搜尋技能
         else:
-            # 輕點確保技能欄顯示
+            # 輕點確保技能欄顯示 (如果已經是手動模式，通常不需要重新截圖，除非確定輕點會改變 UI)
             Press([1, 1])
-            Sleep(0.3)
-        
-        scn = ScreenShot()
+            Sleep(0.2)
+            # 這裡不重新截圖，直接使用 scn (或在 0.2s 後重新截一次以保險，但為了性能我們嘗試直接用舊圖或短暫等待)
+            # 修正：實測點擊 (1,1) 後技能欄可能會有微小延遲，維持一次截圖
+            scn = ScreenShot()
         
         # 搜尋技能按鈕
         # CheckIf 內部會透過 get_multi_templates 自動掃描整個資料夾的所有技能
@@ -4381,8 +4396,8 @@ def Factory():
             if skill == "attack" or not category:
                 use_normal_attack()
             elif skill and category:
-                # 統一呼叫技能施放函數，傳入目標位置（輔助技能會用到）
-                cast_skill_by_category(category, skill, level, target_pos)
+                # 統一呼叫技能施放函數，傳入當前截圖以減少重複截圖
+                cast_skill_by_category(category, skill, level, target_pos, screen=screen)
         
         # ==================== 打王模式判定 (最高優先級) ====================
         if getattr(runtimeContext, '_AUTO_SKILL_PRESET_INDEX', -1) != -1:
@@ -4528,8 +4543,8 @@ def Factory():
         # 每次進入戰鬥都檢查 2 倍速 (避免遊戲異常重置後無法恢復)
         if Press(CheckIf(screen, 'combatSpd', threshold=0.70)):
             logger.info("[戰鬥] 啟用 2 倍速")
-            Sleep(0.5)
-            # 點擊後重新截圖，以免影響後續判斷
+            Sleep(0.3)
+            # 點擊後必須重新截圖，以免影響後續判斷（倍速點擊會改變介面狀態）
             screen = ScreenShot()
 
         # === 技能施放設定 ===
@@ -4557,11 +4572,11 @@ def Factory():
             logger.info(f"[技能施放] 觸發間隔不匹配（地城循環第 {eff_counter + 1} 場，間隔設定 {setting._AE_CASTER_INTERVAL}），開啟自動戰鬥")
             runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
             enable_auto_combat()
-            Sleep(3)
             return
-
-
-        screen = ScreenShot()
+        
+        # 移除此處 redundent ScreenShot，直接沿用上述偵測到 flee 的 screen
+        # screen = ScreenShot() 
+        
         # combatSpd 檢查已移至 StateCombat 開頭
 
         # === 新的自動戰鬥模式邏輯 ===
@@ -4574,7 +4589,6 @@ def Factory():
             logger.info(f"[技能施放] 第 {battle_num} 戰，根據設定 ({auto_combat_mode}) 開啟自動戰鬥")
             runtimeContext._AOE_TRIGGERED_THIS_DUNGEON = True
             enable_auto_combat()
-            Sleep(3)
             return
 
         if not CheckIf(screen,'flee'):
@@ -4613,8 +4627,8 @@ def Factory():
                 # 使用普攻
                 use_normal_attack()
             elif skill and category:
-                # 有設定技能，使用設定的技能 (傳入目標位置)
-                cast_skill_by_category(category, skill, level, target_pos)
+                # 有設定技能，使用設定的技能 (傳入當前截圖減少重複截圖)
+                cast_skill_by_category(category, skill, level, target_pos, screen=screen)
 
     # ==================== DungeonMover 類別 ====================
     # 統一的地城移動管理器，整合 chest_auto, position, harken, gohome 邏輯
@@ -5936,7 +5950,13 @@ def Factory():
                             availableChar.remove(whowillopenit) 
                     else:
                         Press(pos)
-                        Sleep(0.5)
+                        # 動態等待角色選擇介面關閉或進入下一階段
+                        for _ in range(10):
+                            check_stop_signal()
+                            Sleep(0.3)
+                            loop_scn = ScreenShot()
+                            if not CheckIf(loop_scn, 'whowillopenit') or CheckIf(loop_scn, 'chestOpening') or CheckIf(loop_scn, 'dungFlag'):
+                                break
                         break
                 if not haveBeenTried:
                     haveBeenTried = True
@@ -5950,7 +5970,13 @@ def Factory():
             elif pos := CheckIf(scn, 'chestFlag'):
                 logger.info(f"[StateChest] 發現寶箱 (chestFlag)，點擊打開")
                 Press(pos)
-                Sleep(0.5)
+                # 動態等待進入開箱角色選擇或開箱中狀態
+                for _ in range(10):
+                    check_stop_signal()
+                    Sleep(0.3)
+                    loop_scn = ScreenShot()
+                    if CheckIf(loop_scn, 'whowillopenit') or CheckIf(loop_scn, 'chestOpening') or CheckIf(loop_scn, 'dungFlag'):
+                        break
                 has_interaction = True
 
             if has_interaction:
